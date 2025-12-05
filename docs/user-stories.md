@@ -7,6 +7,10 @@ This document contains user stories for validating the browser extension design.
 - **[Sandbox Design](./sandbox-design.md)** - Unified sandbox implementation (references stories below)
 - **[Browser Extension Architecture](./browser-extension-architecture.md)** - Browser-specific architecture
 
+### Detailed Use Cases
+- **[Pitch Deck Analyzer](./use-cases/pitchdeck-analyzer.md)** - End-to-end workflow for analyzing pitch decks from email
+- **[Browser Project Management](./use-cases/browser-project-management.md)** - Project/worker management model (Project = Program, Worker = Function)
+
 ## How to Use This Document
 
 1. **During Design**: Each design decision should trace back to one or more stories
@@ -272,6 +276,8 @@ This document contains user stories for validating the browser extension design.
 ---
 
 ## Epic 4: Worker and Tool Execution
+
+> **See also**: [Browser Project Management](./use-cases/browser-project-management.md) for detailed project/worker model (US-PM-1 through US-PM-5)
 
 ### Story 4.1: Run Analysis Worker
 **As** Alex
