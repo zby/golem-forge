@@ -11,6 +11,7 @@ import {
   type ChatClient,
   type ToolResult,
   type AskInput,
+  type Attachment,
 } from "@mariozechner/lemmy";
 import type { WorkerDefinition } from "../worker/schema.js";
 import {
@@ -78,6 +79,24 @@ export interface WorkerRuntimeOptions {
   /** Inject a context directly (for testing) */
   context?: Context;
 }
+
+/**
+ * Input for running a worker.
+ * Can be a simple string or an object with content and optional attachments.
+ */
+export type RunInput =
+  | string
+  | {
+      /** Text content */
+      content: string;
+      /** Optional file attachments (images, etc.) */
+      attachments?: Attachment[];
+    };
+
+/**
+ * Re-export Attachment type for convenience.
+ */
+export type { Attachment };
 
 /**
  * Parses a model identifier like "anthropic:claude-3-5-sonnet-20241022"
@@ -372,8 +391,9 @@ export class WorkerRuntime {
 
   /**
    * Execute the worker with the given input.
+   * @param input - Text string or object with content and optional attachments
    */
-  async run(input: string): Promise<WorkerResult> {
+  async run(input: RunInput): Promise<WorkerResult> {
     const maxIterations = this.options.maxIterations || 10;
     let toolCallCount = 0;
     let totalInputTokens = 0;
@@ -381,8 +401,13 @@ export class WorkerRuntime {
     let totalCost = 0;
 
     try {
+      // Normalize input to AskInput format
+      const askInput: string | AskInput = typeof input === "string"
+        ? input
+        : { content: input.content, attachments: input.attachments };
+
       // Initial ask
-      let result = await this.client.ask(input, { context: this.context });
+      let result = await this.client.ask(askInput, { context: this.context });
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
         if (result.type === "error") {

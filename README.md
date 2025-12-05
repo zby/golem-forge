@@ -53,6 +53,16 @@ npx golem-forge ./examples/greeter "Tell me a joke" --model anthropic:claude-hai
 
 That's it. The CLI finds `main.worker` in the project directory and runs it.
 
+### Attach files
+
+Send reference images along with your prompt:
+
+```bash
+npx golem-forge ./examples/greeter --attach assets/spec.png --attach ../shared/logo.jpg "Describe these images"
+```
+
+`--attach` can be repeated. Relative paths resolve against the worker directory first, then your current working directory. Supported formats match the underlying providers today: PNG, JPG/JPEG, GIF, WEBP, and SVG.
+
 ## Project Structure
 
 Projects grow organically from simple to complex:

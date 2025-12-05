@@ -8,8 +8,8 @@
 import { Command } from "commander";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { createWorkerRuntime, type WorkerRuntimeOptions } from "../runtime/index.js";
-import { parseWorkerString } from "../worker/index.js";
+import { createWorkerRuntime, type WorkerRuntimeOptions, type Attachment, type RunInput } from "../runtime/index.js";
+import { parseWorkerString, type WorkerDefinition } from "../worker/index.js";
 import { createCLIApprovalCallback } from "./approval.js";
 import { getEffectiveConfig } from "./project.js";
 import type { ApprovalMode } from "../approval/index.js";
@@ -26,6 +26,7 @@ interface CLIOptions {
   file?: string;
   project?: string;
   verbose?: boolean;
+  attach?: string[];
 }
 
 /**
@@ -71,6 +72,123 @@ async function findIndexWorker(workerDir: string): Promise<string> {
   } catch {
     throw new Error(`No index.worker file found in ${workerDir}`);
   }
+}
+
+/**
+ * MIME type mapping for common image formats.
+ */
+const MIME_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+};
+
+/**
+ * Load attachments from file paths.
+ * Relative paths are resolved against the worker directory first, then the current working directory.
+ */
+async function loadAttachments(filePaths: string[], workerDir: string): Promise<Attachment[]> {
+  const attachments: Attachment[] = [];
+
+  for (const filePath of filePaths) {
+    const ext = path.extname(filePath).toLowerCase();
+    const mimeType = MIME_TYPES[ext];
+
+    if (!mimeType) {
+      throw new Error(
+        `Unsupported attachment type: ${ext}. Supported: ${Object.keys(MIME_TYPES).join(", ")}`
+      );
+    }
+
+    const candidates = path.isAbsolute(filePath)
+      ? [filePath]
+      : [path.resolve(workerDir, filePath), path.resolve(filePath)];
+
+    let data: Buffer | undefined;
+    let resolvedName: string | undefined;
+    let lastError: unknown;
+
+    for (const candidate of [...new Set(candidates)]) {
+      try {
+        data = await fs.readFile(candidate);
+        resolvedName = path.basename(candidate);
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!data) {
+      const errorMessage = lastError instanceof Error ? lastError.message : "Unknown error";
+      throw new Error(`Failed to read attachment ${filePath}: ${errorMessage}`);
+    }
+
+    attachments.push({
+      type: "image",
+      data,
+      mimeType,
+      name: resolvedName,
+    });
+  }
+
+  return attachments;
+}
+
+/**
+ * Validate attachments against the worker's attachment policy.
+ */
+function enforceAttachmentPolicy(attachments: Attachment[], worker: WorkerDefinition): void {
+  if (!worker.attachment_policy || attachments.length === 0) {
+    return;
+  }
+
+  const policy = worker.attachment_policy;
+  const totalBytes = attachments.reduce((sum, attachment) => {
+    if (typeof attachment.data === "string") {
+      return sum + Buffer.byteLength(attachment.data);
+    }
+    return sum + attachment.data.length;
+  }, 0);
+
+  if (attachments.length > policy.max_attachments) {
+    throw new Error(
+      `Attachment policy violation: up to ${policy.max_attachments} attachment(s) allowed but ${attachments.length} provided.`
+    );
+  }
+
+  if (totalBytes > policy.max_total_bytes) {
+    throw new Error(
+      `Attachment policy violation: total size ${totalBytes} bytes exceeds limit of ${policy.max_total_bytes} bytes.`
+    );
+  }
+
+  const allowed = policy.allowed_suffixes.map((s) => s.toLowerCase());
+  const denied = policy.denied_suffixes.map((s) => s.toLowerCase());
+
+  for (const attachment of attachments) {
+    const name = attachment.name || "attachment";
+    const ext = path.extname(name).toLowerCase();
+
+    if (allowed.length > 0 && (ext === "" || !allowed.includes(ext))) {
+      throw new Error(
+        `Attachment policy violation: ${name} (${ext || "no extension"}) not in allowed list: ${allowed.join(", ")}`
+      );
+    }
+
+    if (denied.length > 0 && ext && denied.includes(ext)) {
+      throw new Error(`Attachment policy violation: ${name} extension ${ext} is denied.`);
+    }
+  }
+}
+
+/**
+ * Collect multiple --attach options into an array.
+ */
+function collectAttachments(value: string, previous: string[]): string[] {
+  return previous.concat([value]);
 }
 
 /**
@@ -120,6 +238,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .option("-a, --approval <mode>", "Approval mode: interactive, approve_all, strict", parseApprovalMode, "interactive")
     .option("-i, --input <text>", "Input text (alternative to positional args)")
     .option("-f, --file <path>", "Read input from file")
+    .option("-A, --attach <file>", "Attach image file (can be used multiple times)", collectAttachments, [])
     .option("-v, --verbose", "Verbose output")
     .action(async (dirArg: string, inputArgs: string[], options: CLIOptions) => {
       try {
@@ -170,10 +289,22 @@ async function executeWorker(
   }
 
   // Read input
-  const input = await readInput(options, inputArgs);
+  const textInput = await readInput(options, inputArgs);
+
+  // Load attachments if provided
+  const attachments = options.attach && options.attach.length > 0
+    ? await loadAttachments(options.attach, workerDir)
+    : undefined;
+
+  if (attachments) {
+    enforceAttachmentPolicy(attachments, workerDefinition);
+  }
 
   if (options.verbose) {
-    console.log(`Input: ${input.slice(0, 100)}${input.length > 100 ? "..." : ""}`);
+    console.log(`Input: ${textInput.slice(0, 100)}${textInput.length > 100 ? "..." : ""}`);
+    if (attachments && attachments.length > 0) {
+      console.log(`Attachments: ${attachments.map(a => a.name).join(", ")}`);
+    }
     console.log("");
   }
 
@@ -195,12 +326,17 @@ async function executeWorker(
   // Create and initialize runtime
   const runtime = await createWorkerRuntime(runtimeOptions);
 
+  // Prepare run input
+  const runInput: RunInput = attachments
+    ? { content: textInput, attachments }
+    : textInput;
+
   // Run worker
   if (options.verbose) {
     console.log("Running worker...\n");
   }
 
-  const result = await runtime.run(input);
+  const result = await runtime.run(runInput);
 
   // Output result
   if (result.success) {
@@ -237,7 +373,9 @@ function isMainModule(): boolean {
   }
 }
 
-if (isMainModule()) {
+const isTestEnvironment = typeof process !== "undefined" && !!process.env.VITEST;
+
+if (!isTestEnvironment && isMainModule()) {
   runCLI().catch((err) => {
     console.error(err);
     process.exit(1);

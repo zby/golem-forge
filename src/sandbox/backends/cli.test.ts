@@ -110,8 +110,8 @@ describe('CLIBackend', () => {
 
       expect(stats.size).toBe(5);
       expect(stats.isDirectory).toBe(false);
-      expect(stats.createdAt).toBeInstanceOf(Date);
-      expect(stats.modifiedAt).toBeInstanceOf(Date);
+      expect(Object.prototype.toString.call(stats.createdAt)).toBe('[object Date]');
+      expect(Object.prototype.toString.call(stats.modifiedAt)).toBe('[object Date]');
     });
 
     it('creates nested directories', async () => {

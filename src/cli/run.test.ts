@@ -49,7 +49,7 @@ const mockCreateWorkerRuntime = (runtimeModule as unknown as { __mockCreateWorke
 describe("runCLI", () => {
   let tempDir: string;
   let workerDir: string;
-  let originalCwd: string;
+  let cwdSpy: ReturnType<typeof vi.spyOn> | undefined;
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
   let processExitSpy: ReturnType<typeof vi.spyOn>;
@@ -66,8 +66,7 @@ Test instructions
     await fs.mkdir(workerDir);
     await fs.writeFile(path.join(workerDir, "index.worker"), workerContent);
 
-    originalCwd = process.cwd();
-    process.chdir(tempDir);
+    cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
     vi.clearAllMocks();
 
@@ -93,7 +92,7 @@ Test instructions
   });
 
   afterEach(async () => {
-    process.chdir(originalCwd);
+    cwdSpy?.mockRestore();
     await fs.rm(tempDir, { recursive: true, force: true });
     consoleLogSpy.mockRestore();
     consoleErrorSpy.mockRestore();
@@ -320,6 +319,124 @@ Test instructions
       } finally {
         Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, writable: true });
       }
+    });
+  });
+
+  describe("attachments", () => {
+    it("should pass attachments to the runtime when --attach is provided", async () => {
+      const assetsDir = path.join(workerDir, "assets");
+      await fs.mkdir(assetsDir);
+      const attachmentPath = path.join(assetsDir, "photo.png");
+      const pngData = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+      await fs.writeFile(attachmentPath, pngData);
+
+      await runCLI([
+        "node",
+        "cli",
+        workerDir,
+        "--input",
+        "describe image",
+        "--attach",
+        "assets/photo.png",
+      ]);
+
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: "describe image",
+          attachments: [
+            expect.objectContaining({
+              name: "photo.png",
+              mimeType: "image/png",
+              type: "image",
+            }),
+          ],
+        })
+      );
+
+      const runArg = mockRun.mock.calls[0][0] as {
+        attachments: Array<{ data: Buffer }>;
+      };
+      expect(Buffer.isBuffer(runArg.attachments[0].data)).toBe(true);
+      expect(runArg.attachments[0].data.equals(pngData)).toBe(true);
+    });
+
+    it("should resolve attachments from the current working directory when outside the worker", async () => {
+      const sharedPath = path.join(tempDir, "shared.png");
+      await fs.writeFile(sharedPath, Buffer.from([0x89]));
+
+      await runCLI([
+        "node",
+        "cli",
+        workerDir,
+        "--input",
+        "describe",
+        "--attach",
+        "shared.png",
+      ]);
+
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: [expect.objectContaining({ name: "shared.png" })],
+        })
+      );
+    });
+
+    it("should reject unsupported attachment types", async () => {
+      const notesPath = path.join(workerDir, "notes.txt");
+      await fs.writeFile(notesPath, "notes");
+
+      await expect(
+        runCLI([
+          "node",
+          "cli",
+          workerDir,
+          "--input",
+          "describe",
+          "--attach",
+          "notes.txt",
+        ])
+      ).rejects.toThrow("process.exit called");
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Unsupported attachment type")
+      );
+    });
+
+    it("should enforce attachment policy constraints", async () => {
+      const policyWorker = `---
+name: policy-worker
+attachment_policy:
+  max_attachments: 1
+  max_total_bytes: 10
+  allowed_suffixes:
+    - .png
+---
+Policy instructions
+`;
+      await fs.writeFile(path.join(workerDir, "index.worker"), policyWorker);
+
+      const assetsDir = path.join(workerDir, "assets");
+      await fs.mkdir(assetsDir);
+      await fs.writeFile(path.join(assetsDir, "one.png"), Buffer.from([0x89]));
+      await fs.writeFile(path.join(assetsDir, "two.png"), Buffer.from([0x89]));
+
+      await expect(
+        runCLI([
+          "node",
+          "cli",
+          workerDir,
+          "--input",
+          "describe",
+          "--attach",
+          "assets/one.png",
+          "--attach",
+          "assets/two.png",
+        ])
+      ).rejects.toThrow("process.exit called");
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Attachment policy violation")
+      );
     });
   });
 

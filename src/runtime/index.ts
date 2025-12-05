@@ -7,4 +7,6 @@ export {
   createWorkerRuntime,
   type WorkerResult,
   type WorkerRuntimeOptions,
+  type RunInput,
+  type Attachment,
 } from "./worker.js";
