@@ -10,6 +10,7 @@ import {
   ApprovalController,
   ApprovalResult,
   type ApprovalRequest,
+  type SecurityContext,
   type SupportsNeedsApproval,
   type SupportsApprovalDescription,
   supportsNeedsApproval,
@@ -32,6 +33,8 @@ export interface ApprovedExecutorOptions {
   approvalController: ApprovalController;
   /** Optional toolset for custom approval logic */
   toolset?: ApprovalToolset;
+  /** Security context for approval requests (trust level, etc.) */
+  securityContext?: SecurityContext;
 }
 
 /**
@@ -60,11 +63,13 @@ export class ApprovedExecutor {
   private context: Context;
   private controller: ApprovalController;
   private toolset?: ApprovalToolset;
+  private securityContext?: SecurityContext;
 
   constructor(options: ApprovedExecutorOptions) {
     this.context = options.context;
     this.controller = options.approvalController;
     this.toolset = options.toolset;
+    this.securityContext = options.securityContext;
   }
 
   /**
@@ -136,6 +141,7 @@ export class ApprovedExecutor {
         toolName: toolCall.name,
         toolArgs: toolCall.arguments,
         description: this.toolset.getApprovalDescription(toolCall.name, toolCall.arguments, undefined),
+        securityContext: this.securityContext,
       };
     }
 
@@ -144,6 +150,7 @@ export class ApprovedExecutor {
       toolName: toolCall.name,
       toolArgs: toolCall.arguments,
       description: `Execute tool: ${toolCall.name}`,
+      securityContext: this.securityContext,
     };
   }
 

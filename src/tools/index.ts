@@ -20,4 +20,5 @@ export {
   createFileExistsTool,
   createFileInfoTool,
   type FilesystemToolResult,
+  type FilesystemToolsetOptions,
 } from "./filesystem.js";

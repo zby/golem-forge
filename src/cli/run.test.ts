@@ -31,9 +31,12 @@ vi.mock("./project.js", () => {
     approvalMode: "interactive",
     workerPaths: ["workers"],
   });
+  const mockFindProjectRoot = vi.fn().mockResolvedValue(null);
   return {
     getEffectiveConfig: mockGetEffectiveConfig,
+    findProjectRoot: mockFindProjectRoot,
     __mockGetEffectiveConfig: mockGetEffectiveConfig,
+    __mockFindProjectRoot: mockFindProjectRoot,
   };
 });
 

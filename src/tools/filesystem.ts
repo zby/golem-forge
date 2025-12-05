@@ -35,6 +35,7 @@ import {
   type SupportsNeedsApproval,
   type SupportsApprovalDescription,
 } from '../approval/index.js';
+import type { SandboxConfig } from '../worker/schema.js';
 
 /**
  * Result returned by filesystem tools.
@@ -280,22 +281,42 @@ function handleError(error: unknown, path?: string): FilesystemToolResult {
 }
 
 /**
+ * Options for creating a FilesystemToolset.
+ */
+export interface FilesystemToolsetOptions {
+  sandbox: Sandbox;
+  /** Worker's sandbox configuration for additional restrictions */
+  workerSandboxConfig?: SandboxConfig;
+}
+
+/**
  * Toolset that provides all filesystem tools with approval logic.
  */
 export class FilesystemToolset implements SupportsNeedsApproval<unknown>, SupportsApprovalDescription<unknown> {
   private sandbox: Sandbox;
+  private workerSandboxConfig?: SandboxConfig;
   private tools: BaseTool[];
 
-  constructor(sandbox: Sandbox) {
-    this.sandbox = sandbox;
+  constructor(sandboxOrOptions: Sandbox | FilesystemToolsetOptions) {
+    // Support both old (Sandbox) and new (options) constructor signatures
+    if ('read' in sandboxOrOptions) {
+      // It's a Sandbox
+      this.sandbox = sandboxOrOptions;
+      this.workerSandboxConfig = undefined;
+    } else {
+      // It's options
+      this.sandbox = sandboxOrOptions.sandbox;
+      this.workerSandboxConfig = sandboxOrOptions.workerSandboxConfig;
+    }
+
     this.tools = [
-      createReadFileTool(sandbox),
-      createWriteFileTool(sandbox),
-      createListFilesTool(sandbox),
-      createDeleteFileTool(sandbox),
-      createStageForCommitTool(sandbox),
-      createFileExistsTool(sandbox),
-      createFileInfoTool(sandbox),
+      createReadFileTool(this.sandbox),
+      createWriteFileTool(this.sandbox),
+      createListFilesTool(this.sandbox),
+      createDeleteFileTool(this.sandbox),
+      createStageForCommitTool(this.sandbox),
+      createFileExistsTool(this.sandbox),
+      createFileInfoTool(this.sandbox),
     ];
   }
 
@@ -337,11 +358,50 @@ export class FilesystemToolset implements SupportsNeedsApproval<unknown>, Suppor
         if (zoneConfig.requiresApproval) {
           return ApprovalResult.needsApproval();
         }
+
+        // Check worker's sandbox config for write_approval
+        if (operation === 'write' || operation === 'delete') {
+          if (this.requiresWriteApprovalFromConfig(path)) {
+            return ApprovalResult.needsApproval();
+          }
+        }
       }
     }
 
     // Default: pre-approved for allowed operations
     return ApprovalResult.preApproved();
+  }
+
+  /**
+   * Check if the worker's sandbox config requires write approval for this path.
+   */
+  private requiresWriteApprovalFromConfig(path: string): boolean {
+    if (!this.workerSandboxConfig?.paths) {
+      return false;
+    }
+
+    // Check each path config in the worker's sandbox config
+    for (const [, pathConfig] of Object.entries(this.workerSandboxConfig.paths)) {
+      // Check if this path matches the root pattern
+      if (path.startsWith(pathConfig.root) || pathConfig.root === '*') {
+        // Check if suffixes match (if specified)
+        if (pathConfig.suffixes !== undefined) {
+          const matchesSuffix = pathConfig.suffixes.some(suffix =>
+            path.endsWith(suffix)
+          );
+          if (!matchesSuffix) {
+            continue; // This path config doesn't apply
+          }
+        }
+
+        // If write_approval is true for this path, require approval
+        if (pathConfig.write_approval) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   /**

@@ -14,6 +14,7 @@ export {
   type ApprovalDecision,
   type RememberOption,
   type ApprovalCallback,
+  type SecurityContext,
   type SupportsNeedsApproval,
   type SupportsApprovalDescription,
   supportsNeedsApproval,

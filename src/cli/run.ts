@@ -11,7 +11,7 @@ import * as path from "path";
 import { createWorkerRuntime, type WorkerRuntimeOptions, type Attachment, type RunInput } from "../runtime/index.js";
 import { parseWorkerString, type WorkerDefinition } from "../worker/index.js";
 import { createCLIApprovalCallback } from "./approval.js";
-import { getEffectiveConfig } from "./project.js";
+import { getEffectiveConfig, findProjectRoot } from "./project.js";
 import type { ApprovalMode } from "../approval/index.js";
 import type { TrustLevel } from "../sandbox/index.js";
 
@@ -243,6 +243,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .option("-i, --input <text>", "Input text (alternative to positional args)")
     .option("-f, --file <path>", "Read input from file")
     .option("-A, --attach <file>", "Attach image file (can be used multiple times)", collectAttachments, [])
+    .option("-p, --project <path>", "Project root directory (auto-detected if not specified)")
     .option("-v, --verbose", "Verbose output")
     .action(async (dirArg: string, inputArgs: string[], options: CLIOptions) => {
       try {
@@ -279,12 +280,21 @@ async function executeWorker(
 
   const workerDefinition = parseResult.worker;
 
-  // Get effective config (CLI options override worker defaults)
-  const effectiveConfig = getEffectiveConfig(undefined, {
+  // Detect project root (from CLI option, or auto-detect from worker directory)
+  const projectStartDir = options.project ? path.resolve(options.project) : workerDir;
+  const projectInfo = await findProjectRoot(projectStartDir);
+  const projectRoot = projectInfo?.root || workerDir;
+
+  // Get effective config (CLI options override project config, which overrides defaults)
+  const effectiveConfig = getEffectiveConfig(projectInfo?.config, {
     model: options.model,
     trustLevel: options.trust,
     approvalMode: options.approval,
   });
+
+  if (options.verbose && projectInfo) {
+    console.log(`Project root: ${projectInfo.root} (detected by ${projectInfo.detectedBy})`);
+  }
 
   if (options.verbose) {
     console.log(`Worker directory: ${workerDir}`);
@@ -317,14 +327,14 @@ async function executeWorker(
     ? createCLIApprovalCallback()
     : undefined;
 
-  // Create runtime options - use worker directory as project root
+  // Create runtime options - use detected project root
   const runtimeOptions: WorkerRuntimeOptions = {
     worker: workerDefinition,
     model: options.model || workerDefinition.model || effectiveConfig.model,
     approvalMode: effectiveConfig.approvalMode as ApprovalMode,
     approvalCallback,
     trustLevel: effectiveConfig.trustLevel as TrustLevel,
-    projectRoot: workerDir,
+    projectRoot,
   };
 
   // Create and initialize runtime

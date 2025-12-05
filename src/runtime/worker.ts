@@ -19,13 +19,14 @@ import {
   ApprovalResult,
   type ApprovalCallback,
   type ApprovalMode,
+  type SecurityContext as ApprovalSecurityContext,
+  supportsApprovalDescription,
 } from "../approval/index.js";
 import {
   ApprovedExecutor,
   type ApprovalToolset,
   type ApprovedExecuteResult,
   FilesystemToolset,
-  createFilesystemTools,
 } from "../tools/index.js";
 import {
   createTestSandbox,
@@ -294,9 +295,20 @@ export class WorkerRuntime {
       this.client = createClient(this.modelResolution.model);
     }
 
+    // Determine approval mode - default to "interactive" for safety
+    const approvalMode = options.approvalMode || "interactive";
+
+    // Validate that interactive mode has a callback
+    if (approvalMode === "interactive" && !options.approvalCallback) {
+      throw new Error(
+        'Approval mode "interactive" requires an approvalCallback. ' +
+        'Either provide a callback or explicitly set approvalMode to "approve_all".'
+      );
+    }
+
     // Create approval controller
     this.approvalController = new ApprovalController({
-      mode: options.approvalMode || "approve_all",
+      mode: approvalMode,
       approvalCallback: options.approvalCallback,
     });
   }
@@ -334,10 +346,20 @@ export class WorkerRuntime {
       ? this.createCompositeToolset()
       : undefined;
 
+    // Extract security context from sandbox for approval requests
+    let approvalSecurityContext: ApprovalSecurityContext | undefined;
+    if (this.sandbox) {
+      const sandboxContext = this.sandbox.getSecurityContext();
+      approvalSecurityContext = {
+        trustLevel: sandboxContext.trustLevel,
+      };
+    }
+
     this.executor = new ApprovedExecutor({
       context: this.context,
       approvalController: this.approvalController,
       toolset: compositeToolset,
+      securityContext: approvalSecurityContext,
     });
   }
 
@@ -358,6 +380,16 @@ export class WorkerRuntime {
         // If all toolsets say pre-approved, return pre-approved
         return ApprovalResult.preApproved();
       },
+      getApprovalDescription(name: string, toolArgs: Record<string, unknown>, ctx: unknown) {
+        // Find the first toolset that provides a custom description
+        for (const ts of toolsets) {
+          if (supportsApprovalDescription(ts)) {
+            return ts.getApprovalDescription(name, toolArgs, ctx);
+          }
+        }
+        // Default fallback
+        return `Execute tool: ${name}`;
+      },
     };
   }
 
@@ -373,9 +405,13 @@ export class WorkerRuntime {
           if (!this.sandbox) {
             throw new Error("Filesystem toolset requires a sandbox. Set projectRoot or useTestSandbox.");
           }
-          const fsToolset = new FilesystemToolset(this.sandbox);
+          // Pass worker's sandbox config to honor write_approval and other restrictions
+          const fsToolset = new FilesystemToolset({
+            sandbox: this.sandbox,
+            workerSandboxConfig: this.worker.sandbox,
+          });
           this.toolsets.push(fsToolset);
-          const fsTools = createFilesystemTools(this.sandbox);
+          const fsTools = fsToolset.getTools();
           for (const tool of fsTools) {
             this.context.addTool(tool);
           }
