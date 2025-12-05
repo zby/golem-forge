@@ -5,8 +5,8 @@
  */
 
 // Types
-export {
-  Zone,
+export { Zone } from './types.js';
+export type {
   Operation,
   FileStat,
   BackendFileStat,
@@ -15,7 +15,7 @@ export {
 } from './types.js';
 
 // Interfaces
-export { Sandbox, SandboxBackend } from './interface.js';
+export type { Sandbox, SandboxBackend } from './interface.js';
 
 // Errors
 export {
