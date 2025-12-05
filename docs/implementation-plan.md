@@ -19,7 +19,7 @@ Build a multi-runtime LLM worker system with TypeScript, starting with CLI and t
 1. **OPFS is sufficient** for browser storage - no native messaging needed
 2. **GitHub as sync layer** bridges browser ↔ local development
 3. **Trust levels** are the core security primitive (untrusted → session → workspace → full)
-4. **Zone-based permissions** (session/workspace/repo/staged) simplify security reasoning
+4. **Zone-based permissions** (session/workspace/repo) simplify security reasoning
 5. **Unified sandbox interface** with backend-specific implementations
 6. **Vercel AI SDK** is the LLM surface (Responses API + tool calling) while sandboxing remains entirely in Golem Forge
 
@@ -108,9 +108,13 @@ const browserApprovalCallback: ApprovalCallback = async (req) => {
       origin: req.securityContext.origin,
       sessionId: req.securityContext.sessionId,
       // Flag sensitive operations
-      isSensitive: req.toolName === 'stage_for_commit' ||
-                   req.toolName.startsWith('read_') &&
-                   req.securityContext.trustLevel === 'untrusted',
+      isSensitive: (
+        req.toolName.startsWith('write_') ||
+        req.toolName === 'delete_file'
+      ) || (
+        req.toolName.startsWith('read_') &&
+        req.securityContext.trustLevel === 'untrusted'
+      ),
     });
 
     // Listen for response
@@ -207,7 +211,7 @@ Tests: Unit tests with mock callbacks
 
 ```
 Scope:
-- Sandbox interface (read/write/list/delete/stage)
+- Sandbox interface (read/write/list/delete)
 - Zone enum and permission model
 - SecurityContext and trust levels
 - Path normalization and escape prevention
@@ -263,7 +267,6 @@ Tests: Self-tests
 ```
 Scope:
 - read_file, write_file, list_files, delete_file tools
-- stage_for_commit tool
 - Zod schemas for parameters
 - Integration with approval system (needsApproval)
 
@@ -274,7 +277,6 @@ Tests: Integration tests with sandbox
 **Success Criteria**:
 - [ ] Tools use sandbox interface (not raw fs)
 - [ ] Permission errors return LLM-friendly messages
-- [ ] Staging creates pending commits
 
 ---
 
@@ -464,32 +466,32 @@ Tests: Nested approval flow tests
 
 ## Phase 5: Git Integration (CLI)
 
-**Goal**: Stage and commit workflow for CLI.
+**Goal**: Provide git status/commit/push workflows without the deprecated staging area.
 
-### 5.1 Staging System
+### 5.1 Git Status & Diff
 **Stories**: 1.3, 2.4 | **Est. Complexity**: Medium
 
 ```
 Scope:
-- Stage files to .sandbox/staged/
-- StagedCommit metadata
-- List/view/discard staged commits
+- Surface `git status` and `git diff` views inside the CLI
+- Map sandbox zones to working tree read-only snapshots for inspection
+- Ensure read-only git operations respect trust levels
 
-Deliverable: src/sandbox/staging.ts
-Tests: Staging workflow tests
+Deliverable: src/cli/git.ts
+Tests: Status/diff workflow tests
 ```
 
-### 5.2 Git Commit Integration
+### 5.2 Direct Commit & Push
 **Stories**: 1.3 | **Est. Complexity**: Medium
 
 ```
 Scope:
-- Commit staged files to repo
-- Use git CLI (simple-git or child_process)
-- Handle conflicts
+- Apply approved write operations directly to the repo working tree
+- Create commits via git CLI (simple-git or child_process)
+- Push commits to remotes (no intermediate staging area)
 
 Deliverable: src/cli/git.ts
-Tests: Git operation tests
+Tests: Commit/push operation tests
 ```
 
 ---
@@ -518,7 +520,7 @@ Tests: Browser-based tests (Playwright?)
 ```
 Scope:
 - GitSync class using Octokit
-- Push staged commits to GitHub
+- Push repo commits to GitHub
 - Pull repo content to OPFS
 - OAuth flow for authentication
 
@@ -534,7 +536,7 @@ Scope:
 - Popup component for approvals
 - Message passing (service worker ↔ popup)
 - Trust level indicator
-- Staged commits panel
+- Git activity panel (status/diff)
 
 Deliverable: extension/popup/
 Tests: UI tests
@@ -650,15 +652,14 @@ Can:
 - [ ] Worker delegation (call_worker tool)
 
 Cannot:
-- [ ] Stage files for commit (Phase 5)
-- [ ] Push to GitHub (Phase 5)
+- [ ] Git status/commit/push workflows (Phase 5)
 - [ ] Shell commands (Phase 7)
 - [ ] Browser execution (Phase 6)
 
 **Full MVP** = Phase 1-6 complete
 
 Adds:
-- [ ] Git staging and commit
+- [ ] Git integration (status, commit, push)
 - [ ] Browser extension with OPFS
 - [ ] GitHub sync
 - [ ] Web content analysis
