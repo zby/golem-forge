@@ -6,5 +6,7 @@ export default defineConfig({
     include: ["src/**/*.integration.test.ts"],
     // Longer timeout for LLM calls
     testTimeout: 60000,
+    // Use forks pool to avoid Node 22 segfaults with vmThreads
+    pool: "forks",
   },
 });
