@@ -11,6 +11,7 @@ import {
   PermissionError,
   NotFoundError,
   FileExistsError,
+  InvalidPathError,
   getZoneFromPath,
   trustLevelDominates,
 } from './index.js';
@@ -436,6 +437,166 @@ describe('Sandbox', () => {
 
       await sandbox.write('/session/test-session/working/exists.txt', 'content');
       expect(await sandbox.exists('/session/test-session/working/exists.txt')).toBe(true);
+    });
+  });
+
+  describe('Path Security', () => {
+    let sandbox: Sandbox;
+
+    beforeEach(async () => {
+      const result = await createTestSandbox({ trustLevel: 'session' });
+      sandbox = result.sandbox;
+    });
+
+    it('prevents path traversal escaping sandbox root', async () => {
+      // Attempting to escape via .. should not reach outside sandbox
+      await expect(
+        sandbox.read('/session/../../../etc/passwd')
+      ).rejects.toThrow(InvalidPathError);
+    });
+
+    it('normalizes paths with multiple .. segments', async () => {
+      await sandbox.write('/session/test-session/working/file.txt', 'content');
+      // This should resolve to /session/test-session/working/file.txt
+      const content = await sandbox.read('/session/test-session/a/../working/b/../file.txt');
+      expect(content).toBe('content');
+    });
+
+    it('handles paths that try to escape via excessive ..', async () => {
+      // More .. than path depth should be caught
+      await expect(
+        sandbox.read('/session/../../../../../../../../etc/passwd')
+      ).rejects.toThrow(InvalidPathError);
+    });
+
+    it('rejects empty zone after normalization', async () => {
+      await expect(sandbox.read('/../..')).rejects.toThrow(InvalidPathError);
+    });
+  });
+
+  describe('Deeply Nested Directories', () => {
+    let sandbox: Sandbox;
+
+    beforeEach(async () => {
+      const result = await createTestSandbox({ trustLevel: 'session' });
+      sandbox = result.sandbox;
+    });
+
+    it('creates deeply nested directories on write', async () => {
+      // Write to a path with multiple non-existent parent directories
+      await sandbox.write('/session/test-session/a/b/c/d/deep.txt', 'deep content');
+      const content = await sandbox.read('/session/test-session/a/b/c/d/deep.txt');
+      expect(content).toBe('deep content');
+    });
+
+    it('creates nested directories in workspace zone', async () => {
+      await sandbox.write('/workspace/data/nested/path/here/file.txt', 'nested');
+      const content = await sandbox.read('/workspace/data/nested/path/here/file.txt');
+      expect(content).toBe('nested');
+    });
+  });
+
+  describe('Workspace Path Mapping', () => {
+    let sandbox: Sandbox;
+    let backend: MemoryBackend;
+
+    beforeEach(async () => {
+      const result = await createTestSandbox({ trustLevel: 'session' });
+      sandbox = result.sandbox;
+      backend = result.backend;
+    });
+
+    it('maps /workspace/data paths correctly', async () => {
+      await sandbox.write('/workspace/data/file.txt', 'data content');
+      // Verify it's stored in the right backend location
+      const files = backend.getFiles();
+      expect(files.has('/data/file.txt')).toBe(true);
+    });
+
+    it('maps /workspace/cache paths correctly', async () => {
+      await sandbox.write('/workspace/cache/temp.txt', 'cache content');
+      const files = backend.getFiles();
+      expect(files.has('/cache/temp.txt')).toBe(true);
+    });
+
+    it('handles workspace paths outside data/cache', async () => {
+      // Custom subdirectory - should work or throw clear error
+      await sandbox.write('/workspace/custom/file.txt', 'custom content');
+      const content = await sandbox.read('/workspace/custom/file.txt');
+      expect(content).toBe('custom content');
+    });
+  });
+
+  describe('Audit Log Timing', () => {
+    it('logs security violation before throwing error', async () => {
+      const { sandbox, auditLog, backend } = await createTestSandbox({ trustLevel: 'untrusted' });
+      backend.seedFile('/repo/secret.txt', 'secret');
+
+      // Create a promise that resolves when a violation is logged
+      let violationLogged = false;
+      const originalLog = auditLog.log.bind(auditLog);
+      auditLog.log = async (entry) => {
+        if (entry.operation === 'security_violation') {
+          violationLogged = true;
+        }
+        return originalLog(entry);
+      };
+
+      try {
+        await sandbox.read('/repo/secret.txt');
+      } catch {
+        // Expected to throw
+      }
+
+      // The violation should have been logged BEFORE the error was thrown
+      expect(violationLogged).toBe(true);
+      const violations = await auditLog.getViolations();
+      expect(violations.some(v => v.operation === 'security_violation')).toBe(true);
+    });
+
+    it('awaits audit log before throwing (async backend simulation)', async () => {
+      const { sandbox, backend } = await createTestSandbox({ trustLevel: 'untrusted' });
+      backend.seedFile('/repo/secret.txt', 'secret');
+
+      // Track order of operations
+      const operations: string[] = [];
+
+      // Create a slow audit log that takes time to write
+      const slowAuditLog = {
+        log: async (entry: { operation: string }) => {
+          if (entry.operation === 'security_violation') {
+            // Simulate slow async write
+            await new Promise(resolve => setTimeout(resolve, 10));
+            operations.push('audit_logged');
+          }
+        },
+        getEntries: async () => [],
+        getSessionEntries: async () => [],
+        getViolations: async () => [],
+        export: async () => '[]',
+        prune: async () => 0,
+      };
+
+      // Create sandbox with slow audit log
+      const session = createSession({
+        id: 'test-session',
+        workspaceId: 'test-workspace',
+        trustLevel: 'untrusted',
+        sourceContext: { type: 'cli', userInitiated: true },
+      });
+      const securityContext = createSecurityContext('untrusted', session);
+      const slowSandbox = new SandboxImpl(backend, session, securityContext, slowAuditLog);
+
+      try {
+        await slowSandbox.read('/repo/secret.txt');
+        operations.push('no_error'); // Should not reach here
+      } catch {
+        operations.push('error_thrown');
+      }
+
+      // If await is missing, error_thrown comes before audit_logged
+      // If await is present, audit_logged comes before error_thrown
+      expect(operations).toEqual(['audit_logged', 'error_thrown']);
     });
   });
 });

@@ -71,7 +71,7 @@ export class SandboxImpl implements Sandbox {
     const normalizedPath = this.normalizePath(path);
     const zone = this.getZone(normalizedPath);
 
-    this.assertPermission('read', normalizedPath);
+    await this.assertPermission('read', normalizedPath);
 
     await this.auditLog.log({
       operation: 'read',
@@ -90,7 +90,7 @@ export class SandboxImpl implements Sandbox {
     const normalizedPath = this.normalizePath(path);
     const zone = this.getZone(normalizedPath);
 
-    this.assertPermission('read', normalizedPath);
+    await this.assertPermission('read', normalizedPath);
 
     await this.auditLog.log({
       operation: 'read',
@@ -110,7 +110,7 @@ export class SandboxImpl implements Sandbox {
     const normalizedPath = this.normalizePath(path);
     const zone = this.getZone(normalizedPath);
 
-    this.assertPermission('write', normalizedPath);
+    await this.assertPermission('write', normalizedPath);
 
     // Special check: untrusted cannot overwrite in staged zone
     if (
@@ -151,7 +151,7 @@ export class SandboxImpl implements Sandbox {
     const normalizedPath = this.normalizePath(path);
     const zone = this.getZone(normalizedPath);
 
-    this.assertPermission('write', normalizedPath);
+    await this.assertPermission('write', normalizedPath);
 
     await this.auditLog.log({
       operation: 'write',
@@ -172,7 +172,7 @@ export class SandboxImpl implements Sandbox {
     const normalizedPath = this.normalizePath(path);
     const zone = this.getZone(normalizedPath);
 
-    this.assertPermission('delete', normalizedPath);
+    await this.assertPermission('delete', normalizedPath);
 
     await this.auditLog.log({
       operation: 'delete',
@@ -205,7 +205,7 @@ export class SandboxImpl implements Sandbox {
     const normalizedPath = this.normalizePath(path);
     const zone = this.getZone(normalizedPath);
 
-    this.assertPermission('list', normalizedPath);
+    await this.assertPermission('list', normalizedPath);
 
     await this.auditLog.log({
       operation: 'list',
@@ -224,7 +224,7 @@ export class SandboxImpl implements Sandbox {
     const normalizedPath = this.normalizePath(path);
     const zone = this.getZone(normalizedPath);
 
-    this.assertPermission('read', normalizedPath);
+    await this.assertPermission('read', normalizedPath);
 
     const realPath = this.backend.mapVirtualToReal(normalizedPath, zone);
     const backendStat = await this.backend.stat(realPath);
@@ -313,7 +313,7 @@ export class SandboxImpl implements Sandbox {
       const zone = Zone.STAGED;
 
       // Check write permission to staged zone
-      this.assertPermission('write', stagePath);
+      await this.assertPermission('write', stagePath);
 
       // Write file to staging area
       const realPath = this.backend.mapVirtualToReal(stagePath, zone);
@@ -408,10 +408,10 @@ export class SandboxImpl implements Sandbox {
     };
   }
 
-  assertPermission(operation: Operation, path: string): void {
+  async assertPermission(operation: Operation, path: string): Promise<void> {
     const check = this.checkPermission(operation, path);
     if (!check.allowed) {
-      this.auditLog.log({
+      await this.auditLog.log({
         operation: 'security_violation',
         path,
         zone: check.zone,
@@ -429,6 +429,8 @@ export class SandboxImpl implements Sandbox {
   // ─────────────────────────────────────────────────────────────────────
 
   private normalizePath(path: string): string {
+    const originalPath = path;
+
     // Handle relative paths within session
     if (!path.startsWith('/')) {
       path = `/session/${this.session.id}/working/${path}`;
@@ -441,20 +443,22 @@ export class SandboxImpl implements Sandbox {
     for (const segment of segments) {
       if (segment === '' || segment === '.') continue;
       if (segment === '..') {
+        if (resolved.length === 0) {
+          // Attempting to go above root - security violation
+          throw new InvalidPathError('Path escape attempt detected', originalPath);
+        }
         resolved.pop();
       } else {
         resolved.push(segment);
       }
     }
 
-    const normalized = '/' + resolved.join('/');
-
-    // Security: ensure no escape from virtual root
-    if (!normalized.startsWith('/')) {
-      throw new InvalidPathError('Path escape attempt detected', path);
+    // Ensure we have at least a zone
+    if (resolved.length === 0) {
+      throw new InvalidPathError('Path resolves to empty (no zone)', originalPath);
     }
 
-    return normalized;
+    return '/' + resolved.join('/');
   }
 
   private async ensureParentDir(realPath: string): Promise<void> {

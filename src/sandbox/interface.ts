@@ -153,7 +153,7 @@ export interface Sandbox {
   /**
    * Assert permission (throws if denied).
    */
-  assertPermission(operation: Operation, path: string): void;
+  assertPermission(operation: Operation, path: string): Promise<void>;
 }
 
 /**

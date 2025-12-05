@@ -137,11 +137,8 @@ export class MemoryBackend implements SandboxBackend {
   async stat(realPath: string): Promise<BackendFileStat> {
     const file = this.files.get(realPath);
     if (file) {
-      const size = typeof file.content === 'string'
-        ? file.content.length
-        : file.content.length;
       return {
-        size,
+        size: file.content.length,
         createdAt: file.createdAt,
         modifiedAt: file.modifiedAt,
         isDirectory: false,
