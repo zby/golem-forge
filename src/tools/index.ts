@@ -8,3 +8,16 @@ export {
   type ApprovedExecutorOptions,
   type ApprovedExecuteResult,
 } from "./approved-executor.js";
+
+export {
+  FilesystemToolset,
+  createFilesystemTools,
+  createReadFileTool,
+  createWriteFileTool,
+  createListFilesTool,
+  createDeleteFileTool,
+  createStageForCommitTool,
+  createFileExistsTool,
+  createFileInfoTool,
+  type FilesystemToolResult,
+} from "./filesystem.js";

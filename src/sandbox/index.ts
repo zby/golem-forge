@@ -56,7 +56,10 @@ export {
   SandboxImpl,
   createSecurityContext,
   createSession,
+  createCLISandbox,
+  type CreateCLISandboxOptions,
 } from './impl.js';
 
 // Backends
 export { MemoryBackend, MemoryAuditLog } from './backends/memory.js';
+export { CLIBackend, FileAuditLog } from './backends/cli.js';

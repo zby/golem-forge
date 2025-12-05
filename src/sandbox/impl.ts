@@ -503,3 +503,62 @@ export function createSession(options: {
     sourceContext: options.sourceContext,
   };
 }
+
+/**
+ * Options for creating a CLI sandbox.
+ */
+export interface CreateCLISandboxOptions {
+  /** Project root directory (required) */
+  projectRoot: string;
+  /** Trust level (defaults to 'session') */
+  trustLevel?: TrustLevel;
+  /** Source context (defaults to CLI user-initiated) */
+  sourceContext?: SourceContext;
+  /** Custom session ID (auto-generated if not provided) */
+  sessionId?: string;
+  /** Custom sandbox directory (defaults to .sandbox in project root) */
+  sandboxDir?: string;
+}
+
+/**
+ * Create a sandbox for CLI environment.
+ *
+ * This is a convenience function that wires up all the components
+ * needed for a CLI sandbox.
+ */
+export async function createCLISandbox(options: CreateCLISandboxOptions): Promise<{
+  sandbox: Sandbox;
+  session: Session;
+}> {
+  // Dynamic import to avoid circular dependency and keep CLI backend optional
+  const { CLIBackend, FileAuditLog } = await import('./backends/cli.js');
+
+  const trustLevel = options.trustLevel || 'session';
+  const sourceContext = options.sourceContext || {
+    type: 'cli' as const,
+    userInitiated: true,
+  };
+
+  const session = createSession({
+    id: options.sessionId,
+    workspaceId: 'cli',
+    trustLevel,
+    sourceContext,
+  });
+
+  const backend = new CLIBackend();
+  await backend.initialize({
+    workspaceId: 'cli',
+    sessionId: session.id,
+    projectRoot: options.projectRoot,
+    sandboxDir: options.sandboxDir,
+  });
+
+  const sandboxDir = options.sandboxDir || `${options.projectRoot}/.sandbox`;
+  const auditLog = new FileAuditLog(`${sandboxDir}/audit.log`);
+
+  const securityContext = createSecurityContext(trustLevel, session);
+  const sandbox = new SandboxImpl(backend, session, securityContext, auditLog);
+
+  return { sandbox, session };
+}
