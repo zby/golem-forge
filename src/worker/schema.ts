@@ -3,6 +3,10 @@
  *
  * Zod schemas for validating .worker file frontmatter.
  * Matches the Python WorkerDefinition structure.
+ *
+ * Note on optional arrays vs default([]):
+ * - `.optional()` is used when undefined has semantic meaning (e.g., "no restriction")
+ * - `.default([])` is used when we always want an array for easier iteration
  */
 
 import { z } from "zod";
@@ -13,6 +17,7 @@ import { z } from "zod";
 export const SandboxPathSchema = z.object({
   root: z.string(),
   mode: z.enum(["ro", "rw"]).default("ro"),
+  /** If undefined, all suffixes allowed. If [], no files match. */
   suffixes: z.array(z.string()).optional(),
   max_file_bytes: z.number().positive().optional(),
   write_approval: z.boolean().optional(),
@@ -69,6 +74,7 @@ export const WorkerFrontmatterSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
   model: z.string().optional(),
+  /** If undefined, any model is compatible. Supports wildcards like "anthropic:*". */
   compatible_models: z.array(z.string()).optional(),
   output_schema_ref: z.string().optional(),
   sandbox: SandboxConfigSchema.optional(),

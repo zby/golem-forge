@@ -109,30 +109,39 @@ export class ApprovalMemory {
     return this.cache.size;
   }
 
+  // Delimiter that won't appear in tool names (which may contain colons like "anthropic:read_file")
+  private static readonly KEY_DELIMITER = "\0";
+
   /**
    * Create hashable key for session matching.
    * Uses deterministic JSON serialization with sorted keys at all levels.
    */
   private makeKey(toolName: string, args: Record<string, unknown>): string {
     const sortedArgs = this.stableStringify(args);
-    return `${toolName}:${sortedArgs}`;
+    return `${toolName}${ApprovalMemory.KEY_DELIMITER}${sortedArgs}`;
   }
 
   /**
    * Stable JSON stringify that sorts keys at all levels of nesting.
+   * Includes circular reference detection.
    */
-  private stableStringify(value: unknown): string {
+  private stableStringify(value: unknown, seen: WeakSet<object> = new WeakSet()): string {
     if (value === null || typeof value !== "object") {
       return JSON.stringify(value);
     }
 
+    if (seen.has(value)) {
+      return '"[Circular]"';
+    }
+    seen.add(value);
+
     if (Array.isArray(value)) {
-      return "[" + value.map((v) => this.stableStringify(v)).join(",") + "]";
+      return "[" + value.map((v) => this.stableStringify(v, seen)).join(",") + "]";
     }
 
     const obj = value as Record<string, unknown>;
     const keys = Object.keys(obj).sort();
-    const pairs = keys.map((k) => `${JSON.stringify(k)}:${this.stableStringify(obj[k])}`);
+    const pairs = keys.map((k) => `${JSON.stringify(k)}:${this.stableStringify(obj[k], seen)}`);
     return "{" + pairs.join(",") + "}";
   }
 
@@ -143,9 +152,9 @@ export class ApprovalMemory {
     toolName: string;
     toolArgs: Record<string, unknown>;
   } {
-    const colonIndex = key.indexOf(":");
-    const toolName = key.slice(0, colonIndex);
-    const toolArgs = JSON.parse(key.slice(colonIndex + 1));
+    const delimiterIndex = key.indexOf(ApprovalMemory.KEY_DELIMITER);
+    const toolName = key.slice(0, delimiterIndex);
+    const toolArgs = JSON.parse(key.slice(delimiterIndex + 1));
     return { toolName, toolArgs };
   }
 }

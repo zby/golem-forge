@@ -140,11 +140,12 @@ describe("ApprovalController", () => {
   });
 
   describe("getCallback", () => {
-    it("throws in interactive mode without callback", () => {
+    it("throws in interactive mode without callback on first call", async () => {
       const controller = new ApprovalController({ mode: "interactive" });
+      const callback = controller.getCallback();
 
-      expect(() => controller.getCallback()).toThrow(
-        "No approvalCallback set for interactive mode"
+      await expect(callback(testRequest)).rejects.toThrow(
+        "No approvalCallback provided"
       );
     });
 

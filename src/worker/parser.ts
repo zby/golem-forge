@@ -8,9 +8,7 @@
 import matter from "gray-matter";
 import { readFile } from "fs/promises";
 import {
-  WorkerFrontmatterSchema,
   WorkerDefinitionSchema,
-  type WorkerDefinition,
   type ParseWorkerResult,
 } from "./schema.js";
 
@@ -25,37 +23,23 @@ export function parseWorkerString(content: string): ParseWorkerResult {
     // Extract frontmatter and body using gray-matter
     const parsed = matter(content);
 
-    // Validate frontmatter against schema
-    const frontmatterResult = WorkerFrontmatterSchema.safeParse(parsed.data);
-
-    if (!frontmatterResult.success) {
-      return {
-        success: false,
-        error: "Invalid worker frontmatter",
-        details: frontmatterResult.error,
-      };
-    }
-
-    // Combine frontmatter with instructions (body)
-    const workerDef: WorkerDefinition = {
-      ...frontmatterResult.data,
+    // Combine frontmatter with instructions and validate in one pass
+    const result = WorkerDefinitionSchema.safeParse({
+      ...parsed.data,
       instructions: parsed.content.trim(),
-    };
+    });
 
-    // Final validation of complete definition
-    const finalResult = WorkerDefinitionSchema.safeParse(workerDef);
-
-    if (!finalResult.success) {
+    if (!result.success) {
       return {
         success: false,
         error: "Invalid worker definition",
-        details: finalResult.error,
+        details: result.error,
       };
     }
 
     return {
       success: true,
-      worker: finalResult.data,
+      worker: result.data,
     };
   } catch (err) {
     return {

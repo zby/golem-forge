@@ -4,7 +4,7 @@
 
 export {
   ApprovedExecutor,
-  createApprovedExecutor,
+  type ApprovalToolset,
   type ApprovedExecutorOptions,
   type ApprovedExecuteResult,
 } from "./approved-executor.js";

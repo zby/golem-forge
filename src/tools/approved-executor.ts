@@ -17,6 +17,12 @@ import {
 } from "../approval/index.js";
 
 /**
+ * A toolset that can provide custom approval logic and descriptions.
+ */
+export type ApprovalToolset = SupportsNeedsApproval<unknown> &
+  Partial<SupportsApprovalDescription<unknown>>;
+
+/**
  * Options for creating an ApprovedExecutor.
  */
 export interface ApprovedExecutorOptions {
@@ -25,7 +31,7 @@ export interface ApprovedExecutorOptions {
   /** The approval controller to use */
   approvalController: ApprovalController;
   /** Optional toolset for custom approval logic */
-  toolset?: SupportsNeedsApproval<unknown> & Partial<SupportsApprovalDescription<unknown>>;
+  toolset?: ApprovalToolset;
 }
 
 /**
@@ -53,7 +59,7 @@ export type ApprovedExecuteResult = ExecuteToolResult & {
 export class ApprovedExecutor {
   private context: Context;
   private controller: ApprovalController;
-  private toolset?: SupportsNeedsApproval<unknown> & Partial<SupportsApprovalDescription<unknown>>;
+  private toolset?: ApprovalToolset;
 
   constructor(options: ApprovedExecutorOptions) {
     this.context = options.context;
@@ -176,9 +182,3 @@ export class ApprovedExecutor {
   }
 }
 
-/**
- * Helper function to create an ApprovedExecutor.
- */
-export function createApprovedExecutor(options: ApprovedExecutorOptions): ApprovedExecutor {
-  return new ApprovedExecutor(options);
-}

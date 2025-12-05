@@ -130,7 +130,9 @@ export class ApprovalController {
 
     const decision = await this._approvalCallback(request);
 
-    // Cache if remember="session" and approved
+    // Cache if remember="session" and approved.
+    // Denials are intentionally not cached - each denial should be explicit
+    // to avoid accidentally blocking legitimate retry attempts.
     if (decision.approved && decision.remember === "session") {
       this._memory.store(request.toolName, request.toolArgs, decision);
     }
@@ -142,32 +144,15 @@ export class ApprovalController {
    * Get a callback function that uses this controller.
    *
    * Useful for passing to systems that expect an ApprovalCallback.
+   * The returned callback delegates to requestApproval(), which handles
+   * all modes (approve_all, strict, interactive) and session caching.
    *
    * @returns An ApprovalCallback that delegates to this controller
-   * @throws Error if interactive mode has no callback set
+   * @throws Error if interactive mode has no callback set (on first call)
    */
   getCallback(): ApprovalCallback {
-    if (this._approvalCallback !== undefined) {
-      // Wrap the callback to include session caching
-      return async (request: ApprovalRequest): Promise<ApprovalDecision> => {
-        return this.requestApproval(request);
-      };
-    }
-
-    // Return a default callback based on mode
-    if (this.mode === "approve_all") {
-      return async () => ({ approved: true, remember: "none" });
-    }
-
-    if (this.mode === "strict") {
-      return async (req) => ({
-        approved: false,
-        note: `Strict mode: ${req.toolName} requires approval`,
-        remember: "none",
-      });
-    }
-
-    // Interactive mode with no callback
-    throw new Error("No approvalCallback set for interactive mode");
+    return (request: ApprovalRequest): Promise<ApprovalDecision> => {
+      return this.requestApproval(request);
+    };
   }
 }
