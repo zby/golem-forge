@@ -1,76 +1,36 @@
 /**
  * Sandbox Module
  *
- * Zone-based sandbox for secure file operations.
+ * Simple filesystem abstraction with zone-based organization.
  */
 
 // Types
 export {
   Zone,
-  TrustLevel,
   Operation,
-  SourceContext,
-  Session,
-  ZoneConfig,
-  ZonePermissions,
-  SecurityContext,
-  PermissionCheck,
   FileStat,
-  StageRequest,
-  StagedFile,
-  StagedCommit,
-  BackendConfig,
   BackendFileStat,
+  SandboxConfig,
+  BackendConfig,
 } from './types.js';
 
 // Interfaces
-export {
-  Sandbox,
-  SandboxBackend,
-  AuditLog,
-  AuditEntry,
-  AuditFilter,
-} from './interface.js';
+export { Sandbox, SandboxBackend } from './interface.js';
 
 // Errors
 export {
   SandboxError,
-  PermissionError,
   NotFoundError,
   InvalidPathError,
-  FileExistsError,
-  QuotaExceededError,
   isSandboxError,
 } from './errors.js';
 
 // Zones
-export {
-  PERMISSION_PROFILES,
-  getPermissionProfile,
-  trustLevelDominates,
-  getZoneFromPath,
-} from './zones.js';
+export { getZoneFromPath, isValidZonePath } from './zones.js';
 
 // Implementation
-export {
-  SandboxImpl,
-  createSecurityContext,
-  createSession,
-  createCLISandbox,
-  createTestSandbox,
-  type CreateCLISandboxOptions,
-} from './impl.js';
-
-// Staging
-export {
-  StagingManager,
-  type StagingManagerOptions,
-  type PermissionChecker,
-} from './staging.js';
-
-// Auditing
-export { AuditingSandbox } from './auditing.js';
+export { SandboxImpl, createSandbox, createTestSandbox } from './impl.js';
 
 // Backends
-export { MemoryBackend, MemoryAuditLog } from './backends/memory.js';
-export { CLIBackend, FileAuditLog } from './backends/cli.js';
+export { MemoryBackend } from './backends/memory.js';
+export { CLIBackend } from './backends/cli.js';

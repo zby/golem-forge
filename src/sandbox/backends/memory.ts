@@ -4,9 +4,8 @@
  * In-memory implementation for testing.
  */
 
-import { randomUUID } from 'crypto';
 import { Zone, BackendConfig, BackendFileStat } from '../types.js';
-import { SandboxBackend, AuditLog, AuditEntry, AuditFilter } from '../interface.js';
+import { SandboxBackend } from '../interface.js';
 import { NotFoundError } from '../errors.js';
 
 /**
@@ -28,21 +27,9 @@ export class MemoryBackend implements SandboxBackend {
 
   async initialize(config: BackendConfig): Promise<void> {
     this.config = config;
-    // Create standard directory structure
-    const dirs = [
-      `/sessions/${config.sessionId}`,
-      `/sessions/${config.sessionId}/inputs`,
-      `/sessions/${config.sessionId}/working`,
-      `/sessions/${config.sessionId}/outputs`,
-      '/cache',
-      '/data',
-      '/staged',
-      '/repo',
-      '/workers',
-    ];
-    for (const dir of dirs) {
-      this.directories.add(dir);
-    }
+    // Create standard directory structure for 2 zones
+    this.directories.add('/cache');
+    this.directories.add('/workspace');
   }
 
   async dispose(): Promise<void> {
@@ -79,6 +66,8 @@ export class MemoryBackend implements SandboxBackend {
       createdAt: existing?.createdAt || now,
       modifiedAt: now,
     });
+    // Ensure parent directory exists
+    this.ensureParentDir(realPath);
   }
 
   async writeFileBinary(realPath: string, content: Uint8Array): Promise<void> {
@@ -89,6 +78,8 @@ export class MemoryBackend implements SandboxBackend {
       createdAt: existing?.createdAt || now,
       modifiedAt: now,
     });
+    // Ensure parent directory exists
+    this.ensureParentDir(realPath);
   }
 
   async deleteFile(realPath: string): Promise<void> {
@@ -169,45 +160,33 @@ export class MemoryBackend implements SandboxBackend {
   }
 
   mapVirtualToReal(virtualPath: string, zone: Zone): string {
-    const relativePath = virtualPath.split('/').slice(2).join('/');
+    // Remove leading slash and zone prefix
+    const normalized = virtualPath.startsWith('/') ? virtualPath.slice(1) : virtualPath;
+    const segments = normalized.split('/');
+    const relativePath = segments.slice(1).join('/'); // Remove zone segment
 
     switch (zone) {
-      case Zone.SESSION:
-        return `/sessions/${relativePath}`;
+      case Zone.CACHE:
+        return `/cache/${relativePath}`;
       case Zone.WORKSPACE:
-        if (virtualPath.startsWith('/workspace/cache')) {
-          return `/cache/${relativePath.replace(/^cache\//, '')}`;
-        }
-        return `/data/${relativePath.replace(/^data\//, '')}`;
-      case Zone.REPO:
-        return `/repo/${relativePath}`;
-      case Zone.STAGED:
-        return `/staged/${relativePath}`;
-      case Zone.WORKERS:
-        return `/workers/${relativePath}`;
+        return `/workspace/${relativePath}`;
+      default:
+        throw new Error(`Unknown zone: ${zone}`);
     }
   }
 
-  mapRealToVirtual(realPath: string): string | null {
-    if (realPath.startsWith('/sessions/')) {
-      return '/session/' + realPath.slice('/sessions/'.length);
+  // ─────────────────────────────────────────────────────────────────────
+  // Private Helpers
+  // ─────────────────────────────────────────────────────────────────────
+
+  private ensureParentDir(realPath: string): void {
+    const parts = realPath.split('/');
+    parts.pop();
+    let current = '';
+    for (const part of parts.filter(Boolean)) {
+      current += '/' + part;
+      this.directories.add(current);
     }
-    if (realPath.startsWith('/cache/')) {
-      return '/workspace/cache/' + realPath.slice('/cache/'.length);
-    }
-    if (realPath.startsWith('/data/')) {
-      return '/workspace/data/' + realPath.slice('/data/'.length);
-    }
-    if (realPath.startsWith('/repo/')) {
-      return '/repo/' + realPath.slice('/repo/'.length);
-    }
-    if (realPath.startsWith('/staged/')) {
-      return '/staged/' + realPath.slice('/staged/'.length);
-    }
-    if (realPath.startsWith('/workers/')) {
-      return '/workers/' + realPath.slice('/workers/'.length);
-    }
-    return null;
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -254,92 +233,6 @@ export class MemoryBackend implements SandboxBackend {
       createdAt: now,
       modifiedAt: now,
     });
-    // Ensure parent directories exist
-    const parts = realPath.split('/');
-    parts.pop();
-    let current = '';
-    for (const part of parts.filter(Boolean)) {
-      current += '/' + part;
-      this.directories.add(current);
-    }
-  }
-}
-
-/**
- * In-memory audit log for testing.
- */
-export class MemoryAuditLog implements AuditLog {
-  private entries: AuditEntry[] = [];
-
-  async log(entry: Omit<AuditEntry, 'id' | 'timestamp'>): Promise<void> {
-    this.entries.push({
-      ...entry,
-      id: randomUUID(),
-      timestamp: new Date(),
-    });
-  }
-
-  async getEntries(filter?: AuditFilter): Promise<AuditEntry[]> {
-    let result = [...this.entries];
-
-    if (filter) {
-      if (filter.sessionId) {
-        result = result.filter(e => e.sessionId === filter.sessionId);
-      }
-      if (filter.operation) {
-        result = result.filter(e => e.operation === filter.operation);
-      }
-      if (filter.zone) {
-        result = result.filter(e => e.zone === filter.zone);
-      }
-      if (filter.trustLevel) {
-        result = result.filter(e => e.trustLevel === filter.trustLevel);
-      }
-      if (filter.allowed !== undefined) {
-        result = result.filter(e => e.allowed === filter.allowed);
-      }
-      if (filter.startTime) {
-        result = result.filter(e => e.timestamp >= filter.startTime!);
-      }
-      if (filter.endTime) {
-        result = result.filter(e => e.timestamp <= filter.endTime!);
-      }
-      if (filter.limit) {
-        result = result.slice(0, filter.limit);
-      }
-    }
-
-    return result;
-  }
-
-  async getSessionEntries(sessionId: string): Promise<AuditEntry[]> {
-    return this.getEntries({ sessionId });
-  }
-
-  async getViolations(limit?: number): Promise<AuditEntry[]> {
-    const violations = this.entries.filter(
-      e => e.operation === 'security_violation' || !e.allowed
-    );
-    return limit ? violations.slice(0, limit) : violations;
-  }
-
-  async export(filter?: AuditFilter): Promise<string> {
-    const entries = await this.getEntries(filter);
-    return JSON.stringify(entries, null, 2);
-  }
-
-  async prune(olderThan: Date): Promise<number> {
-    const before = this.entries.length;
-    this.entries = this.entries.filter(e => e.timestamp >= olderThan);
-    return before - this.entries.length;
-  }
-
-  // Test helpers
-  clear(): void {
-    this.entries = [];
-  }
-
-  getAll(): AuditEntry[] {
-    return [...this.entries];
+    this.ensureParentDir(realPath);
   }
 }

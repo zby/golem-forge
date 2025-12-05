@@ -179,7 +179,7 @@ describe("WorkerRuntime", () => {
             {
               toolCallId: "call_1",
               toolName: "read_file",
-              args: { path: "test.txt" },
+              args: { path: "/workspace/test.txt" },
             },
           ],
           finishReason: "tool-calls",
@@ -202,7 +202,7 @@ describe("WorkerRuntime", () => {
 
       // Create the file first
       const sandbox = runtime.getSandbox()!;
-      await sandbox.write("test.txt", "test content");
+      await sandbox.write("/workspace/test.txt", "test content");
 
       const result = await runtime.run("Read the file");
 
@@ -220,7 +220,7 @@ describe("WorkerRuntime", () => {
           {
             toolCallId: "call_1",
             toolName: "list_files",
-            args: { path: "." },
+            args: { path: "/workspace" },
           },
         ],
         finishReason: "tool-calls",
@@ -246,7 +246,7 @@ describe("WorkerRuntime", () => {
       mockGenerateText
         .mockResolvedValueOnce({
           text: "",
-          toolCalls: [{ toolCallId: "1", toolName: "list_files", args: { path: "." } }],
+          toolCalls: [{ toolCallId: "1", toolName: "list_files", args: { path: "/workspace" } }],
           finishReason: "tool-calls",
           usage: { inputTokens: 10, outputTokens: 10 },
         })
@@ -322,10 +322,10 @@ describe("WorkerRuntime", () => {
     it("uses specified approval mode", () => {
       const runtime = new WorkerRuntime({
         worker: simpleWorker,
-        approvalMode: "strict",
+        approvalMode: "auto_deny",
       });
 
-      expect(runtime.getApprovalController().mode).toBe("strict");
+      expect(runtime.getApprovalController().mode).toBe("auto_deny");
     });
 
     it("defaults to interactive mode when callback provided", () => {

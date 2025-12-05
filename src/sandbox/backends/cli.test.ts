@@ -2,53 +2,135 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import {
-  CLIBackend,
-  FileAuditLog,
-} from './cli.js';
+import { CLIBackend } from './cli.js';
 import {
   Zone,
-  createCLISandbox,
+  createSandbox,
   NotFoundError,
-  PermissionError,
 } from '../index.js';
 
 describe('CLIBackend', () => {
   let tempDir: string;
-  let backend: CLIBackend;
 
   beforeEach(async () => {
-    // Create a temporary directory for testing
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sandbox-test-'));
-    backend = new CLIBackend();
-    await backend.initialize({
-      workspaceId: 'test',
-      sessionId: 'test-session',
-      projectRoot: tempDir,
-    });
   });
 
   afterEach(async () => {
-    await backend.dispose();
-    // Clean up temp directory
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  describe('initialization', () => {
+  describe('sandboxed mode', () => {
+    let backend: CLIBackend;
+
+    beforeEach(async () => {
+      backend = new CLIBackend();
+      await backend.initialize({
+        mode: 'sandboxed',
+        root: path.join(tempDir, '.sandbox'),
+      });
+    });
+
     it('creates sandbox directory structure', async () => {
       const sandboxDir = path.join(tempDir, '.sandbox');
 
       expect(await fs.access(sandboxDir).then(() => true).catch(() => false)).toBe(true);
-      expect(await fs.access(path.join(sandboxDir, 'sessions', 'test-session', 'working')).then(() => true).catch(() => false)).toBe(true);
       expect(await fs.access(path.join(sandboxDir, 'cache')).then(() => true).catch(() => false)).toBe(true);
-      expect(await fs.access(path.join(sandboxDir, 'data')).then(() => true).catch(() => false)).toBe(true);
-      expect(await fs.access(path.join(sandboxDir, 'staged')).then(() => true).catch(() => false)).toBe(true);
+      expect(await fs.access(path.join(sandboxDir, 'workspace')).then(() => true).catch(() => false)).toBe(true);
+    });
+
+    it('maps cache paths correctly', () => {
+      const virtualPath = '/cache/downloads/doc.pdf';
+      const realPath = backend.mapVirtualToReal(virtualPath, Zone.CACHE);
+
+      expect(realPath).toBe(path.join(tempDir, '.sandbox', 'cache', 'downloads', 'doc.pdf'));
+    });
+
+    it('maps workspace paths correctly', () => {
+      const virtualPath = '/workspace/reports/analysis.md';
+      const realPath = backend.mapVirtualToReal(virtualPath, Zone.WORKSPACE);
+
+      expect(realPath).toBe(path.join(tempDir, '.sandbox', 'workspace', 'reports', 'analysis.md'));
+    });
+  });
+
+  describe('direct mode', () => {
+    let backend: CLIBackend;
+    let cacheDir: string;
+    let workspaceDir: string;
+
+    beforeEach(async () => {
+      cacheDir = path.join(tempDir, 'my-downloads');
+      workspaceDir = path.join(tempDir, 'my-reports');
+
+      backend = new CLIBackend();
+      await backend.initialize({
+        mode: 'direct',
+        cache: cacheDir,
+        workspace: workspaceDir,
+      });
+    });
+
+    it('creates specified directories', async () => {
+      expect(await fs.access(cacheDir).then(() => true).catch(() => false)).toBe(true);
+      expect(await fs.access(workspaceDir).then(() => true).catch(() => false)).toBe(true);
+    });
+
+    it('maps cache paths to specified directory', () => {
+      const virtualPath = '/cache/file.pdf';
+      const realPath = backend.mapVirtualToReal(virtualPath, Zone.CACHE);
+
+      expect(realPath).toBe(path.join(cacheDir, 'file.pdf'));
+    });
+
+    it('maps workspace paths to specified directory', () => {
+      const virtualPath = '/workspace/report.md';
+      const realPath = backend.mapVirtualToReal(virtualPath, Zone.WORKSPACE);
+
+      expect(realPath).toBe(path.join(workspaceDir, 'report.md'));
+    });
+
+    it('reports correct mode', () => {
+      expect(backend.getMode()).toBe('direct');
+      expect(backend.getCacheDir()).toBe(cacheDir);
+      expect(backend.getWorkspaceDir()).toBe(workspaceDir);
+    });
+  });
+
+  describe('direct mode without cache', () => {
+    let backend: CLIBackend;
+    let workspaceDir: string;
+
+    beforeEach(async () => {
+      workspaceDir = path.join(tempDir, 'workspace');
+
+      backend = new CLIBackend();
+      await backend.initialize({
+        mode: 'direct',
+        workspace: workspaceDir,
+      });
+    });
+
+    it('creates cache as subdirectory of workspace', async () => {
+      const expectedCacheDir = path.join(workspaceDir, '.cache');
+      expect(await fs.access(expectedCacheDir).then(() => true).catch(() => false)).toBe(true);
+      expect(backend.getCacheDir()).toBe(expectedCacheDir);
     });
   });
 
   describe('file operations', () => {
+    let backend: CLIBackend;
+
+    beforeEach(async () => {
+      backend = new CLIBackend();
+      await backend.initialize({
+        mode: 'sandboxed',
+        root: path.join(tempDir, '.sandbox'),
+      });
+    });
+
     it('writes and reads files', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'data', 'test.txt');
+      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'test.txt');
 
       await backend.writeFile(filePath, 'hello world');
       const content = await backend.readFile(filePath);
@@ -57,7 +139,7 @@ describe('CLIBackend', () => {
     });
 
     it('writes and reads binary files', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'data', 'test.bin');
+      const filePath = path.join(tempDir, '.sandbox', 'cache', 'test.bin');
       const data = new Uint8Array([0x89, 0x50, 0x4E, 0x47]);
 
       await backend.writeFileBinary(filePath, data);
@@ -67,13 +149,13 @@ describe('CLIBackend', () => {
     });
 
     it('throws NotFoundError for missing files', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'data', 'nonexistent.txt');
+      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'nonexistent.txt');
 
       await expect(backend.readFile(filePath)).rejects.toThrow(NotFoundError);
     });
 
     it('checks file existence', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'data', 'exists.txt');
+      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'exists.txt');
 
       expect(await backend.exists(filePath)).toBe(false);
 
@@ -82,7 +164,7 @@ describe('CLIBackend', () => {
     });
 
     it('deletes files', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'data', 'todelete.txt');
+      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'todelete.txt');
 
       await backend.writeFile(filePath, 'content');
       expect(await backend.exists(filePath)).toBe(true);
@@ -92,7 +174,7 @@ describe('CLIBackend', () => {
     });
 
     it('lists directory contents', async () => {
-      const dirPath = path.join(tempDir, '.sandbox', 'data');
+      const dirPath = path.join(tempDir, '.sandbox', 'workspace');
 
       await backend.writeFile(path.join(dirPath, 'a.txt'), 'a');
       await backend.writeFile(path.join(dirPath, 'b.txt'), 'b');
@@ -103,7 +185,7 @@ describe('CLIBackend', () => {
     });
 
     it('returns file stats', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'data', 'stats.txt');
+      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'stats.txt');
 
       await backend.writeFile(filePath, 'hello');
       const stats = await backend.stat(filePath);
@@ -115,7 +197,7 @@ describe('CLIBackend', () => {
     });
 
     it('creates nested directories', async () => {
-      const nestedDir = path.join(tempDir, '.sandbox', 'data', 'a', 'b', 'c');
+      const nestedDir = path.join(tempDir, '.sandbox', 'workspace', 'a', 'b', 'c');
 
       await backend.mkdir(nestedDir);
       expect(await backend.exists(nestedDir)).toBe(true);
@@ -123,247 +205,86 @@ describe('CLIBackend', () => {
       const stats = await backend.stat(nestedDir);
       expect(stats.isDirectory).toBe(true);
     });
-  });
 
-  describe('path mapping', () => {
-    it('maps session paths', () => {
-      const virtualPath = '/session/test-session/working/file.txt';
-      const realPath = backend.mapVirtualToReal(virtualPath, Zone.SESSION);
+    it('auto-creates parent directories on write', async () => {
+      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'deep', 'nested', 'file.txt');
 
-      expect(realPath).toBe(path.join(tempDir, '.sandbox', 'sessions', 'test-session', 'working', 'file.txt'));
-    });
+      await backend.writeFile(filePath, 'deep content');
+      const content = await backend.readFile(filePath);
 
-    it('maps workspace cache paths', () => {
-      const virtualPath = '/workspace/cache/pdfs/doc.pdf';
-      const realPath = backend.mapVirtualToReal(virtualPath, Zone.WORKSPACE);
-
-      expect(realPath).toBe(path.join(tempDir, '.sandbox', 'cache', 'pdfs', 'doc.pdf'));
-    });
-
-    it('maps workspace data paths', () => {
-      const virtualPath = '/workspace/data/notes.md';
-      const realPath = backend.mapVirtualToReal(virtualPath, Zone.WORKSPACE);
-
-      expect(realPath).toBe(path.join(tempDir, '.sandbox', 'data', 'notes.md'));
-    });
-
-    it('maps repo paths to project root', () => {
-      const virtualPath = '/repo/src/main.ts';
-      const realPath = backend.mapVirtualToReal(virtualPath, Zone.REPO);
-
-      expect(realPath).toBe(path.join(tempDir, 'src', 'main.ts'));
-    });
-
-    it('maps staged paths', () => {
-      const virtualPath = '/staged/commit-1/file.md';
-      const realPath = backend.mapVirtualToReal(virtualPath, Zone.STAGED);
-
-      expect(realPath).toBe(path.join(tempDir, '.sandbox', 'staged', 'commit-1', 'file.md'));
-    });
-
-    it('maps real paths back to virtual', () => {
-      const realPath = path.join(tempDir, '.sandbox', 'sessions', 'test-session', 'working', 'file.txt');
-      const virtualPath = backend.mapRealToVirtual(realPath);
-
-      expect(virtualPath).toBe('/session/test-session/working/file.txt');
-    });
-
-    it('maps repo real paths back to virtual', () => {
-      const realPath = path.join(tempDir, 'src', 'main.ts');
-      const virtualPath = backend.mapRealToVirtual(realPath);
-
-      expect(virtualPath).toBe('/repo/src/main.ts');
-    });
-
-    it('returns null for paths outside sandbox', () => {
-      const virtualPath = backend.mapRealToVirtual('/some/random/path');
-      expect(virtualPath).toBeNull();
+      expect(content).toBe('deep content');
     });
   });
 });
 
-describe('FileAuditLog', () => {
+describe('createSandbox', () => {
   let tempDir: string;
-  let auditLog: FileAuditLog;
-  let logPath: string;
 
   beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'audit-test-'));
-    logPath = path.join(tempDir, 'audit.log');
-    auditLog = new FileAuditLog(logPath);
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sandbox-factory-test-'));
   });
 
   afterEach(async () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it('logs entries to file', async () => {
-    await auditLog.log({
-      operation: 'read',
-      path: '/session/test/file.txt',
-      zone: Zone.SESSION,
-      sessionId: 'test-session',
-      trustLevel: 'session',
-      allowed: true,
+  it('creates a sandboxed mode sandbox', async () => {
+    const sandbox = await createSandbox({
+      mode: 'sandboxed',
+      root: path.join(tempDir, '.sandbox'),
     });
 
-    // Verify file was created
-    const content = await fs.readFile(logPath, 'utf-8');
-    const entry = JSON.parse(content.trim());
-
-    expect(entry.operation).toBe('read');
-    expect(entry.path).toBe('/session/test/file.txt');
-    expect(entry.allowed).toBe(true);
-  });
-
-  it('retrieves entries', async () => {
-    await auditLog.log({
-      operation: 'write',
-      path: '/session/test/file.txt',
-      zone: Zone.SESSION,
-      sessionId: 'test-session',
-      trustLevel: 'session',
-      allowed: true,
-    });
-
-    const entries = await auditLog.getEntries();
-    expect(entries).toHaveLength(1);
-    expect(entries[0].operation).toBe('write');
-  });
-
-  it('filters entries by session', async () => {
-    await auditLog.log({
-      operation: 'read',
-      sessionId: 'session-1',
-      trustLevel: 'session',
-      allowed: true,
-    });
-    await auditLog.log({
-      operation: 'read',
-      sessionId: 'session-2',
-      trustLevel: 'session',
-      allowed: true,
-    });
-
-    const entries = await auditLog.getSessionEntries('session-1');
-    expect(entries).toHaveLength(1);
-    expect(entries[0].sessionId).toBe('session-1');
-  });
-
-  it('gets violations', async () => {
-    await auditLog.log({
-      operation: 'read',
-      sessionId: 'test',
-      trustLevel: 'session',
-      allowed: true,
-    });
-    await auditLog.log({
-      operation: 'security_violation',
-      sessionId: 'test',
-      trustLevel: 'untrusted',
-      allowed: false,
-      reason: 'Blocked',
-    });
-
-    const violations = await auditLog.getViolations();
-    expect(violations).toHaveLength(1);
-    expect(violations[0].operation).toBe('security_violation');
-  });
-
-  it('exports to JSON', async () => {
-    await auditLog.log({
-      operation: 'read',
-      sessionId: 'test',
-      trustLevel: 'session',
-      allowed: true,
-    });
-
-    const exported = await auditLog.export();
-    const parsed = JSON.parse(exported);
-
-    expect(Array.isArray(parsed)).toBe(true);
-    expect(parsed).toHaveLength(1);
-  });
-
-  it('prunes old entries', async () => {
-    await auditLog.log({
-      operation: 'read',
-      sessionId: 'test',
-      trustLevel: 'session',
-      allowed: true,
-    });
-
-    // Prune entries older than now (should remove nothing since entry is new)
-    const prunedNone = await auditLog.prune(new Date(0));
-    expect(prunedNone).toBe(0);
-
-    // Prune entries older than future (should remove all)
-    const prunedAll = await auditLog.prune(new Date(Date.now() + 10000));
-    expect(prunedAll).toBe(1);
-
-    const remaining = await auditLog.getEntries();
-    expect(remaining).toHaveLength(0);
-  });
-});
-
-describe('createCLISandbox', () => {
-  let tempDir: string;
-
-  beforeEach(async () => {
-    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'cli-sandbox-test-'));
-  });
-
-  afterEach(async () => {
-    await fs.rm(tempDir, { recursive: true, force: true });
-  });
-
-  it('creates a working sandbox', async () => {
-    const { sandbox, session } = await createCLISandbox({
-      projectRoot: tempDir,
-    });
-
-    expect(session.trustLevel).toBe('session');
-    expect(session.sourceContext.type).toBe('cli');
-
-    // Write and read a file
-    await sandbox.write(`/session/${session.id}/working/test.txt`, 'hello');
-    const content = await sandbox.read(`/session/${session.id}/working/test.txt`);
+    await sandbox.write('/workspace/test.txt', 'hello');
+    const content = await sandbox.read('/workspace/test.txt');
     expect(content).toBe('hello');
+
+    // Verify file exists in the real location
+    const realPath = path.join(tempDir, '.sandbox', 'workspace', 'test.txt');
+    const realContent = await fs.readFile(realPath, 'utf-8');
+    expect(realContent).toBe('hello');
   });
 
-  it('respects trust level', async () => {
-    const { sandbox, session } = await createCLISandbox({
-      projectRoot: tempDir,
-      trustLevel: 'untrusted',
+  it('creates a direct mode sandbox', async () => {
+    const workspaceDir = path.join(tempDir, 'reports');
+    const cacheDir = path.join(tempDir, 'downloads');
+
+    const sandbox = await createSandbox({
+      mode: 'direct',
+      workspace: workspaceDir,
+      cache: cacheDir,
     });
 
-    expect(session.trustLevel).toBe('untrusted');
+    await sandbox.write('/workspace/report.md', '# Report');
+    await sandbox.write('/cache/data.json', '{"key": "value"}');
 
-    // Should not be able to read repo
-    await fs.writeFile(path.join(tempDir, 'secret.txt'), 'secret');
-    await expect(sandbox.read('/repo/secret.txt')).rejects.toThrow(PermissionError);
+    // Verify files are in direct locations
+    expect(await fs.readFile(path.join(workspaceDir, 'report.md'), 'utf-8')).toBe('# Report');
+    expect(await fs.readFile(path.join(cacheDir, 'data.json'), 'utf-8')).toBe('{"key": "value"}');
   });
 
-  it('uses custom session ID', async () => {
-    const { session } = await createCLISandbox({
-      projectRoot: tempDir,
-      sessionId: 'my-custom-session',
+  it('resolve returns real path', async () => {
+    const workspaceDir = path.join(tempDir, 'workspace');
+
+    const sandbox = await createSandbox({
+      mode: 'direct',
+      workspace: workspaceDir,
     });
 
-    expect(session.id).toBe('my-custom-session');
+    const realPath = sandbox.resolve('/workspace/file.txt');
+    expect(realPath).toBe(path.join(workspaceDir, 'file.txt'));
   });
 
-  it('integrates with real filesystem', async () => {
-    const { sandbox, session } = await createCLISandbox({
-      projectRoot: tempDir,
-      trustLevel: 'workspace',
+  it('works with nested paths', async () => {
+    const sandbox = await createSandbox({
+      mode: 'sandboxed',
+      root: path.join(tempDir, '.sandbox'),
     });
 
-    // Create a file in repo
-    await fs.writeFile(path.join(tempDir, 'readme.md'), '# Hello');
+    await sandbox.write('/workspace/a/b/c/deep.txt', 'deep');
+    const content = await sandbox.read('/workspace/a/b/c/deep.txt');
+    expect(content).toBe('deep');
 
-    // Read it through sandbox
-    const content = await sandbox.read('/repo/readme.md');
-    expect(content).toBe('# Hello');
+    const files = await sandbox.list('/workspace/a/b/c');
+    expect(files).toContain('deep.txt');
   });
 });

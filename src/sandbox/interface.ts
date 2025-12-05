@@ -4,19 +4,7 @@
  * Core interfaces for the sandbox system.
  */
 
-import {
-  Zone,
-  TrustLevel,
-  Operation,
-  Session,
-  SecurityContext,
-  PermissionCheck,
-  FileStat,
-  StageRequest,
-  StagedCommit,
-  BackendConfig,
-  BackendFileStat,
-} from './types.js';
+import { Zone, FileStat, BackendConfig, BackendFileStat } from './types.js';
 
 /**
  * Main sandbox interface used by workers and tools.
@@ -24,35 +12,36 @@ import {
  */
 export interface Sandbox {
   // ─────────────────────────────────────────────────────────────────────
-  // Core File Operations
+  // File Operations
   // ─────────────────────────────────────────────────────────────────────
 
   /**
    * Read file content from virtual path.
-   * @throws PermissionError if zone not readable
    * @throws NotFoundError if file doesn't exist
    */
   read(path: string): Promise<string>;
 
   /**
    * Read file as binary.
+   * @throws NotFoundError if file doesn't exist
    */
   readBinary(path: string): Promise<Uint8Array>;
 
   /**
    * Write content to virtual path.
-   * @throws PermissionError if zone not writable
+   * Creates parent directories if needed.
    */
   write(path: string, content: string): Promise<void>;
 
   /**
    * Write binary content.
+   * Creates parent directories if needed.
    */
   writeBinary(path: string, content: Uint8Array): Promise<void>;
 
   /**
    * Delete file at virtual path.
-   * @throws PermissionError if zone not deletable
+   * @throws NotFoundError if file doesn't exist
    */
   delete(path: string): Promise<void>;
 
@@ -63,12 +52,13 @@ export interface Sandbox {
 
   /**
    * List directory contents.
-   * @throws PermissionError if zone not listable
+   * @throws NotFoundError if directory doesn't exist
    */
   list(path: string): Promise<string[]>;
 
   /**
    * Get file metadata.
+   * @throws NotFoundError if file doesn't exist
    */
   stat(path: string): Promise<FileStat>;
 
@@ -77,84 +67,21 @@ export interface Sandbox {
   // ─────────────────────────────────────────────────────────────────────
 
   /**
-   * Resolve relative path within current session.
+   * Resolve virtual path to real filesystem path.
+   * Useful for passing paths to external tools.
    */
-  resolve(...segments: string[]): string;
+  resolve(path: string): string;
 
   /**
    * Get zone for a virtual path.
+   * @throws InvalidPathError if path doesn't belong to a valid zone
    */
   getZone(path: string): Zone;
 
   /**
-   * Check if path is within allowed boundaries.
+   * Check if path is valid (belongs to a known zone).
    */
   isValidPath(path: string): boolean;
-
-  // ─────────────────────────────────────────────────────────────────────
-  // Session Management
-  // ─────────────────────────────────────────────────────────────────────
-
-  /**
-   * Get current session info.
-   */
-  getSession(): Session;
-
-  /**
-   * Get path to session's working directory.
-   */
-  getSessionPath(): string;
-
-  /**
-   * Create a subdirectory in session working area.
-   */
-  createSessionDir(name: string): Promise<string>;
-
-  // ─────────────────────────────────────────────────────────────────────
-  // Staging Operations (for Git sync)
-  // ─────────────────────────────────────────────────────────────────────
-
-  /**
-   * Stage files for commit.
-   * @param files - Files to stage
-   * @param message - Commit message for this staged commit
-   * @returns Staged commit ID
-   */
-  stage(files: StageRequest[], message: string): Promise<string>;
-
-  /**
-   * Get list of staged commits.
-   */
-  getStagedCommits(): Promise<StagedCommit[]>;
-
-  /**
-   * Get specific staged commit.
-   */
-  getStagedCommit(commitId: string): Promise<StagedCommit>;
-
-  /**
-   * Discard a staged commit.
-   */
-  discardStaged(commitId: string): Promise<void>;
-
-  // ─────────────────────────────────────────────────────────────────────
-  // Security
-  // ─────────────────────────────────────────────────────────────────────
-
-  /**
-   * Get current security context.
-   */
-  getSecurityContext(): SecurityContext;
-
-  /**
-   * Check if operation is permitted.
-   */
-  checkPermission(operation: Operation, path: string): PermissionCheck;
-
-  /**
-   * Assert permission (throws if denied).
-   */
-  assertPermission(operation: Operation, path: string): Promise<void>;
 }
 
 /**
@@ -185,12 +112,6 @@ export interface SandboxBackend {
    */
   mapVirtualToReal(virtualPath: string, zone: Zone): string;
 
-  /**
-   * Map a real storage path back to virtual path.
-   * Returns null if path is not within sandbox.
-   */
-  mapRealToVirtual(realPath: string): string | null;
-
   // ─────────────────────────────────────────────────────────────────────
   // Lifecycle
   // ─────────────────────────────────────────────────────────────────────
@@ -204,80 +125,4 @@ export interface SandboxBackend {
    * Clean up resources.
    */
   dispose(): Promise<void>;
-}
-
-/**
- * Audit entry for logging security-relevant events.
- */
-export interface AuditEntry {
-  /** Unique entry ID */
-  id: string;
-  /** When the operation occurred */
-  timestamp: Date;
-  /** Type of operation */
-  operation: Operation | 'stage' | 'permission_check' | 'security_violation';
-  /** Virtual path involved */
-  path?: string;
-  /** Zone the path belongs to */
-  zone?: Zone;
-  /** Session that performed the operation */
-  sessionId: string;
-  /** Trust level at time of operation */
-  trustLevel: TrustLevel;
-  /** Whether the operation was allowed */
-  allowed: boolean;
-  /** Reason if denied */
-  reason?: string;
-  /** Additional context (e.g., content size for writes) */
-  metadata?: Record<string, unknown>;
-}
-
-/**
- * Filter for querying audit entries.
- */
-export interface AuditFilter {
-  sessionId?: string;
-  operation?: AuditEntry['operation'];
-  zone?: Zone;
-  trustLevel?: TrustLevel;
-  allowed?: boolean;
-  startTime?: Date;
-  endTime?: Date;
-  limit?: number;
-}
-
-/**
- * Audit log interface for recording security-relevant events.
- */
-export interface AuditLog {
-  /**
-   * Log an audit entry.
-   */
-  log(entry: Omit<AuditEntry, 'id' | 'timestamp'>): Promise<void>;
-
-  /**
-   * Query audit entries.
-   */
-  getEntries(filter?: AuditFilter): Promise<AuditEntry[]>;
-
-  /**
-   * Get entries for a specific session.
-   */
-  getSessionEntries(sessionId: string): Promise<AuditEntry[]>;
-
-  /**
-   * Get recent security violations.
-   */
-  getViolations(limit?: number): Promise<AuditEntry[]>;
-
-  /**
-   * Export audit log to JSON.
-   */
-  export(filter?: AuditFilter): Promise<string>;
-
-  /**
-   * Clear old entries (for rotation).
-   * @param olderThan - Delete entries older than this date
-   */
-  prune(olderThan: Date): Promise<number>;
 }

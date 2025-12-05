@@ -24,10 +24,9 @@ import {
   FilesystemToolset,
 } from "../tools/index.js";
 import {
+  createSandbox,
   createTestSandbox,
-  createCLISandbox,
   type Sandbox,
-  type TrustLevel,
 } from "../sandbox/index.js";
 import type { ToolCall, ExecuteToolResult, Attachment } from "../ai/types.js";
 
@@ -59,12 +58,12 @@ export interface WorkerRuntimeOptions {
   model?: string;
   /** Caller's model when delegating from another worker (validated against compatible_models) */
   callerModel?: string;
+  /** Default model from project config (lowest priority, before hardcoded default) */
+  configModel?: string;
   /** Approval mode */
   approvalMode?: ApprovalMode;
   /** Approval callback for interactive mode */
   approvalCallback?: ApprovalCallback;
-  /** Trust level for sandbox */
-  trustLevel?: TrustLevel;
   /** Project root for CLI sandbox */
   projectRoot?: string;
   /** Use test sandbox instead of CLI sandbox */
@@ -103,6 +102,16 @@ function parseModelId(modelId: string): { provider: string; model: string } {
     throw new Error(`Invalid model ID format: ${modelId}. Expected format: provider:model`);
   }
   return { provider: parts[0], model: parts[1] };
+}
+
+/**
+ * Extract tool arguments from an AI SDK tool call.
+ * AI SDK v6 uses 'input' property, but we normalize to 'args'.
+ */
+function getToolArgs(toolCall: { args?: unknown; input?: unknown }): Record<string, unknown> {
+  // AI SDK v6 uses 'input', earlier versions used 'args'
+  const rawArgs = toolCall.input ?? toolCall.args ?? {};
+  return rawArgs as Record<string, unknown>;
 }
 
 /**
@@ -150,7 +159,7 @@ function isModelCompatible(modelId: string, compatibleModels: string[] | undefin
  */
 export interface ModelResolution {
   model: string;
-  source: "worker" | "cli" | "caller" | "default";
+  source: "worker" | "cli" | "caller" | "config" | "default";
 }
 
 /**
@@ -160,13 +169,15 @@ export interface ModelResolution {
  *   1. Worker's `model` field (if set) → wins unconditionally
  *   2. CLI `--model` flag → validated against compatible_models
  *   3. Caller's model (inherited during delegation) → validated against compatible_models
- *   4. Default model → validated against compatible_models
- *   5. Error if none available
+ *   4. Project config model → validated against compatible_models
+ *   5. Hardcoded default model → validated against compatible_models
+ *   6. Error if none available
  */
 function resolveModel(
   worker: WorkerDefinition,
   cliModel: string | undefined,
-  callerModel: string | undefined
+  callerModel: string | undefined,
+  configModel: string | undefined
 ): ModelResolution {
   const compatibleModels = worker.compatible_models;
 
@@ -204,7 +215,19 @@ function resolveModel(
     return { model: callerModel, source: "caller" };
   }
 
-  // 4. Default model - validated against compatible_models
+  // 4. Project config model - validated against compatible_models
+  if (configModel) {
+    if (!isModelCompatible(configModel, compatibleModels)) {
+      const patterns = compatibleModels?.join(", ") || "any";
+      throw new Error(
+        `Config model "${configModel}" is not compatible with worker "${worker.name}". ` +
+        `Compatible patterns: ${patterns}`
+      );
+    }
+    return { model: configModel, source: "config" };
+  }
+
+  // 5. Hardcoded default model - validated against compatible_models
   const defaultModel = "anthropic:claude-haiku-4-5";
   if (!isModelCompatible(defaultModel, compatibleModels)) {
     const patterns = compatibleModels?.join(", ") || "any";
@@ -307,16 +330,12 @@ export class WorkerRuntime {
   async initialize(): Promise<void> {
     // Create sandbox
     if (this.options.useTestSandbox) {
-      const { sandbox } = await createTestSandbox({
-        trustLevel: this.options.trustLevel || "session",
-      });
-      this.sandbox = sandbox;
+      this.sandbox = await createTestSandbox();
     } else if (this.options.projectRoot) {
-      const { sandbox } = await createCLISandbox({
-        projectRoot: this.options.projectRoot,
-        trustLevel: this.options.trustLevel || "session",
+      this.sandbox = await createSandbox({
+        mode: 'sandboxed',
+        root: `${this.options.projectRoot}/.sandbox`,
       });
-      this.sandbox = sandbox;
     }
 
     // Register tools based on worker config
@@ -327,14 +346,8 @@ export class WorkerRuntime {
       ? this.createCompositeToolset()
       : undefined;
 
-    // Extract security context from sandbox for approval requests
-    let approvalSecurityContext: ApprovalSecurityContext | undefined;
-    if (this.sandbox) {
-      const sandboxContext = this.sandbox.getSecurityContext();
-      approvalSecurityContext = {
-        trustLevel: sandboxContext.trustLevel,
-      };
-    }
+    // Security context for approval requests (simplified - no trust levels)
+    const approvalSecurityContext: ApprovalSecurityContext | undefined = undefined;
 
     // Create tool executor function that calls the actual tool
     const executeToolFn = async (toolCall: ToolCall): Promise<ExecuteToolResult> => {
@@ -437,7 +450,6 @@ export class WorkerRuntime {
       "write_file",
       "list_files",
       "delete_file",
-      "stage_for_commit",
       "file_exists",
       "file_info",
     ];
@@ -544,7 +556,7 @@ export class WorkerRuntime {
               type: "tool-call" as const,
               toolCallId: tc.toolCallId,
               toolName: tc.toolName,
-              args: (tc as { input?: unknown }).input ?? {},
+              args: getToolArgs(tc),
             })),
           ],
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -555,11 +567,11 @@ export class WorkerRuntime {
         for (const tc of toolCalls) {
           toolCallCount++;
 
-          // Convert to our ToolCall format - AI SDK uses 'input' not 'args'
+          // Convert to our ToolCall format
           const toolCall: ToolCall = {
             toolCallId: tc.toolCallId,
             toolName: tc.toolName,
-            args: ((tc as { input?: unknown }).input ?? {}) as Record<string, unknown>,
+            args: getToolArgs(tc),
           };
 
           const execResult = await this.executor.executeTool(toolCall);

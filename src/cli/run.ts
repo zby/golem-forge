@@ -13,14 +13,12 @@ import { parseWorkerString, type WorkerDefinition } from "../worker/index.js";
 import { createCLIApprovalCallback } from "./approval.js";
 import { getEffectiveConfig, findProjectRoot } from "./project.js";
 import type { ApprovalMode } from "../approval/index.js";
-import type { TrustLevel } from "../sandbox/index.js";
 
 /**
  * CLI options from command line.
  */
 interface CLIOptions {
   model?: string;
-  trust?: TrustLevel;
   approval?: ApprovalMode;
   input?: string;
   file?: string;
@@ -195,24 +193,9 @@ function collectAttachments(value: string, previous: string[]): string[] {
 }
 
 /**
- * Valid trust levels.
- */
-const VALID_TRUST_LEVELS = ["untrusted", "session", "workspace", "full"] as const;
-
-/**
  * Valid approval modes.
  */
-const VALID_APPROVAL_MODES = ["interactive", "approve_all", "strict"] as const;
-
-/**
- * Parse and validate trust level option.
- */
-function parseTrustLevel(value: string): TrustLevel {
-  if (!VALID_TRUST_LEVELS.includes(value as TrustLevel)) {
-    throw new Error(`Invalid trust level: ${value}. Must be one of: ${VALID_TRUST_LEVELS.join(", ")}`);
-  }
-  return value as TrustLevel;
-}
+const VALID_APPROVAL_MODES = ["interactive", "approve_all", "auto_deny"] as const;
 
 /**
  * Parse and validate approval mode option.
@@ -237,8 +220,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .argument("[dir]", "Worker directory containing index.worker", ".")
     .argument("[input...]", "Input text for the worker")
     .option("-m, --model <model>", "Model to use (e.g., anthropic:claude-haiku-4-5)")
-    .option("-t, --trust <level>", "Trust level: untrusted, session, workspace, full", parseTrustLevel, "session")
-    .option("-a, --approval <mode>", "Approval mode: interactive, approve_all, strict", parseApprovalMode, "interactive")
+    .option("-a, --approval <mode>", "Approval mode: interactive, approve_all, auto_deny", parseApprovalMode, "interactive")
     .option("-i, --input <text>", "Input text (alternative to positional args)")
     .option("-f, --file <path>", "Read input from file")
     .option("-A, --attach <file>", "Attach image file (can be used multiple times)", collectAttachments, [])
@@ -287,7 +269,6 @@ async function executeWorker(
   // Get effective config (CLI options override project config, which overrides defaults)
   const effectiveConfig = getEffectiveConfig(projectInfo?.config, {
     model: options.model,
-    trustLevel: options.trust,
     approvalMode: options.approval,
   });
 
@@ -332,7 +313,6 @@ async function executeWorker(
     model: options.model || workerDefinition.model || effectiveConfig.model,
     approvalMode: effectiveConfig.approvalMode as ApprovalMode,
     approvalCallback,
-    trustLevel: effectiveConfig.trustLevel as TrustLevel,
     projectRoot,
   };
 

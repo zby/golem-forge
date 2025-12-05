@@ -18,7 +18,6 @@ export {
   createWriteFileTool,
   createListFilesTool,
   createDeleteFileTool,
-  createStageForCommitTool,
   createFileExistsTool,
   createFileInfoTool,
   type FilesystemToolResult,

@@ -26,23 +26,6 @@ export class SandboxError extends Error {
 }
 
 /**
- * Thrown when an operation is not permitted by the security context.
- */
-export class PermissionError extends SandboxError {
-  constructor(message: string, path?: string) {
-    super('PERMISSION_DENIED', message, path);
-    this.name = 'PermissionError';
-  }
-
-  toLLMMessage(): string {
-    if (this.path) {
-      return `Permission denied for path "${this.path}": ${this.message}. This file is outside your accessible zones.`;
-    }
-    return `Permission denied: ${this.message}`;
-  }
-}
-
-/**
  * Thrown when a file or directory is not found.
  */
 export class NotFoundError extends SandboxError {
@@ -67,34 +50,6 @@ export class InvalidPathError extends SandboxError {
 
   toLLMMessage(): string {
     return `Invalid path${this.path ? ` "${this.path}"` : ''}: ${this.message}`;
-  }
-}
-
-/**
- * Thrown when a file already exists and overwrite is not permitted.
- */
-export class FileExistsError extends SandboxError {
-  constructor(path: string) {
-    super('FILE_EXISTS', `File already exists: ${path}`, path);
-    this.name = 'FileExistsError';
-  }
-
-  toLLMMessage(): string {
-    return `File already exists: ${this.path}. Cannot overwrite in this context.`;
-  }
-}
-
-/**
- * Thrown when storage quota is exceeded.
- */
-export class QuotaExceededError extends SandboxError {
-  constructor(message: string = 'Storage quota exceeded') {
-    super('QUOTA_EXCEEDED', message);
-    this.name = 'QuotaExceededError';
-  }
-
-  toLLMMessage(): string {
-    return 'Storage quota exceeded. Please delete some files to free up space.';
   }
 }
 
