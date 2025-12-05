@@ -1,27 +1,20 @@
 /**
  * Testing Utilities
  *
- * Mock clients and helpers for testing LLM interactions.
+ * Mock models and helpers for testing LLM interactions.
+ * Uses Vercel AI SDK's built-in MockLanguageModelV2.
  */
 
 export {
-  ReplayClient,
-  replayClient,
-  textResponse,
-  toolCallResponse,
-  errorResponse,
-  createAskResult,
-  type RecordedResponse,
-  type SimpleResponse,
-  type ReplayClientConfig,
-  type ReplayClientBuilder,
-} from './replay-client.js';
+  MockLanguageModelV3,
+  mockValues,
+  convertArrayToReadableStream,
+  mockId,
+} from "./replay-client.js";
 
 export {
   shouldRunLiveTests,
   skipIfNotLive,
   skipIfLive,
-  getTestClient,
-  runDualModeTest,
-  type DualModeTest,
-} from './integration-helpers.js';
+  getLiveModel,
+} from "./integration-helpers.js";

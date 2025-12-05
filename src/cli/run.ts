@@ -131,7 +131,6 @@ async function loadAttachments(filePaths: string[], workerDir: string): Promise<
     const mimeType = MIME_TYPES[ext] || "application/octet-stream";
 
     attachments.push({
-      type: "image",
       data,
       mimeType,
       name: resolvedName,

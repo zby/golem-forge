@@ -1,11 +1,11 @@
 /**
  * Approved Tool Executor
  *
- * Wraps lemmy's tool execution with approval checking.
- * This is the integration layer between lemmy and the approval system.
+ * Wraps tool execution with approval checking.
+ * This is the integration layer between tools and the approval system.
  */
 
-import type { Context, ToolCall, ExecuteToolResult, ToolError } from "@mariozechner/lemmy";
+import type { ToolCall, ExecuteToolResult } from "../ai/types.js";
 import {
   ApprovalController,
   ApprovalResult,
@@ -24,11 +24,25 @@ export type ApprovalToolset = SupportsNeedsApproval<unknown> &
   Partial<SupportsApprovalDescription<unknown>>;
 
 /**
+ * Tool error structure.
+ */
+export interface ToolError {
+  type: string;
+  toolName: string;
+  message: string;
+}
+
+/**
+ * Function type for executing a tool.
+ */
+export type ToolExecutorFn = (toolCall: ToolCall) => Promise<ExecuteToolResult>;
+
+/**
  * Options for creating an ApprovedExecutor.
  */
 export interface ApprovedExecutorOptions {
-  /** The lemmy Context containing tools */
-  context: Context;
+  /** Function to execute tools */
+  executeToolFn: ToolExecutorFn;
   /** The approval controller to use */
   approvalController: ApprovalController;
   /** Optional toolset for custom approval logic */
@@ -52,7 +66,7 @@ export type ApprovedExecuteResult = ExecuteToolResult & {
 /**
  * Executes tools with approval checking.
  *
- * Integrates lemmy's tool system with the approval system:
+ * Integrates the tool system with the approval system:
  * 1. Checks if tool needs approval (via toolset or default)
  * 2. If blocked, returns error without executing
  * 3. If pre-approved, executes immediately
@@ -60,13 +74,13 @@ export type ApprovedExecuteResult = ExecuteToolResult & {
  * 5. Executes or returns denial error
  */
 export class ApprovedExecutor {
-  private context: Context;
+  private executeToolFn: ToolExecutorFn;
   private controller: ApprovalController;
   private toolset?: ApprovalToolset;
   private securityContext?: SecurityContext;
 
   constructor(options: ApprovedExecutorOptions) {
-    this.context = options.context;
+    this.executeToolFn = options.executeToolFn;
     this.controller = options.approvalController;
     this.toolset = options.toolset;
     this.securityContext = options.securityContext;
@@ -86,7 +100,7 @@ export class ApprovedExecutor {
 
     // 3. Handle pre-approved - execute immediately
     if (approvalResult.isPreApproved) {
-      const result = await this.context.executeTool(toolCall);
+      const result = await this.executeToolFn(toolCall);
       return { ...result, preApproved: true };
     }
 
@@ -99,7 +113,7 @@ export class ApprovedExecutor {
     }
 
     // 5. Execute the tool
-    const result = await this.context.executeTool(toolCall);
+    const result = await this.executeToolFn(toolCall);
     return { ...result };
   }
 
@@ -124,7 +138,7 @@ export class ApprovedExecutor {
   private checkApproval(toolCall: ToolCall): ApprovalResult {
     // If toolset implements SupportsNeedsApproval, use it
     if (this.toolset && supportsNeedsApproval(this.toolset)) {
-      return this.toolset.needsApproval(toolCall.name, toolCall.arguments, undefined);
+      return this.toolset.needsApproval(toolCall.toolName, toolCall.args, undefined);
     }
 
     // Default: all tools need approval
@@ -138,18 +152,18 @@ export class ApprovedExecutor {
     // If toolset provides custom description, use it
     if (this.toolset && supportsApprovalDescription(this.toolset)) {
       return {
-        toolName: toolCall.name,
-        toolArgs: toolCall.arguments,
-        description: this.toolset.getApprovalDescription(toolCall.name, toolCall.arguments, undefined),
+        toolName: toolCall.toolName,
+        toolArgs: toolCall.args,
+        description: this.toolset.getApprovalDescription(toolCall.toolName, toolCall.args, undefined),
         securityContext: this.securityContext,
       };
     }
 
     // Default description
     return {
-      toolName: toolCall.name,
-      toolArgs: toolCall.arguments,
-      description: `Execute tool: ${toolCall.name}`,
+      toolName: toolCall.toolName,
+      toolArgs: toolCall.args,
+      description: `Execute tool: ${toolCall.toolName}`,
       securityContext: this.securityContext,
     };
   }
@@ -160,12 +174,12 @@ export class ApprovedExecutor {
   private createBlockedResult(toolCall: ToolCall, reason: string): ApprovedExecuteResult {
     const error: ToolError = {
       type: "execution_failed",
-      toolName: toolCall.name,
+      toolName: toolCall.toolName,
       message: `Tool blocked: ${reason}`,
     };
     return {
       success: false,
-      toolCallId: toolCall.id,
+      toolCallId: toolCall.toolCallId,
       error,
       blocked: true,
     };
@@ -177,12 +191,12 @@ export class ApprovedExecutor {
   private createDeniedResult(toolCall: ToolCall, note?: string): ApprovedExecuteResult {
     const error: ToolError = {
       type: "execution_failed",
-      toolName: toolCall.name,
+      toolName: toolCall.toolName,
       message: note ? `Tool denied: ${note}` : "Tool execution denied by user",
     };
     return {
       success: false,
-      toolCallId: toolCall.id,
+      toolCallId: toolCall.toolCallId,
       error,
       denied: true,
     };

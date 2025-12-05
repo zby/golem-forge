@@ -350,7 +350,6 @@ Test instructions
             expect.objectContaining({
               name: "photo.png",
               mimeType: "image/png",
-              type: "image",
             }),
           ],
         })

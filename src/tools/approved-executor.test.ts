@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Context, defineTool, type ToolCall } from "@mariozechner/lemmy";
 import { z } from "zod";
-import { ApprovedExecutor } from "./approved-executor.js";
+import { ApprovedExecutor, type ToolExecutorFn } from "./approved-executor.js";
+import type { ToolCall } from "../ai/types.js";
 import {
   ApprovalController,
   ApprovalResult,
@@ -9,27 +9,37 @@ import {
   type SupportsNeedsApproval,
 } from "../approval/index.js";
 
-// Test tools
-const safeTool = defineTool({
-  name: "safe_tool",
-  description: "A safe tool that is pre-approved",
-  schema: z.object({ input: z.string() }),
-  execute: async (args) => ({ result: `safe: ${args.input}` }),
-});
-
-const dangerousTool = defineTool({
-  name: "dangerous_tool",
-  description: "A dangerous tool that needs approval",
-  schema: z.object({ target: z.string() }),
-  execute: async (args) => ({ result: `dangerous: ${args.target}` }),
-});
-
-const forbiddenTool = defineTool({
-  name: "forbidden_tool",
-  description: "A forbidden tool that is always blocked",
-  schema: z.object({}),
-  execute: async () => ({ result: "should never execute" }),
-});
+// Mock tool executor that simulates tool execution
+function createMockExecutor(): ToolExecutorFn {
+  return async (toolCall: ToolCall) => {
+    switch (toolCall.toolName) {
+      case "safe_tool":
+        return {
+          success: true,
+          toolCallId: toolCall.toolCallId,
+          result: { result: `safe: ${toolCall.args.input}` },
+        };
+      case "dangerous_tool":
+        return {
+          success: true,
+          toolCallId: toolCall.toolCallId,
+          result: { result: `dangerous: ${toolCall.args.target}` },
+        };
+      case "forbidden_tool":
+        return {
+          success: true,
+          toolCallId: toolCall.toolCallId,
+          result: { result: "should never execute" },
+        };
+      default:
+        return {
+          success: false,
+          toolCallId: toolCall.toolCallId,
+          error: { type: "not_found", toolName: toolCall.toolName, message: "Tool not found" },
+        };
+    }
+  };
+}
 
 // Test toolset with custom approval logic
 class TestToolset implements SupportsNeedsApproval<unknown> {
@@ -41,26 +51,23 @@ class TestToolset implements SupportsNeedsApproval<unknown> {
 }
 
 describe("ApprovedExecutor", () => {
-  let context: Context;
+  let executeToolFn: ToolExecutorFn;
   let toolset: TestToolset;
 
   beforeEach(() => {
-    context = new Context();
-    context.addTool(safeTool);
-    context.addTool(dangerousTool);
-    context.addTool(forbiddenTool);
+    executeToolFn = createMockExecutor();
     toolset = new TestToolset();
   });
 
   describe("with approve_all mode", () => {
     it("executes all tools without prompting", async () => {
       const controller = new ApprovalController({ mode: "approve_all" });
-      const executor = new ApprovedExecutor({ context, approvalController: controller });
+      const executor = new ApprovedExecutor({ executeToolFn, approvalController: controller });
 
       const toolCall: ToolCall = {
-        id: "call_1",
-        name: "dangerous_tool",
-        arguments: { target: "test" },
+        toolCallId: "call_1",
+        toolName: "dangerous_tool",
+        args: { target: "test" },
       };
 
       const result = await executor.executeTool(toolCall);
@@ -75,12 +82,12 @@ describe("ApprovedExecutor", () => {
   describe("with strict mode", () => {
     it("denies all tools that need approval", async () => {
       const controller = new ApprovalController({ mode: "strict" });
-      const executor = new ApprovedExecutor({ context, approvalController: controller });
+      const executor = new ApprovedExecutor({ executeToolFn, approvalController: controller });
 
       const toolCall: ToolCall = {
-        id: "call_1",
-        name: "dangerous_tool",
-        arguments: { target: "test" },
+        toolCallId: "call_1",
+        toolName: "dangerous_tool",
+        args: { target: "test" },
       };
 
       const result = await executor.executeTool(toolCall);
@@ -94,15 +101,15 @@ describe("ApprovedExecutor", () => {
     it("pre-approves safe tools", async () => {
       const controller = new ApprovalController({ mode: "strict" }); // strict, but toolset overrides
       const executor = new ApprovedExecutor({
-        context,
+        executeToolFn,
         approvalController: controller,
         toolset,
       });
 
       const toolCall: ToolCall = {
-        id: "call_1",
-        name: "safe_tool",
-        arguments: { input: "hello" },
+        toolCallId: "call_1",
+        toolName: "safe_tool",
+        args: { input: "hello" },
       };
 
       const result = await executor.executeTool(toolCall);
@@ -114,15 +121,15 @@ describe("ApprovedExecutor", () => {
     it("blocks forbidden tools", async () => {
       const controller = new ApprovalController({ mode: "approve_all" }); // approve_all, but toolset blocks
       const executor = new ApprovedExecutor({
-        context,
+        executeToolFn,
         approvalController: controller,
         toolset,
       });
 
       const toolCall: ToolCall = {
-        id: "call_1",
-        name: "forbidden_tool",
-        arguments: {},
+        toolCallId: "call_1",
+        toolName: "forbidden_tool",
+        args: {},
       };
 
       const result = await executor.executeTool(toolCall);
@@ -130,7 +137,7 @@ describe("ApprovedExecutor", () => {
       expect(result.success).toBe(false);
       expect(result.blocked).toBe(true);
       if (!result.success) {
-        expect(result.error.message).toContain("forbidden");
+        expect(result.error?.message).toContain("forbidden");
       }
     });
 
@@ -146,15 +153,15 @@ describe("ApprovedExecutor", () => {
       });
 
       const executor = new ApprovedExecutor({
-        context,
+        executeToolFn,
         approvalController: controller,
         toolset,
       });
 
       const toolCall: ToolCall = {
-        id: "call_1",
-        name: "dangerous_tool",
-        arguments: { target: "test" },
+        toolCallId: "call_1",
+        toolName: "dangerous_tool",
+        args: { target: "test" },
       };
 
       const result = await executor.executeTool(toolCall);
@@ -168,15 +175,15 @@ describe("ApprovedExecutor", () => {
     it("processes multiple tools sequentially", async () => {
       const controller = new ApprovalController({ mode: "approve_all" });
       const executor = new ApprovedExecutor({
-        context,
+        executeToolFn,
         approvalController: controller,
         toolset,
       });
 
       const toolCalls: ToolCall[] = [
-        { id: "call_1", name: "safe_tool", arguments: { input: "a" } },
-        { id: "call_2", name: "dangerous_tool", arguments: { target: "b" } },
-        { id: "call_3", name: "forbidden_tool", arguments: {} },
+        { toolCallId: "call_1", toolName: "safe_tool", args: { input: "a" } },
+        { toolCallId: "call_2", toolName: "dangerous_tool", args: { target: "b" } },
+        { toolCallId: "call_3", toolName: "forbidden_tool", args: {} },
       ];
 
       const results = await executor.executeTools(toolCalls);
@@ -203,15 +210,15 @@ describe("ApprovedExecutor", () => {
       });
 
       const executor = new ApprovedExecutor({
-        context,
+        executeToolFn,
         approvalController: controller,
         toolset,
       });
 
       const toolCall: ToolCall = {
-        id: "call_1",
-        name: "dangerous_tool",
-        arguments: { target: "test" },
+        toolCallId: "call_1",
+        toolName: "dangerous_tool",
+        args: { target: "test" },
       };
 
       // First call - prompts
@@ -219,7 +226,7 @@ describe("ApprovedExecutor", () => {
       expect(mockCallback).toHaveBeenCalledTimes(1);
 
       // Second call with same args - uses cache
-      const toolCall2: ToolCall = { ...toolCall, id: "call_2" };
+      const toolCall2: ToolCall = { ...toolCall, toolCallId: "call_2" };
       await executor.executeTool(toolCall2);
       expect(mockCallback).toHaveBeenCalledTimes(1); // Still 1, not called again
     });

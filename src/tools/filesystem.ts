@@ -5,24 +5,32 @@
  */
 
 import { z } from 'zod';
-import { defineTool, type ToolDefinition } from '@mariozechner/lemmy';
 
 /**
  * Base type for filesystem tools.
- * Each tool has a specific schema, but we need a common type for collections.
- * Using a mapped type that preserves the structure while allowing variance.
+ * Using a flexible type to avoid complex generics issues with AI SDK's Tool type.
  */
-type BaseTool = ToolDefinition<Record<string, unknown>, unknown>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BaseTool = any;
 
 /**
- * Cast a specific tool to the base tool type for storage in collections.
- * This is safe because tools are only executed via the lemmy runtime which
- * validates arguments against the schema before calling execute.
+ * Helper to create tools with proper typing.
+ * This wraps the tool creation to work around AI SDK's strict type checking.
  */
-function asBaseTool<T extends Record<string, unknown>, R>(
-  tool: ToolDefinition<T, R>
-): BaseTool {
-  return tool as unknown as BaseTool;
+function createTool<T extends z.ZodType>(options: {
+  name: string;
+  description: string;
+  parameters: T;
+  execute: (args: z.infer<T>) => Promise<FilesystemToolResult>;
+  needsApproval?: boolean | ((args: z.infer<T>) => boolean | Promise<boolean>);
+}): BaseTool {
+  return {
+    name: options.name,
+    description: options.description,
+    parameters: options.parameters,
+    execute: options.execute,
+    needsApproval: options.needsApproval,
+  };
 }
 import {
   Sandbox,
@@ -51,13 +59,13 @@ export interface FilesystemToolResult {
  * Create a read_file tool.
  */
 export function createReadFileTool(sandbox: Sandbox): BaseTool {
-  return asBaseTool(defineTool({
+  return createTool({
     name: 'read_file',
     description: 'Read the contents of a file from the sandbox filesystem',
-    schema: z.object({
+    parameters: z.object({
       path: z.string().describe('Path to the file. Use simple relative paths like "file.txt" or "dir/file.txt"'),
     }),
-    execute: async ({ path }): Promise<FilesystemToolResult> => {
+    execute: async ({ path }) => {
       try {
         const content = await sandbox.read(path);
         return {
@@ -70,21 +78,21 @@ export function createReadFileTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  }));
+  });
 }
 
 /**
  * Create a write_file tool.
  */
 export function createWriteFileTool(sandbox: Sandbox): BaseTool {
-  return asBaseTool(defineTool({
+  return createTool({
     name: 'write_file',
     description: 'Write content to a file in the sandbox filesystem',
-    schema: z.object({
+    parameters: z.object({
       path: z.string().describe('Path to write to. Use simple relative paths like "file.txt" or "dir/file.txt"'),
       content: z.string().describe('Content to write to the file'),
     }),
-    execute: async ({ path, content }): Promise<FilesystemToolResult> => {
+    execute: async ({ path, content }) => {
       try {
         await sandbox.write(path, content);
         return {
@@ -96,20 +104,20 @@ export function createWriteFileTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  }));
+  });
 }
 
 /**
  * Create a list_files tool.
  */
 export function createListFilesTool(sandbox: Sandbox): BaseTool {
-  return asBaseTool(defineTool({
+  return createTool({
     name: 'list_files',
     description: 'List files and directories in a sandbox directory',
-    schema: z.object({
+    parameters: z.object({
       path: z.string().describe('Directory path to list. Use "." for current directory or relative paths like "subdir"'),
     }),
-    execute: async ({ path }): Promise<FilesystemToolResult> => {
+    execute: async ({ path }) => {
       try {
         const files = await sandbox.list(path);
         return {
@@ -122,20 +130,20 @@ export function createListFilesTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  }));
+  });
 }
 
 /**
  * Create a delete_file tool.
  */
 export function createDeleteFileTool(sandbox: Sandbox): BaseTool {
-  return asBaseTool(defineTool({
+  return createTool({
     name: 'delete_file',
     description: 'Delete a file from the sandbox filesystem',
-    schema: z.object({
+    parameters: z.object({
       path: z.string().describe('Path to the file to delete. Use simple relative paths like "file.txt"'),
     }),
-    execute: async ({ path }): Promise<FilesystemToolResult> => {
+    execute: async ({ path }) => {
       try {
         await sandbox.delete(path);
         return {
@@ -147,26 +155,27 @@ export function createDeleteFileTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  }));
+  });
 }
 
 /**
  * Create a stage_for_commit tool.
  */
 export function createStageForCommitTool(sandbox: Sandbox): BaseTool {
-  return asBaseTool(defineTool({
+  return createTool({
     name: 'stage_for_commit',
     description: 'Stage files for committing to the repository. Files are staged but not committed until user approves.',
-    schema: z.object({
+    needsApproval: true,
+    parameters: z.object({
       files: z.array(z.object({
         path: z.string().describe('Path in repository (relative to repo root)'),
         content: z.string().describe('File content'),
       })).describe('Files to stage'),
       message: z.string().describe('Commit message describing the changes'),
     }),
-    execute: async ({ files, message }): Promise<FilesystemToolResult> => {
+    execute: async ({ files, message }) => {
       try {
-        const stageRequests = files.map(f => ({
+        const stageRequests = files.map((f) => ({
           repoPath: f.path,
           content: f.content,
         }));
@@ -178,26 +187,26 @@ export function createStageForCommitTool(sandbox: Sandbox): BaseTool {
           commitId,
           stagedFiles: files.length,
           message: 'Files staged successfully. User must approve before commit.',
-          paths: files.map(f => f.path),
+          paths: files.map((f) => f.path),
         };
       } catch (error) {
         return handleError(error);
       }
     },
-  }));
+  });
 }
 
 /**
  * Create a file_exists tool.
  */
 export function createFileExistsTool(sandbox: Sandbox): BaseTool {
-  return asBaseTool(defineTool({
+  return createTool({
     name: 'file_exists',
     description: 'Check if a file or directory exists in the sandbox',
-    schema: z.object({
+    parameters: z.object({
       path: z.string().describe('Path to check. Use simple relative paths like "file.txt"'),
     }),
-    execute: async ({ path }): Promise<FilesystemToolResult> => {
+    execute: async ({ path }) => {
       try {
         const exists = await sandbox.exists(path);
         return {
@@ -209,20 +218,20 @@ export function createFileExistsTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  }));
+  });
 }
 
 /**
  * Create a file_info tool.
  */
 export function createFileInfoTool(sandbox: Sandbox): BaseTool {
-  return asBaseTool(defineTool({
+  return createTool({
     name: 'file_info',
     description: 'Get metadata about a file (size, dates, type)',
-    schema: z.object({
+    parameters: z.object({
       path: z.string().describe('Path to the file. Use simple relative paths like "file.txt"'),
     }),
-    execute: async ({ path }): Promise<FilesystemToolResult> => {
+    execute: async ({ path }) => {
       try {
         const stat = await sandbox.stat(path);
         return {
@@ -238,7 +247,7 @@ export function createFileInfoTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  }));
+  });
 }
 
 /**

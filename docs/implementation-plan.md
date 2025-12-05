@@ -6,6 +6,8 @@ Build a multi-runtime LLM worker system with TypeScript, starting with CLI and t
 
 **Strategic Direction**: CLI first (easier development), Browser Extension is the goal (most powerful reach).
 
+**LLM Runtime**: Vercel AI SDK Responses API for multi-provider access, structured tool calling, and shared streaming between CLI and browser.
+
 ## Related Documents
 
 - **[User Stories](./user-stories.md)** - Requirements and validation criteria
@@ -19,6 +21,7 @@ Build a multi-runtime LLM worker system with TypeScript, starting with CLI and t
 3. **Trust levels** are the core security primitive (untrusted → session → workspace → full)
 4. **Zone-based permissions** (session/workspace/repo/staged) simplify security reasoning
 5. **Unified sandbox interface** with backend-specific implementations
+6. **Vercel AI SDK** is the LLM surface (Responses API + tool calling) while sandboxing remains entirely in Golem Forge
 
 ## Porting from Python
 
@@ -212,6 +215,8 @@ Scope:
 
 Deliverable: src/sandbox/
 Tests: Unit tests with MemoryBackend
+
+*Vercel AI SDK does not offer filesystem isolation; this sandbox is the enforcement layer for every runtime.*
 ```
 
 **Success Criteria**:
@@ -310,13 +315,13 @@ Tests: Registry loading tests
 
 ```
 Scope:
-- Wrap Lemmy tool execution
-- Route through ApprovalController
-- Handle blocked/pre_approved/needs_approval
-- Return denial errors to LLM
+- Wrap Vercel AI SDK Responses API tool invocation stream
+- Route each tool call through ApprovalController + ApprovalMemory before dispatch
+- Surface blocked/pre_approved/needs_approval states back through the Vercel event stream
+- Convert denial outcomes into structured tool errors the SDK understands
 
 Deliverable: src/runtime/approval-wrapper.ts
-Tests: Mock LLM with tool calls
+Tests: Mock Vercel AI SDK sessions with tool calls
 ```
 
 ### 2.4 Worker Execution Runtime
@@ -327,10 +332,24 @@ Scope:
 - WorkerRuntime class
 - Session creation and management
 - Tool registration from worker config
-- LLM execution via Lemmy
+- LLM execution via Vercel AI SDK (streaming Responses API)
 
 Deliverable: src/runtime/worker.ts
 Tests: End-to-end worker execution
+```
+
+### 2.5 Vercel Model Adapter & Provider Wiring
+**Stories**: 4.1, 4.3 | **Est. Complexity**: Medium
+
+```
+Scope:
+- `ModelAdapter` abstraction over Vercel AI SDK clients (`generateText`, `streamText`, Responses API)
+- Provider registry to configure `@ai-sdk/openai`, `@ai-sdk/anthropic`, etc. per worker `compatible_models`
+- Shared streaming helper that emits text/tool_call/tool_result events for CLI + extension
+- Map approval rejections to Vercel tool call cancellations without crashing the session
+
+Deliverable: src/runtime/vercel-adapter.ts
+Tests: Unit tests with mocked SDK responses
 ```
 
 ---
@@ -663,7 +682,7 @@ Adds:
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
 | OPFS API limitations | Medium | High | Test early in Phase 6.1 |
-| Lemmy API changes | Low | Medium | Pin version, abstract |
+| Vercel AI SDK changes | Low | Medium | Pin version, track release notes |
 | Extension review rejection | Medium | Medium | Follow Manifest V3 best practices |
 | GitHub API rate limits | Low | Low | Implement caching, retry |
 | Complex merge conflicts | Medium | Medium | Clear conflict UI |
@@ -705,7 +724,7 @@ After each phase, validate against user stories:
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| LLM Framework | Lemmy | Multi-provider, TypeScript native, tool interception |
+| LLM Framework | Vercel AI SDK | Multi-provider Responses API, structured tool calling, streaming |
 | Template Engine | Nunjucks | Jinja2 compatible |
 | Browser Storage | OPFS | No native messaging needed |
 | Remote Sync | GitHub API | Universal, versioned, familiar |

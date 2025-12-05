@@ -5,14 +5,10 @@
  * Manages the LLM conversation loop with tool calls.
  */
 
-import {
-  Context,
-  lemmy,
-  type ChatClient,
-  type ToolResult,
-  type AskInput,
-  type Attachment,
-} from "@mariozechner/lemmy";
+import { generateText, type ModelMessage, type Tool, type LanguageModel } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
 import type { WorkerDefinition } from "../worker/schema.js";
 import {
   ApprovalController,
@@ -34,6 +30,7 @@ import {
   type Sandbox,
   type TrustLevel,
 } from "../sandbox/index.js";
+import type { ToolCall, ExecuteToolResult, Attachment } from "../ai/types.js";
 
 /**
  * Result of a worker execution.
@@ -75,10 +72,8 @@ export interface WorkerRuntimeOptions {
   useTestSandbox?: boolean;
   /** Maximum tool call iterations */
   maxIterations?: number;
-  /** Inject a client directly (for testing with ReplayClient) */
-  client?: ChatClient;
-  /** Inject a context directly (for testing) */
-  context?: Context;
+  /** Inject a model directly (for testing) */
+  injectedModel?: LanguageModel;
 }
 
 /**
@@ -90,7 +85,7 @@ export type RunInput =
   | {
       /** Text content */
       content: string;
-      /** Optional file attachments (images, etc.) */
+      /** Optional file attachments (images, PDFs, etc.) */
       attachments?: Attachment[];
     };
 
@@ -223,33 +218,24 @@ function resolveModel(
 }
 
 /**
- * Creates a chat client for the given model.
- * API keys are read from environment variables.
+ * Creates a language model for the given model ID.
+ * API keys are read from environment variables automatically by providers.
  */
-function createClient(modelId: string): ChatClient {
+function createModel(modelId: string): LanguageModel {
   const { provider, model } = parseModelId(modelId);
 
   switch (provider) {
     case "anthropic": {
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        throw new Error("ANTHROPIC_API_KEY environment variable is required");
-      }
-      return lemmy.anthropic({ apiKey, model });
+      // Reads ANTHROPIC_API_KEY from environment automatically
+      return anthropic(model);
     }
     case "openai": {
-      const apiKey = process.env.OPENAI_API_KEY;
-      if (!apiKey) {
-        throw new Error("OPENAI_API_KEY environment variable is required");
-      }
-      return lemmy.openai({ apiKey, model });
+      // Reads OPENAI_API_KEY from environment automatically
+      return openai(model);
     }
     case "google": {
-      const apiKey = process.env.GOOGLE_API_KEY;
-      if (!apiKey) {
-        throw new Error("GOOGLE_API_KEY environment variable is required");
-      }
-      return lemmy.google({ apiKey, model });
+      // Reads GOOGLE_GENERATIVE_AI_API_KEY from environment automatically
+      return google(model);
     }
     default:
       throw new Error(`Unsupported provider: ${provider}`);
@@ -262,8 +248,8 @@ function createClient(modelId: string): ChatClient {
 export class WorkerRuntime {
   private worker: WorkerDefinition;
   private options: WorkerRuntimeOptions;
-  private context: Context;
-  private client: ChatClient;
+  private model: LanguageModel;
+  private tools: Record<string, Tool> = {};
   private approvalController: ApprovalController;
   private executor!: ApprovedExecutor; // Initialized in initialize()
   private sandbox?: Sandbox;
@@ -274,15 +260,11 @@ export class WorkerRuntime {
     this.worker = options.worker;
     this.options = options;
 
-    // Use injected context or create new one
-    this.context = options.context ?? new Context();
-    this.context.setSystemMessage(this.worker.instructions);
-
-    // Use injected client or create from model resolution
-    if (options.client) {
-      this.client = options.client;
+    // Use injected model or create from model resolution
+    if (options.injectedModel) {
+      this.model = options.injectedModel;
       this.modelResolution = {
-        model: `${options.client.getProvider()}:${options.client.getModel()}`,
+        model: "injected:model",
         source: "worker",
       };
     } else {
@@ -292,7 +274,7 @@ export class WorkerRuntime {
         options.model,
         options.callerModel
       );
-      this.client = createClient(this.modelResolution.model);
+      this.model = createModel(this.modelResolution.model);
     }
 
     // Determine approval mode - default to "interactive" for safety
@@ -355,8 +337,58 @@ export class WorkerRuntime {
       };
     }
 
+    // Create tool executor function that calls the actual tool
+    const executeToolFn = async (toolCall: ToolCall): Promise<ExecuteToolResult> => {
+      const tool = this.tools[toolCall.toolName];
+      if (!tool) {
+        return {
+          success: false,
+          toolCallId: toolCall.toolCallId,
+          error: {
+            type: "not_found",
+            toolName: toolCall.toolName,
+            message: `Tool not found: ${toolCall.toolName}`,
+          },
+        };
+      }
+
+      try {
+        // Execute the tool - Tool's execute is optional
+        if (!tool.execute) {
+          return {
+            success: false,
+            toolCallId: toolCall.toolCallId,
+            error: {
+              type: "not_executable",
+              toolName: toolCall.toolName,
+              message: `Tool ${toolCall.toolName} has no execute function`,
+            },
+          };
+        }
+        // Call execute with args and minimal options
+        // Our custom createTool in filesystem.ts only uses the first arg
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const result = await (tool.execute as any)(toolCall.args);
+        return {
+          success: true,
+          toolCallId: toolCall.toolCallId,
+          result,
+        };
+      } catch (err) {
+        return {
+          success: false,
+          toolCallId: toolCall.toolCallId,
+          error: {
+            type: "execution_failed",
+            toolName: toolCall.toolName,
+            message: err instanceof Error ? err.message : String(err),
+          },
+        };
+      }
+    };
+
     this.executor = new ApprovedExecutor({
-      context: this.context,
+      executeToolFn,
       approvalController: this.approvalController,
       toolset: compositeToolset,
       securityContext: approvalSecurityContext,
@@ -399,6 +431,17 @@ export class WorkerRuntime {
   private async registerTools(): Promise<void> {
     const toolsetsConfig = this.worker.toolsets || {};
 
+    // Tool name mapping for filesystem tools
+    const toolNames = [
+      "read_file",
+      "write_file",
+      "list_files",
+      "delete_file",
+      "stage_for_commit",
+      "file_exists",
+      "file_info",
+    ];
+
     for (const [toolsetName] of Object.entries(toolsetsConfig)) {
       switch (toolsetName) {
         case "filesystem":
@@ -412,8 +455,9 @@ export class WorkerRuntime {
           });
           this.toolsets.push(fsToolset);
           const fsTools = fsToolset.getTools();
-          for (const tool of fsTools) {
-            this.context.addTool(tool);
+          // Add tools to the map with their names
+          for (let i = 0; i < fsTools.length; i++) {
+            this.tools[toolNames[i]] = fsTools[i];
           }
           break;
 
@@ -434,57 +478,107 @@ export class WorkerRuntime {
     let toolCallCount = 0;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
-    let totalCost = 0;
 
     try {
-      // Normalize input to AskInput format
-      const askInput: string | AskInput = typeof input === "string"
-        ? input
-        : { content: input.content, attachments: input.attachments };
+      // Build initial messages
+      const messages: ModelMessage[] = [
+        { role: "system", content: this.worker.instructions },
+      ];
 
-      // Initial ask
-      let result = await this.client.ask(askInput, { context: this.context });
+      // Add user message with optional attachments
+      if (typeof input === "string") {
+        messages.push({ role: "user", content: input });
+      } else {
+        // Build user content with attachments
+        const userContent: Array<{ type: "text"; text: string } | { type: "file"; data: Buffer | string; mediaType: string }> = [
+          { type: "text", text: input.content },
+        ];
 
-      for (let iteration = 0; iteration < maxIterations; iteration++) {
-        if (result.type === "error") {
-          return {
-            success: false,
-            error: result.error.message,
-            toolCallCount,
-            tokens: { input: totalInputTokens, output: totalOutputTokens },
-            cost: totalCost,
-          };
+        if (input.attachments) {
+          for (const att of input.attachments) {
+            userContent.push({
+              type: "file",
+              data: att.data,
+              mediaType: att.mimeType,
+            });
+          }
         }
 
-        // Accumulate tokens and cost
-        totalInputTokens += result.tokens.input;
-        totalOutputTokens += result.tokens.output;
-        totalCost += result.cost;
+        messages.push({ role: "user", content: userContent });
+      }
+
+      // Determine if we have tools to use
+      const hasTools = Object.keys(this.tools).length > 0;
+
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        // Call generateText - no maxSteps for manual control
+        const result = await generateText({
+          model: this.model,
+          messages,
+          tools: hasTools ? this.tools : undefined,
+        });
+
+        // Accumulate tokens
+        totalInputTokens += result.usage?.inputTokens || 0;
+        totalOutputTokens += result.usage?.outputTokens || 0;
 
         // Check if we have tool calls
-        const toolCalls = result.message.toolCalls;
+        const toolCalls = result.toolCalls;
         if (!toolCalls || toolCalls.length === 0) {
           // No tool calls, we're done
           return {
             success: true,
-            response: result.message.content || "",
+            response: result.text || "",
             toolCallCount,
             tokens: { input: totalInputTokens, output: totalOutputTokens },
-            cost: totalCost,
           };
         }
 
+        // Add assistant message with tool calls to history
+        // Using 'as any' to work around complex AI SDK message types
+        messages.push({
+          role: "assistant",
+          content: [
+            ...(result.text ? [{ type: "text" as const, text: result.text }] : []),
+            ...toolCalls.map(tc => ({
+              type: "tool-call" as const,
+              toolCallId: tc.toolCallId,
+              toolName: tc.toolName,
+              args: (tc as { input?: unknown }).input ?? {},
+            })),
+          ],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any);
+
         // Execute tools with approval
-        const toolResults: ToolResult[] = [];
-        for (const toolCall of toolCalls) {
+        const toolResultMessages: Array<{ type: "tool-result"; toolCallId: string; result: unknown }> = [];
+        for (const tc of toolCalls) {
           toolCallCount++;
+
+          // Convert to our ToolCall format - AI SDK uses 'input' not 'args'
+          const toolCall: ToolCall = {
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            args: ((tc as { input?: unknown }).input ?? {}) as Record<string, unknown>,
+          };
+
           const execResult = await this.executor.executeTool(toolCall);
-          toolResults.push(this.formatToolResult(toolCall.id, execResult));
+          const formatted = this.formatToolResult(execResult);
+
+          toolResultMessages.push({
+            type: "tool-result",
+            toolCallId: tc.toolCallId,
+            result: formatted,
+          });
         }
 
-        // Send tool results back to LLM
-        const askInput: AskInput = { toolResults };
-        result = await this.client.ask(askInput, { context: this.context });
+        // Add tool results to messages
+        // Using 'as any' to work around complex AI SDK message types
+        messages.push({
+          role: "tool",
+          content: toolResultMessages,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any);
       }
 
       // Hit max iterations
@@ -493,7 +587,6 @@ export class WorkerRuntime {
         error: `Maximum iterations (${maxIterations}) exceeded`,
         toolCallCount,
         tokens: { input: totalInputTokens, output: totalOutputTokens },
-        cost: totalCost,
       };
     } catch (err) {
       return {
@@ -501,7 +594,6 @@ export class WorkerRuntime {
         error: err instanceof Error ? err.message : String(err),
         toolCallCount,
         tokens: { input: totalInputTokens, output: totalOutputTokens },
-        cost: totalCost,
       };
     }
   }
@@ -509,35 +601,29 @@ export class WorkerRuntime {
   /**
    * Format a tool execution result for the LLM.
    */
-  private formatToolResult(toolCallId: string, result: ApprovedExecuteResult): ToolResult {
+  private formatToolResult(result: ApprovedExecuteResult): string {
     if (result.success) {
-      return {
-        toolCallId,
-        content: typeof result.result === "string"
-          ? result.result
-          : JSON.stringify(result.result, null, 2),
-      };
+      return typeof result.result === "string"
+        ? result.result
+        : JSON.stringify(result.result, null, 2);
     }
 
     // Format error for LLM
-    let errorMessage = result.error.message;
+    let errorMessage = result.error?.message || "Unknown error";
     if (result.blocked) {
       errorMessage = `[BLOCKED] ${errorMessage}`;
     } else if (result.denied) {
       errorMessage = `[DENIED] ${errorMessage}`;
     }
 
-    return {
-      toolCallId,
-      content: `Error: ${errorMessage}`,
-    };
+    return `Error: ${errorMessage}`;
   }
 
   /**
-   * Get the conversation context.
+   * Get the registered tools.
    */
-  getContext(): Context {
-    return this.context;
+  getTools(): Record<string, Tool> {
+    return this.tools;
   }
 
   /**
