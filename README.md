@@ -61,7 +61,7 @@ Send reference images along with your prompt:
 npx golem-forge ./examples/greeter --attach assets/spec.png --attach ../shared/logo.jpg "Describe these images"
 ```
 
-`--attach` can be repeated. Relative paths resolve against the worker directory first, then your current working directory. Supported formats match the underlying providers today: PNG, JPG/JPEG, GIF, WEBP, and SVG.
+`--attach` can be repeated. Relative paths resolve against the worker directory first, then your current working directory. Workers can further constrain attachments through their `attachment_policy`, and actual LLM support depends on the provider/model you run against.
 
 ## Project Structure
 

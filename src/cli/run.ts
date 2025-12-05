@@ -75,7 +75,8 @@ async function findIndexWorker(workerDir: string): Promise<string> {
 }
 
 /**
- * MIME type mapping for common image formats.
+ * Basic MIME type mapping.
+ * Used for hinting the downstream provider but does not restrict attachments.
  */
 const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -84,6 +85,15 @@ const MIME_TYPES: Record<string, string> = {
   ".gif": "image/gif",
   ".webp": "image/webp",
   ".svg": "image/svg+xml",
+  ".bmp": "image/bmp",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
+  ".tif": "image/tiff",
+  ".tiff": "image/tiff",
+  ".pdf": "application/pdf",
+  ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".json": "application/json",
 };
 
 /**
@@ -94,15 +104,6 @@ async function loadAttachments(filePaths: string[], workerDir: string): Promise<
   const attachments: Attachment[] = [];
 
   for (const filePath of filePaths) {
-    const ext = path.extname(filePath).toLowerCase();
-    const mimeType = MIME_TYPES[ext];
-
-    if (!mimeType) {
-      throw new Error(
-        `Unsupported attachment type: ${ext}. Supported: ${Object.keys(MIME_TYPES).join(", ")}`
-      );
-    }
-
     const candidates = path.isAbsolute(filePath)
       ? [filePath]
       : [path.resolve(workerDir, filePath), path.resolve(filePath)];
@@ -125,6 +126,9 @@ async function loadAttachments(filePaths: string[], workerDir: string): Promise<
       const errorMessage = lastError instanceof Error ? lastError.message : "Unknown error";
       throw new Error(`Failed to read attachment ${filePath}: ${errorMessage}`);
     }
+
+    const ext = path.extname(resolvedName || filePath).toLowerCase();
+    const mimeType = MIME_TYPES[ext] || "application/octet-stream";
 
     attachments.push({
       type: "image",

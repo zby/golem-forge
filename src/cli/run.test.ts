@@ -381,27 +381,6 @@ Test instructions
       );
     });
 
-    it("should reject unsupported attachment types", async () => {
-      const notesPath = path.join(workerDir, "notes.txt");
-      await fs.writeFile(notesPath, "notes");
-
-      await expect(
-        runCLI([
-          "node",
-          "cli",
-          workerDir,
-          "--input",
-          "describe",
-          "--attach",
-          "notes.txt",
-        ])
-      ).rejects.toThrow("process.exit called");
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Unsupported attachment type")
-      );
-    });
-
     it("should enforce attachment policy constraints", async () => {
       const policyWorker = `---
 name: policy-worker
@@ -431,6 +410,61 @@ Policy instructions
           "assets/one.png",
           "--attach",
           "assets/two.png",
+        ])
+      ).rejects.toThrow("process.exit called");
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("Attachment policy violation")
+      );
+    });
+
+    it("should allow attaching arbitrary file types and preserve mime type hints", async () => {
+      const docPath = path.join(workerDir, "spec.pdf");
+      await fs.writeFile(docPath, "fake pdf content");
+
+      await runCLI([
+        "node",
+        "cli",
+        workerDir,
+        "--input",
+        "analyze",
+        "--attach",
+        "spec.pdf",
+      ]);
+
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              name: "spec.pdf",
+              mimeType: "application/pdf",
+            }),
+          ],
+        })
+      );
+    });
+
+    it("should enforce allowed suffix restrictions from attachment policy", async () => {
+      const restrictedWorker = `---
+name: restricted-worker
+attachment_policy:
+  allowed_suffixes:
+    - .png
+---
+Instructions
+`;
+      await fs.writeFile(path.join(workerDir, "index.worker"), restrictedWorker);
+      await fs.writeFile(path.join(workerDir, "notes.pdf"), "content");
+
+      await expect(
+        runCLI([
+          "node",
+          "cli",
+          workerDir,
+          "--input",
+          "test",
+          "--attach",
+          "notes.pdf",
         ])
       ).rejects.toThrow("process.exit called");
 
