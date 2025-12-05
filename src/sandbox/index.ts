@@ -57,8 +57,19 @@ export {
   createSecurityContext,
   createSession,
   createCLISandbox,
+  createTestSandbox,
   type CreateCLISandboxOptions,
 } from './impl.js';
+
+// Staging
+export {
+  StagingManager,
+  type StagingManagerOptions,
+  type PermissionChecker,
+} from './staging.js';
+
+// Auditing
+export { AuditingSandbox } from './auditing.js';
 
 // Backends
 export { MemoryBackend, MemoryAuditLog } from './backends/memory.js';

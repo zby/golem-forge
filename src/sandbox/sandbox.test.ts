@@ -4,6 +4,7 @@ import {
   TrustLevel,
   Sandbox,
   SandboxImpl,
+  AuditingSandbox,
   MemoryBackend,
   MemoryAuditLog,
   createSession,
@@ -47,7 +48,8 @@ async function createTestSandbox(options: {
   });
 
   const securityContext = createSecurityContext(session.trustLevel, session);
-  const sandbox = new SandboxImpl(backend, session, securityContext, auditLog);
+  const coreSandbox = new SandboxImpl(backend, session, securityContext);
+  const sandbox = new AuditingSandbox(coreSandbox, auditLog);
 
   return { sandbox, backend, auditLog };
 }
@@ -641,7 +643,8 @@ describe('Sandbox', () => {
         sourceContext: { type: 'cli', userInitiated: true },
       });
       const securityContext = createSecurityContext('untrusted', session);
-      const slowSandbox = new SandboxImpl(backend, session, securityContext, slowAuditLog);
+      const coreSandbox = new SandboxImpl(backend, session, securityContext);
+      const slowSandbox = new AuditingSandbox(coreSandbox, slowAuditLog);
 
       try {
         await slowSandbox.read('/repo/secret.txt');

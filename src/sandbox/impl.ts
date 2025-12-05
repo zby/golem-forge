@@ -2,6 +2,7 @@
  * Sandbox Implementation
  *
  * Core sandbox class that enforces permissions and delegates to backend.
+ * Audit logging is handled by AuditingSandbox decorator.
  */
 
 import {
@@ -14,7 +15,6 @@ import {
   FileStat,
   StageRequest,
   StagedCommit,
-  StagedFile,
   SourceContext,
 } from './types.js';
 import { Sandbox, SandboxBackend, AuditLog } from './interface.js';
@@ -25,16 +25,16 @@ import {
   FileExistsError,
 } from './errors.js';
 import { getPermissionProfile, getZoneFromPath } from './zones.js';
+import { StagingManager } from './staging.js';
+import { AuditingSandbox } from './auditing.js';
 
 /**
  * Generate a UUID that works in both Node.js and browsers.
  */
 function generateId(): string {
-  // crypto.randomUUID() is available in Node 19+ and all modern browsers
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  // Fallback for older environments
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
@@ -43,39 +43,32 @@ function generateId(): string {
 }
 
 /**
- * Generate a content hash for staged files.
- */
-function hashContent(content: string): string {
-  // Simple hash for now - could use crypto.subtle in browser
-  let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    const char = content.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return Math.abs(hash).toString(16).padStart(8, '0');
-}
-
-/**
- * Core sandbox implementation.
+ * Core sandbox implementation without audit logging.
+ * Use AuditingSandbox decorator to add logging.
  */
 export class SandboxImpl implements Sandbox {
   private backend: SandboxBackend;
   private session: Session;
   private securityContext: SecurityContext;
-  private auditLog: AuditLog;
-  private stagedCommits: Map<string, StagedCommit> = new Map();
+  private stagingManager: StagingManager;
 
   constructor(
     backend: SandboxBackend,
     session: Session,
-    securityContext: SecurityContext,
-    auditLog: AuditLog
+    securityContext: SecurityContext
   ) {
     this.backend = backend;
     this.session = session;
     this.securityContext = securityContext;
-    this.auditLog = auditLog;
+
+    // Create staging manager with permission checker
+    this.stagingManager = new StagingManager({
+      backend,
+      sessionId: session.id,
+      checkPermission: async (op, path) => {
+        await this.assertPermission(op, path);
+      },
+    });
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -88,15 +81,6 @@ export class SandboxImpl implements Sandbox {
 
     await this.assertPermission('read', normalizedPath);
 
-    await this.auditLog.log({
-      operation: 'read',
-      path: normalizedPath,
-      zone,
-      sessionId: this.session.id,
-      trustLevel: this.securityContext.trustLevel,
-      allowed: true,
-    });
-
     const realPath = this.backend.mapVirtualToReal(normalizedPath, zone);
     return this.backend.readFile(realPath);
   }
@@ -106,16 +90,6 @@ export class SandboxImpl implements Sandbox {
     const zone = this.getZone(normalizedPath);
 
     await this.assertPermission('read', normalizedPath);
-
-    await this.auditLog.log({
-      operation: 'read',
-      path: normalizedPath,
-      zone,
-      sessionId: this.session.id,
-      trustLevel: this.securityContext.trustLevel,
-      allowed: true,
-      metadata: { binary: true },
-    });
 
     const realPath = this.backend.mapVirtualToReal(normalizedPath, zone);
     return this.backend.readFileBinary(realPath);
@@ -134,28 +108,9 @@ export class SandboxImpl implements Sandbox {
     ) {
       const realPath = this.backend.mapVirtualToReal(normalizedPath, zone);
       if (await this.backend.exists(realPath)) {
-        await this.auditLog.log({
-          operation: 'write',
-          path: normalizedPath,
-          zone,
-          sessionId: this.session.id,
-          trustLevel: this.securityContext.trustLevel,
-          allowed: false,
-          reason: 'Untrusted sessions cannot overwrite staged files',
-        });
         throw new FileExistsError(normalizedPath);
       }
     }
-
-    await this.auditLog.log({
-      operation: 'write',
-      path: normalizedPath,
-      zone,
-      sessionId: this.session.id,
-      trustLevel: this.securityContext.trustLevel,
-      allowed: true,
-      metadata: { contentSize: content.length },
-    });
 
     const realPath = this.backend.mapVirtualToReal(normalizedPath, zone);
     await this.ensureParentDir(realPath);
@@ -168,16 +123,6 @@ export class SandboxImpl implements Sandbox {
 
     await this.assertPermission('write', normalizedPath);
 
-    await this.auditLog.log({
-      operation: 'write',
-      path: normalizedPath,
-      zone,
-      sessionId: this.session.id,
-      trustLevel: this.securityContext.trustLevel,
-      allowed: true,
-      metadata: { contentSize: content.length, binary: true },
-    });
-
     const realPath = this.backend.mapVirtualToReal(normalizedPath, zone);
     await this.ensureParentDir(realPath);
     await this.backend.writeFileBinary(realPath, content);
@@ -188,15 +133,6 @@ export class SandboxImpl implements Sandbox {
     const zone = this.getZone(normalizedPath);
 
     await this.assertPermission('delete', normalizedPath);
-
-    await this.auditLog.log({
-      operation: 'delete',
-      path: normalizedPath,
-      zone,
-      sessionId: this.session.id,
-      trustLevel: this.securityContext.trustLevel,
-      allowed: true,
-    });
 
     const realPath = this.backend.mapVirtualToReal(normalizedPath, zone);
     await this.backend.deleteFile(realPath);
@@ -221,15 +157,6 @@ export class SandboxImpl implements Sandbox {
     const zone = this.getZone(normalizedPath);
 
     await this.assertPermission('list', normalizedPath);
-
-    await this.auditLog.log({
-      operation: 'list',
-      path: normalizedPath,
-      zone,
-      sessionId: this.session.id,
-      trustLevel: this.securityContext.trustLevel,
-      allowed: true,
-    });
 
     const realPath = this.backend.mapVirtualToReal(normalizedPath, zone);
     return this.backend.listDir(realPath);
@@ -260,7 +187,6 @@ export class SandboxImpl implements Sandbox {
     if (joined.startsWith('/')) {
       return this.normalizePath(joined);
     }
-    // Relative path - resolve within session working directory
     return this.normalizePath(`/session/${this.session.id}/working/${joined}`);
   }
 
@@ -276,7 +202,7 @@ export class SandboxImpl implements Sandbox {
   isValidPath(path: string): boolean {
     try {
       this.normalizePath(path);
-      this.getZone(path);
+      getZoneFromPath(this.normalizePath(path));
       return true;
     } catch {
       return false;
@@ -303,91 +229,23 @@ export class SandboxImpl implements Sandbox {
   }
 
   // ─────────────────────────────────────────────────────────────────────
-  // Staging Operations
+  // Staging Operations (delegated to StagingManager)
   // ─────────────────────────────────────────────────────────────────────
 
   async stage(files: StageRequest[], message: string): Promise<string> {
-    const commitId = generateId();
-
-    await this.auditLog.log({
-      operation: 'stage',
-      sessionId: this.session.id,
-      trustLevel: this.securityContext.trustLevel,
-      allowed: true,
-      metadata: {
-        commitId,
-        fileCount: files.length,
-        message,
-      },
-    });
-
-    const stagedFiles: StagedFile[] = [];
-
-    for (const file of files) {
-      const stagePath = `/staged/${commitId}/${file.repoPath}`;
-      const zone = Zone.STAGED;
-
-      // Check write permission to staged zone
-      await this.assertPermission('write', stagePath);
-
-      // Write file to staging area
-      const realPath = this.backend.mapVirtualToReal(stagePath, zone);
-      await this.ensureParentDir(realPath);
-      await this.backend.writeFile(realPath, file.content);
-
-      stagedFiles.push({
-        repoPath: file.repoPath,
-        operation: 'create', // TODO: detect update vs create
-        size: file.content.length,
-        hash: hashContent(file.content),
-      });
-    }
-
-    const stagedCommit: StagedCommit = {
-      id: commitId,
-      sessionId: this.session.id,
-      createdAt: new Date(),
-      message,
-      files: stagedFiles,
-      status: 'pending',
-    };
-
-    this.stagedCommits.set(commitId, stagedCommit);
-
-    return commitId;
+    return this.stagingManager.stage(files, message);
   }
 
   async getStagedCommits(): Promise<StagedCommit[]> {
-    return Array.from(this.stagedCommits.values());
+    return this.stagingManager.getStagedCommits();
   }
 
   async getStagedCommit(commitId: string): Promise<StagedCommit> {
-    const commit = this.stagedCommits.get(commitId);
-    if (!commit) {
-      throw new NotFoundError(`/staged/${commitId}`);
-    }
-    return commit;
+    return this.stagingManager.getStagedCommit(commitId);
   }
 
   async discardStaged(commitId: string): Promise<void> {
-    const commit = this.stagedCommits.get(commitId);
-    if (!commit) {
-      throw new NotFoundError(`/staged/${commitId}`);
-    }
-
-    // Check permission to delete from staged zone
-    await this.assertPermission('delete', `/staged/${commitId}`);
-
-    // Delete all staged files
-    for (const file of commit.files) {
-      const stagePath = `/staged/${commitId}/${file.repoPath}`;
-      const realPath = this.backend.mapVirtualToReal(stagePath, Zone.STAGED);
-      if (await this.backend.exists(realPath)) {
-        await this.backend.deleteFile(realPath);
-      }
-    }
-
-    this.stagedCommits.delete(commitId);
+    return this.stagingManager.discardStaged(commitId);
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -429,15 +287,6 @@ export class SandboxImpl implements Sandbox {
   async assertPermission(operation: Operation, path: string): Promise<void> {
     const check = this.checkPermission(operation, path);
     if (!check.allowed) {
-      await this.auditLog.log({
-        operation: 'security_violation',
-        path,
-        zone: check.zone,
-        sessionId: this.session.id,
-        trustLevel: this.securityContext.trustLevel,
-        allowed: false,
-        reason: check.reason,
-      });
       throw new PermissionError(check.reason!, path);
     }
   }
@@ -462,7 +311,6 @@ export class SandboxImpl implements Sandbox {
       if (segment === '' || segment === '.') continue;
       if (segment === '..') {
         if (resolved.length === 0) {
-          // Attempting to go above root - security violation
           throw new InvalidPathError('Path escape attempt detected', originalPath);
         }
         resolved.pop();
@@ -471,7 +319,6 @@ export class SandboxImpl implements Sandbox {
       }
     }
 
-    // Ensure we have at least a zone
     if (resolved.length === 0) {
       throw new InvalidPathError('Path resolves to empty (no zone)', originalPath);
     }
@@ -484,14 +331,10 @@ export class SandboxImpl implements Sandbox {
     return normalized;
   }
 
-  /**
-   * Validate that session paths only access the current session.
-   * This prevents cross-session data access attacks.
-   */
   private validateSessionAccess(path: string): void {
     if (path.startsWith('/session/')) {
       const segments = path.split('/');
-      const pathSessionId = segments[2]; // /session/{sessionId}/...
+      const pathSessionId = segments[2];
 
       if (pathSessionId && pathSessionId !== this.session.id) {
         throw new PermissionError(
@@ -504,7 +347,7 @@ export class SandboxImpl implements Sandbox {
 
   private async ensureParentDir(realPath: string): Promise<void> {
     const parts = realPath.split('/');
-    parts.pop(); // Remove filename
+    parts.pop();
     const parentDir = parts.join('/');
     if (parentDir && !(await this.backend.exists(parentDir))) {
       await this.backend.mkdir(parentDir);
@@ -553,29 +396,20 @@ export function createSession(options: {
  * Options for creating a CLI sandbox.
  */
 export interface CreateCLISandboxOptions {
-  /** Project root directory (required) */
   projectRoot: string;
-  /** Trust level (defaults to 'session') */
   trustLevel?: TrustLevel;
-  /** Source context (defaults to CLI user-initiated) */
   sourceContext?: SourceContext;
-  /** Custom session ID (auto-generated if not provided) */
   sessionId?: string;
-  /** Custom sandbox directory (defaults to .sandbox in project root) */
   sandboxDir?: string;
 }
 
 /**
- * Create a sandbox for CLI environment.
- *
- * This is a convenience function that wires up all the components
- * needed for a CLI sandbox.
+ * Create a sandbox for CLI environment with audit logging.
  */
 export async function createCLISandbox(options: CreateCLISandboxOptions): Promise<{
   sandbox: Sandbox;
   session: Session;
 }> {
-  // Dynamic import to avoid circular dependency and keep CLI backend optional
   const { CLIBackend, FileAuditLog } = await import('./backends/cli.js');
 
   const trustLevel = options.trustLevel || 'session';
@@ -603,7 +437,52 @@ export async function createCLISandbox(options: CreateCLISandboxOptions): Promis
   const auditLog = new FileAuditLog(`${sandboxDir}/audit.log`);
 
   const securityContext = createSecurityContext(trustLevel, session);
-  const sandbox = new SandboxImpl(backend, session, securityContext, auditLog);
+  const coreSandbox = new SandboxImpl(backend, session, securityContext);
+
+  // Wrap with auditing decorator
+  const sandbox = new AuditingSandbox(coreSandbox, auditLog);
+
+  return { sandbox, session };
+}
+
+/**
+ * Create a test sandbox with memory backend (no audit logging).
+ */
+export async function createTestSandbox(options: {
+  trustLevel?: TrustLevel;
+  sessionId?: string;
+  workspaceId?: string;
+  auditLog?: AuditLog;
+}): Promise<{
+  sandbox: Sandbox;
+  session: Session;
+}> {
+  const { MemoryBackend, MemoryAuditLog } = await import('./backends/memory.js');
+
+  const trustLevel = options.trustLevel || 'session';
+
+  const session = createSession({
+    id: options.sessionId || 'test-session',
+    workspaceId: options.workspaceId || 'test-workspace',
+    trustLevel,
+    sourceContext: {
+      type: 'cli',
+      userInitiated: true,
+    },
+  });
+
+  const backend = new MemoryBackend();
+  await backend.initialize({
+    workspaceId: session.workspaceId,
+    sessionId: session.id,
+  });
+
+  const securityContext = createSecurityContext(trustLevel, session);
+  const coreSandbox = new SandboxImpl(backend, session, securityContext);
+
+  // Optionally wrap with auditing
+  const auditLog = options.auditLog || new MemoryAuditLog();
+  const sandbox = new AuditingSandbox(coreSandbox, auditLog);
 
   return { sandbox, session };
 }
