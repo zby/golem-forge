@@ -5,10 +5,12 @@
  */
 
 import { z } from 'zod';
-import { defineTool, type Tool } from '@mariozechner/lemmy';
+import { defineTool, type ToolDefinition } from '@mariozechner/lemmy';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyTool = ToolDefinition<any, any>;
 import {
   Sandbox,
-  Zone,
   PermissionError,
   NotFoundError,
   isSandboxError,
@@ -32,7 +34,7 @@ export interface FilesystemToolResult {
 /**
  * Create a read_file tool.
  */
-export function createReadFileTool(sandbox: Sandbox): Tool {
+export function createReadFileTool(sandbox: Sandbox): AnyTool {
   return defineTool({
     name: 'read_file',
     description: 'Read the contents of a file from the sandbox filesystem',
@@ -58,7 +60,7 @@ export function createReadFileTool(sandbox: Sandbox): Tool {
 /**
  * Create a write_file tool.
  */
-export function createWriteFileTool(sandbox: Sandbox): Tool {
+export function createWriteFileTool(sandbox: Sandbox): AnyTool {
   return defineTool({
     name: 'write_file',
     description: 'Write content to a file in the sandbox filesystem',
@@ -84,7 +86,7 @@ export function createWriteFileTool(sandbox: Sandbox): Tool {
 /**
  * Create a list_files tool.
  */
-export function createListFilesTool(sandbox: Sandbox): Tool {
+export function createListFilesTool(sandbox: Sandbox): AnyTool {
   return defineTool({
     name: 'list_files',
     description: 'List files and directories in a sandbox directory',
@@ -110,7 +112,7 @@ export function createListFilesTool(sandbox: Sandbox): Tool {
 /**
  * Create a delete_file tool.
  */
-export function createDeleteFileTool(sandbox: Sandbox): Tool {
+export function createDeleteFileTool(sandbox: Sandbox): AnyTool {
   return defineTool({
     name: 'delete_file',
     description: 'Delete a file from the sandbox filesystem',
@@ -135,7 +137,7 @@ export function createDeleteFileTool(sandbox: Sandbox): Tool {
 /**
  * Create a stage_for_commit tool.
  */
-export function createStageForCommitTool(sandbox: Sandbox): Tool {
+export function createStageForCommitTool(sandbox: Sandbox): AnyTool {
   return defineTool({
     name: 'stage_for_commit',
     description: 'Stage files for committing to the repository. Files are staged but not committed until user approves.',
@@ -172,7 +174,7 @@ export function createStageForCommitTool(sandbox: Sandbox): Tool {
 /**
  * Create a file_exists tool.
  */
-export function createFileExistsTool(sandbox: Sandbox): Tool {
+export function createFileExistsTool(sandbox: Sandbox): AnyTool {
   return defineTool({
     name: 'file_exists',
     description: 'Check if a file or directory exists in the sandbox',
@@ -197,7 +199,7 @@ export function createFileExistsTool(sandbox: Sandbox): Tool {
 /**
  * Create a file_info tool.
  */
-export function createFileInfoTool(sandbox: Sandbox): Tool {
+export function createFileInfoTool(sandbox: Sandbox): AnyTool {
   return defineTool({
     name: 'file_info',
     description: 'Get metadata about a file (size, dates, type)',
@@ -267,7 +269,7 @@ function handleError(error: unknown, path?: string): FilesystemToolResult {
  */
 export class FilesystemToolset implements SupportsNeedsApproval<unknown>, SupportsApprovalDescription<unknown> {
   private sandbox: Sandbox;
-  private tools: Tool[];
+  private tools: AnyTool[];
 
   constructor(sandbox: Sandbox) {
     this.sandbox = sandbox;
@@ -285,7 +287,7 @@ export class FilesystemToolset implements SupportsNeedsApproval<unknown>, Suppor
   /**
    * Get all filesystem tools.
    */
-  getTools(): Tool[] {
+  getTools(): AnyTool[] {
     return this.tools;
   }
 
@@ -384,6 +386,6 @@ export class FilesystemToolset implements SupportsNeedsApproval<unknown>, Suppor
  * Create all filesystem tools for a sandbox.
  * Convenience function that returns individual tools.
  */
-export function createFilesystemTools(sandbox: Sandbox): Tool[] {
+export function createFilesystemTools(sandbox: Sandbox): AnyTool[] {
   return new FilesystemToolset(sandbox).getTools();
 }

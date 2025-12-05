@@ -10,9 +10,7 @@ import type {
   AskResult,
   AskInput,
   AskOptions,
-  StreamingCallbacks,
   AssistantMessage,
-  TokenUsage,
   StopReason,
   ToolCall,
 } from '@mariozechner/lemmy';
@@ -182,7 +180,7 @@ export class ReplayClient implements ChatClient {
 
   async ask(
     input: string | AskInput,
-    options?: AskOptions & StreamingCallbacks
+    options?: AskOptions & { onChunk?: (chunk: string) => void }
   ): Promise<AskResult> {
     this.callHistory.push({ input, timestamp: new Date() });
 
@@ -228,7 +226,7 @@ export class ReplayClient implements ChatClient {
 
   private processResponse(
     response: AskResult,
-    options?: AskOptions & StreamingCallbacks
+    options?: AskOptions & { onChunk?: (chunk: string) => void }
   ): AskResult {
     // Simulate streaming if callbacks provided
     if (response.type === 'success' && response.message.content) {
@@ -261,6 +259,17 @@ export class ReplayClient implements ChatClient {
 }
 
 /**
+ * Builder interface for fluent API.
+ */
+export interface ReplayClientBuilder {
+  respond(content: string): ReplayClientBuilder;
+  respondWith(response: AskResult): ReplayClientBuilder;
+  respondWithToolCall(toolCalls: ToolCall[]): ReplayClientBuilder;
+  onPattern(pattern: string | RegExp, content: string): ReplayClientBuilder;
+  build(): ReplayClient;
+}
+
+/**
  * Builder for creating ReplayClient with fluent API.
  *
  * @example
@@ -272,14 +281,14 @@ export class ReplayClient implements ChatClient {
  *   .build();
  * ```
  */
-export function replayClient(config?: Omit<ReplayClientConfig, 'responses'>) {
+export function replayClient(config?: Omit<ReplayClientConfig, 'responses'>): ReplayClientBuilder {
   const responses: RecordedResponse[] = [];
 
-  const builder = {
+  const builder: ReplayClientBuilder = {
     /**
      * Add a text response.
      */
-    respond(content: string): typeof builder {
+    respond(content: string): ReplayClientBuilder {
       responses.push({ response: textResponse(content) });
       return builder;
     },
@@ -287,7 +296,7 @@ export function replayClient(config?: Omit<ReplayClientConfig, 'responses'>) {
     /**
      * Add a full AskResult response.
      */
-    respondWith(response: AskResult): typeof builder {
+    respondWith(response: AskResult): ReplayClientBuilder {
       responses.push({ response });
       return builder;
     },
@@ -295,7 +304,7 @@ export function replayClient(config?: Omit<ReplayClientConfig, 'responses'>) {
     /**
      * Add a tool call response.
      */
-    respondWithToolCall(toolCalls: ToolCall[]): typeof builder {
+    respondWithToolCall(toolCalls: ToolCall[]): ReplayClientBuilder {
       responses.push({ response: toolCallResponse(toolCalls) });
       return builder;
     },
@@ -303,7 +312,7 @@ export function replayClient(config?: Omit<ReplayClientConfig, 'responses'>) {
     /**
      * Add a response for a specific pattern.
      */
-    onPattern(pattern: string | RegExp, content: string): typeof builder {
+    onPattern(pattern: string | RegExp, content: string): ReplayClientBuilder {
       responses.push({ inputPattern: pattern, response: textResponse(content) });
       return builder;
     },

@@ -7,7 +7,6 @@
 
 import {
   Zone,
-  TrustLevel,
   Operation,
   Session,
   SecurityContext,

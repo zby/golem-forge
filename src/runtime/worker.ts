@@ -9,7 +9,6 @@ import {
   Context,
   lemmy,
   type ChatClient,
-  type AskResult,
   type ToolResult,
   type AskInput,
 } from "@mariozechner/lemmy";
@@ -88,17 +87,33 @@ function parseModelId(modelId: string): { provider: string; model: string } {
 
 /**
  * Creates a chat client for the given model.
+ * API keys are read from environment variables.
  */
 function createClient(modelId: string): ChatClient {
   const { provider, model } = parseModelId(modelId);
 
   switch (provider) {
-    case "anthropic":
-      return lemmy.anthropic({ model });
-    case "openai":
-      return lemmy.openai({ model });
-    case "google":
-      return lemmy.google({ model });
+    case "anthropic": {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        throw new Error("ANTHROPIC_API_KEY environment variable is required");
+      }
+      return lemmy.anthropic({ apiKey, model });
+    }
+    case "openai": {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        throw new Error("OPENAI_API_KEY environment variable is required");
+      }
+      return lemmy.openai({ apiKey, model });
+    }
+    case "google": {
+      const apiKey = process.env.GOOGLE_API_KEY;
+      if (!apiKey) {
+        throw new Error("GOOGLE_API_KEY environment variable is required");
+      }
+      return lemmy.google({ apiKey, model });
+    }
     default:
       throw new Error(`Unsupported provider: ${provider}`);
   }

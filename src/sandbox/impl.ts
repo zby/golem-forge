@@ -20,7 +20,6 @@ import {
 import { Sandbox, SandboxBackend, AuditLog } from './interface.js';
 import {
   PermissionError,
-  NotFoundError,
   InvalidPathError,
   FileExistsError,
 } from './errors.js';
