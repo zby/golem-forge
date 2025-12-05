@@ -558,14 +558,14 @@ export class WorkerRuntime {
               type: "tool-call" as const,
               toolCallId: tc.toolCallId,
               toolName: tc.toolName,
-              args: getToolArgs(tc),
+              input: getToolArgs(tc),
             })),
           ],
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any);
 
         // Execute tools with approval
-        const toolResultMessages: Array<{ type: "tool-result"; toolCallId: string; result: unknown }> = [];
+        const toolResultMessages: Array<{ type: "tool-result"; toolCallId: string; toolName: string; output: unknown }> = [];
         for (const tc of toolCalls) {
           toolCallCount++;
 
@@ -582,7 +582,8 @@ export class WorkerRuntime {
           toolResultMessages.push({
             type: "tool-result",
             toolCallId: tc.toolCallId,
-            result: formatted,
+            toolName: tc.toolName,
+            output: formatted,
           });
         }
 

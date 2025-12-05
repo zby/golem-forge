@@ -314,7 +314,7 @@ describe("WorkerRuntime", () => {
       const messages = secondCall.messages;
       const toolMessage = messages.find((m: { role: string }) => m.role === "tool");
       expect(toolMessage).toBeDefined();
-      expect(toolMessage.content[0].result).toContain("Tool not found");
+      expect(toolMessage.content[0].output).toContain("Tool not found");
     });
   });
 

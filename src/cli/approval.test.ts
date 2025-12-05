@@ -40,7 +40,7 @@ describe('createAutoApproveCallback', () => {
   it('should work for any tool', async () => {
     const callback = createAutoApproveCallback();
 
-    const tools = ['read_file', 'delete_file', 'stage_for_commit', 'custom_tool'];
+    const tools = ['read_file', 'delete_file', 'custom_tool'];
 
     for (const toolName of tools) {
       const request: ApprovalRequest = {
@@ -90,7 +90,7 @@ describe('createAutoDenyCallback', () => {
   it('should deny all tools', async () => {
     const callback = createAutoDenyCallback();
 
-    const tools = ['read_file', 'delete_file', 'stage_for_commit', 'custom_tool'];
+    const tools = ['read_file', 'delete_file', 'custom_tool'];
 
     for (const toolName of tools) {
       const request: ApprovalRequest = {
