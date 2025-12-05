@@ -5,33 +5,7 @@
  */
 
 import { z } from 'zod';
-
-/**
- * Base type for filesystem tools.
- * Using a flexible type to avoid complex generics issues with AI SDK's Tool type.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type BaseTool = any;
-
-/**
- * Helper to create tools with proper typing.
- * This wraps the tool creation to work around AI SDK's strict type checking.
- */
-function createTool<T extends z.ZodType>(options: {
-  name: string;
-  description: string;
-  parameters: T;
-  execute: (args: z.infer<T>) => Promise<FilesystemToolResult>;
-  needsApproval?: boolean | ((args: z.infer<T>) => boolean | Promise<boolean>);
-}): BaseTool {
-  return {
-    name: options.name,
-    description: options.description,
-    parameters: options.parameters,
-    execute: options.execute,
-    needsApproval: options.needsApproval,
-  };
-}
+import type { Tool, ToolExecutionOptions } from 'ai';
 import {
   Sandbox,
   NotFoundError,
@@ -54,16 +28,31 @@ export interface FilesystemToolResult {
 }
 
 /**
+ * A named tool extends the AI SDK Tool with a name property.
+ * The name is used for tool identification in our toolset management.
+ *
+ * We use `any` for the generic parameters to allow collecting tools
+ * with different input types into arrays, following the AI SDK's ToolSet pattern.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type NamedTool = Tool<any, any> & {
+  name: string;
+};
+
+const readFileSchema = z.object({
+  path: z.string().describe('Path to the file. Use absolute paths like "/workspace/file.txt" or "/cache/file.txt"'),
+});
+type ReadFileInput = z.infer<typeof readFileSchema>;
+
+/**
  * Create a read_file tool.
  */
-export function createReadFileTool(sandbox: Sandbox): BaseTool {
-  return createTool({
+export function createReadFileTool(sandbox: Sandbox): NamedTool {
+  return {
     name: 'read_file',
     description: 'Read the contents of a file from the sandbox filesystem',
-    parameters: z.object({
-      path: z.string().describe('Path to the file. Use absolute paths like "/workspace/file.txt" or "/cache/file.txt"'),
-    }),
-    execute: async ({ path }) => {
+    inputSchema: readFileSchema,
+    execute: async ({ path }: ReadFileInput, _options: ToolExecutionOptions) => {
       try {
         const content = await sandbox.read(path);
         return {
@@ -76,21 +65,24 @@ export function createReadFileTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  });
+  };
 }
+
+const writeFileSchema = z.object({
+  path: z.string().describe('Path to write to. Use absolute paths like "/workspace/file.txt"'),
+  content: z.string().describe('Content to write to the file'),
+});
+type WriteFileInput = z.infer<typeof writeFileSchema>;
 
 /**
  * Create a write_file tool.
  */
-export function createWriteFileTool(sandbox: Sandbox): BaseTool {
-  return createTool({
+export function createWriteFileTool(sandbox: Sandbox): NamedTool {
+  return {
     name: 'write_file',
     description: 'Write content to a file in the sandbox filesystem',
-    parameters: z.object({
-      path: z.string().describe('Path to write to. Use absolute paths like "/workspace/file.txt"'),
-      content: z.string().describe('Content to write to the file'),
-    }),
-    execute: async ({ path, content }) => {
+    inputSchema: writeFileSchema,
+    execute: async ({ path, content }: WriteFileInput, _options: ToolExecutionOptions) => {
       try {
         await sandbox.write(path, content);
         return {
@@ -102,20 +94,23 @@ export function createWriteFileTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  });
+  };
 }
+
+const listFilesSchema = z.object({
+  path: z.string().describe('Directory path to list. Use "/workspace" or "/cache" or subdirectories'),
+});
+type ListFilesInput = z.infer<typeof listFilesSchema>;
 
 /**
  * Create a list_files tool.
  */
-export function createListFilesTool(sandbox: Sandbox): BaseTool {
-  return createTool({
+export function createListFilesTool(sandbox: Sandbox): NamedTool {
+  return {
     name: 'list_files',
     description: 'List files and directories in a sandbox directory',
-    parameters: z.object({
-      path: z.string().describe('Directory path to list. Use "/workspace" or "/cache" or subdirectories'),
-    }),
-    execute: async ({ path }) => {
+    inputSchema: listFilesSchema,
+    execute: async ({ path }: ListFilesInput, _options: ToolExecutionOptions) => {
       try {
         const files = await sandbox.list(path);
         return {
@@ -128,20 +123,23 @@ export function createListFilesTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  });
+  };
 }
+
+const deleteFileSchema = z.object({
+  path: z.string().describe('Path to the file to delete'),
+});
+type DeleteFileInput = z.infer<typeof deleteFileSchema>;
 
 /**
  * Create a delete_file tool.
  */
-export function createDeleteFileTool(sandbox: Sandbox): BaseTool {
-  return createTool({
+export function createDeleteFileTool(sandbox: Sandbox): NamedTool {
+  return {
     name: 'delete_file',
     description: 'Delete a file from the sandbox filesystem',
-    parameters: z.object({
-      path: z.string().describe('Path to the file to delete'),
-    }),
-    execute: async ({ path }) => {
+    inputSchema: deleteFileSchema,
+    execute: async ({ path }: DeleteFileInput, _options: ToolExecutionOptions) => {
       try {
         await sandbox.delete(path);
         return {
@@ -153,20 +151,23 @@ export function createDeleteFileTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  });
+  };
 }
+
+const fileExistsSchema = z.object({
+  path: z.string().describe('Path to check'),
+});
+type FileExistsInput = z.infer<typeof fileExistsSchema>;
 
 /**
  * Create a file_exists tool.
  */
-export function createFileExistsTool(sandbox: Sandbox): BaseTool {
-  return createTool({
+export function createFileExistsTool(sandbox: Sandbox): NamedTool {
+  return {
     name: 'file_exists',
     description: 'Check if a file or directory exists in the sandbox',
-    parameters: z.object({
-      path: z.string().describe('Path to check'),
-    }),
-    execute: async ({ path }) => {
+    inputSchema: fileExistsSchema,
+    execute: async ({ path }: FileExistsInput, _options: ToolExecutionOptions) => {
       try {
         const exists = await sandbox.exists(path);
         return {
@@ -178,20 +179,23 @@ export function createFileExistsTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  });
+  };
 }
+
+const fileInfoSchema = z.object({
+  path: z.string().describe('Path to the file'),
+});
+type FileInfoInput = z.infer<typeof fileInfoSchema>;
 
 /**
  * Create a file_info tool.
  */
-export function createFileInfoTool(sandbox: Sandbox): BaseTool {
-  return createTool({
+export function createFileInfoTool(sandbox: Sandbox): NamedTool {
+  return {
     name: 'file_info',
     description: 'Get metadata about a file (size, dates, type)',
-    parameters: z.object({
-      path: z.string().describe('Path to the file'),
-    }),
-    execute: async ({ path }) => {
+    inputSchema: fileInfoSchema,
+    execute: async ({ path }: FileInfoInput, _options: ToolExecutionOptions) => {
       try {
         const stat = await sandbox.stat(path);
         return {
@@ -206,7 +210,7 @@ export function createFileInfoTool(sandbox: Sandbox): BaseTool {
         return handleError(error, path);
       }
     },
-  });
+  };
 }
 
 /**
@@ -254,7 +258,7 @@ export interface FilesystemToolsetOptions {
 export class FilesystemToolset implements SupportsNeedsApproval<unknown>, SupportsApprovalDescription<unknown> {
   private sandbox: Sandbox;
   private workerSandboxConfig?: SandboxConfig;
-  private tools: BaseTool[];
+  private tools: NamedTool[];
 
   constructor(sandboxOrOptions: Sandbox | FilesystemToolsetOptions) {
     // Support both old (Sandbox) and new (options) constructor signatures
@@ -281,7 +285,7 @@ export class FilesystemToolset implements SupportsNeedsApproval<unknown>, Suppor
   /**
    * Get all filesystem tools.
    */
-  getTools(): BaseTool[] {
+  getTools(): NamedTool[] {
     return this.tools;
   }
 
@@ -373,6 +377,6 @@ export class FilesystemToolset implements SupportsNeedsApproval<unknown>, Suppor
  * Create all filesystem tools for a sandbox.
  * Convenience function that returns individual tools.
  */
-export function createFilesystemTools(sandbox: Sandbox): BaseTool[] {
+export function createFilesystemTools(sandbox: Sandbox): NamedTool[] {
   return new FilesystemToolset(sandbox).getTools();
 }

@@ -294,7 +294,8 @@ export class WorkerRuntime {
       this.modelResolution = resolveModel(
         this.worker,
         options.model,
-        options.callerModel
+        options.callerModel,
+        options.configModel
       );
       this.model = createModel(this.modelResolution.model);
     }
@@ -377,10 +378,11 @@ export class WorkerRuntime {
             },
           };
         }
-        // Call execute with args and minimal options
-        // Our custom createTool in filesystem.ts only uses the first arg
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = await (tool.execute as any)(toolCall.args);
+        // Call execute with input and options per AI SDK Tool interface
+        const result = await tool.execute(toolCall.args, {
+          toolCallId: toolCall.toolCallId,
+          messages: [],
+        });
         return {
           success: true,
           toolCallId: toolCall.toolCallId,

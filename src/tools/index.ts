@@ -22,4 +22,5 @@ export {
   createFileInfoTool,
   type FilesystemToolResult,
   type FilesystemToolsetOptions,
+  type NamedTool,
 } from "./filesystem.js";
