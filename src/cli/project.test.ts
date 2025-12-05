@@ -2,7 +2,7 @@
  * Tests for Project Detection
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -123,19 +123,29 @@ describe('findProjectRoot', () => {
     }
   });
 
-  it('should handle malformed config files gracefully', async () => {
-    await fs.writeFile(
-      path.join(tempDir, '.golem-forge.json'),
-      'invalid json {'
-    );
+  it('should handle malformed config files gracefully and warn', async () => {
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-    const result = await findProjectRoot(tempDir);
+    try {
+      await fs.writeFile(
+        path.join(tempDir, '.golem-forge.json'),
+        'invalid json {'
+      );
 
-    expect(result).not.toBeNull();
-    expect(result!.root).toBe(tempDir);
-    expect(result!.detectedBy).toBe('.golem-forge.json');
-    // Config should be undefined when parsing fails
-    expect(result!.config).toBeUndefined();
+      const result = await findProjectRoot(tempDir);
+
+      expect(result).not.toBeNull();
+      expect(result!.root).toBe(tempDir);
+      expect(result!.detectedBy).toBe('.golem-forge.json');
+      // Config should be undefined when parsing fails
+      expect(result!.config).toBeUndefined();
+      // Should log a warning
+      expect(consoleWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Warning: Failed to parse config file')
+      );
+    } finally {
+      consoleWarnSpy.mockRestore();
+    }
   });
 });
 

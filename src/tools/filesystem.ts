@@ -39,7 +39,7 @@ export function createReadFileTool(sandbox: Sandbox): AnyTool {
     name: 'read_file',
     description: 'Read the contents of a file from the sandbox filesystem',
     schema: z.object({
-      path: z.string().describe('Virtual path to the file to read (e.g., /session/id/working/file.txt)'),
+      path: z.string().describe('Path to the file. Use simple relative paths like "file.txt" or "dir/file.txt"'),
     }),
     execute: async ({ path }): Promise<FilesystemToolResult> => {
       try {
@@ -65,7 +65,7 @@ export function createWriteFileTool(sandbox: Sandbox): AnyTool {
     name: 'write_file',
     description: 'Write content to a file in the sandbox filesystem',
     schema: z.object({
-      path: z.string().describe('Virtual path to write to'),
+      path: z.string().describe('Path to write to. Use simple relative paths like "file.txt" or "dir/file.txt"'),
       content: z.string().describe('Content to write to the file'),
     }),
     execute: async ({ path, content }): Promise<FilesystemToolResult> => {
@@ -91,7 +91,7 @@ export function createListFilesTool(sandbox: Sandbox): AnyTool {
     name: 'list_files',
     description: 'List files and directories in a sandbox directory',
     schema: z.object({
-      path: z.string().describe('Virtual path to the directory to list'),
+      path: z.string().describe('Directory path to list. Use "." for current directory or relative paths like "subdir"'),
     }),
     execute: async ({ path }): Promise<FilesystemToolResult> => {
       try {
@@ -117,7 +117,7 @@ export function createDeleteFileTool(sandbox: Sandbox): AnyTool {
     name: 'delete_file',
     description: 'Delete a file from the sandbox filesystem',
     schema: z.object({
-      path: z.string().describe('Virtual path to the file to delete'),
+      path: z.string().describe('Path to the file to delete. Use simple relative paths like "file.txt"'),
     }),
     execute: async ({ path }): Promise<FilesystemToolResult> => {
       try {
@@ -179,7 +179,7 @@ export function createFileExistsTool(sandbox: Sandbox): AnyTool {
     name: 'file_exists',
     description: 'Check if a file or directory exists in the sandbox',
     schema: z.object({
-      path: z.string().describe('Virtual path to check'),
+      path: z.string().describe('Path to check. Use simple relative paths like "file.txt"'),
     }),
     execute: async ({ path }): Promise<FilesystemToolResult> => {
       try {
@@ -204,7 +204,7 @@ export function createFileInfoTool(sandbox: Sandbox): AnyTool {
     name: 'file_info',
     description: 'Get metadata about a file (size, dates, type)',
     schema: z.object({
-      path: z.string().describe('Virtual path to the file'),
+      path: z.string().describe('Path to the file. Use simple relative paths like "file.txt"'),
     }),
     execute: async ({ path }): Promise<FilesystemToolResult> => {
       try {

@@ -72,8 +72,11 @@ export async function findProjectRoot(startDir?: string): Promise<ProjectInfo | 
           try {
             const content = await fs.readFile(markerPath, "utf-8");
             info.config = JSON.parse(content) as ProjectConfig;
-          } catch {
-            // Config file exists but couldn't be parsed, continue with defaults
+          } catch (err) {
+            // Config file exists but couldn't be parsed, warn and continue with defaults
+            console.warn(
+              `Warning: Failed to parse config file ${markerPath}: ${err instanceof Error ? err.message : String(err)}`
+            );
           }
         }
 

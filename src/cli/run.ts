@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * CLI Entry Point
  *
@@ -58,6 +59,36 @@ async function readInput(options: CLIOptions, args: string[]): Promise<string> {
 }
 
 /**
+ * Valid trust levels.
+ */
+const VALID_TRUST_LEVELS = ["untrusted", "session", "workspace", "full"] as const;
+
+/**
+ * Valid approval modes.
+ */
+const VALID_APPROVAL_MODES = ["interactive", "approve_all", "strict"] as const;
+
+/**
+ * Parse and validate trust level option.
+ */
+function parseTrustLevel(value: string): TrustLevel {
+  if (!VALID_TRUST_LEVELS.includes(value as TrustLevel)) {
+    throw new Error(`Invalid trust level: ${value}. Must be one of: ${VALID_TRUST_LEVELS.join(", ")}`);
+  }
+  return value as TrustLevel;
+}
+
+/**
+ * Parse and validate approval mode option.
+ */
+function parseApprovalMode(value: string): ApprovalMode {
+  if (!VALID_APPROVAL_MODES.includes(value as ApprovalMode)) {
+    throw new Error(`Invalid approval mode: ${value}. Must be one of: ${VALID_APPROVAL_MODES.join(", ")}`);
+  }
+  return value as ApprovalMode;
+}
+
+/**
  * Main CLI execution.
  */
 export async function runCLI(argv: string[] = process.argv): Promise<void> {
@@ -70,8 +101,8 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .argument("<worker>", "Worker name or path to .worker file")
     .argument("[input...]", "Input text for the worker")
     .option("-m, --model <model>", "Model to use (e.g., anthropic:claude-haiku-4-5)")
-    .option("-t, --trust <level>", "Trust level: untrusted, session, workspace, full", "session")
-    .option("-a, --approval <mode>", "Approval mode: interactive, approve_all, strict", "interactive")
+    .option("-t, --trust <level>", "Trust level: untrusted, session, workspace, full", parseTrustLevel, "session")
+    .option("-a, --approval <mode>", "Approval mode: interactive, approve_all, strict", parseApprovalMode, "interactive")
     .option("-i, --input <text>", "Input text (alternative to positional args)")
     .option("-f, --file <path>", "Read input from file")
     .option("-p, --project <path>", "Project root directory")
@@ -101,8 +132,8 @@ async function executeWorker(
   const projectRoot = projectInfo?.root || process.cwd();
   const effectiveConfig = getEffectiveConfig(projectInfo?.config, {
     model: options.model,
-    trustLevel: options.trust as TrustLevel,
-    approvalMode: options.approval as ApprovalMode,
+    trustLevel: options.trust,
+    approvalMode: options.approval,
   });
 
   if (options.verbose) {
@@ -175,7 +206,7 @@ async function executeWorker(
     console.log(result.response);
 
     if (options.verbose) {
-      console.log("\n─".repeat(30));
+      console.log("\n" + "─".repeat(30));
       console.log(`Tool calls: ${result.toolCallCount}`);
       if (result.tokens) {
         console.log(`Tokens: ${result.tokens.input} in / ${result.tokens.output} out`);
