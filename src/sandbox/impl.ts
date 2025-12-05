@@ -4,7 +4,6 @@
  * Core sandbox class that enforces permissions and delegates to backend.
  */
 
-import { randomUUID } from 'crypto';
 import {
   Zone,
   Operation,
@@ -26,6 +25,22 @@ import {
   FileExistsError,
 } from './errors.js';
 import { getPermissionProfile, getZoneFromPath } from './zones.js';
+
+/**
+ * Generate a UUID that works in both Node.js and browsers.
+ */
+function generateId(): string {
+  // crypto.randomUUID() is available in Node 19+ and all modern browsers
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for older environments
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 /**
  * Generate a content hash for staged files.
@@ -292,7 +307,7 @@ export class SandboxImpl implements Sandbox {
   // ─────────────────────────────────────────────────────────────────────
 
   async stage(files: StageRequest[], message: string): Promise<string> {
-    const commitId = randomUUID();
+    const commitId = generateId();
 
     await this.auditLog.log({
       operation: 'stage',
@@ -359,6 +374,9 @@ export class SandboxImpl implements Sandbox {
     if (!commit) {
       throw new NotFoundError(`/staged/${commitId}`);
     }
+
+    // Check permission to delete from staged zone
+    await this.assertPermission('delete', `/staged/${commitId}`);
 
     // Delete all staged files
     for (const file of commit.files) {
@@ -458,7 +476,30 @@ export class SandboxImpl implements Sandbox {
       throw new InvalidPathError('Path resolves to empty (no zone)', originalPath);
     }
 
-    return '/' + resolved.join('/');
+    const normalized = '/' + resolved.join('/');
+
+    // Validate session isolation
+    this.validateSessionAccess(normalized);
+
+    return normalized;
+  }
+
+  /**
+   * Validate that session paths only access the current session.
+   * This prevents cross-session data access attacks.
+   */
+  private validateSessionAccess(path: string): void {
+    if (path.startsWith('/session/')) {
+      const segments = path.split('/');
+      const pathSessionId = segments[2]; // /session/{sessionId}/...
+
+      if (pathSessionId && pathSessionId !== this.session.id) {
+        throw new PermissionError(
+          `Cannot access other session's data (session: ${pathSessionId})`,
+          path
+        );
+      }
+    }
   }
 
   private async ensureParentDir(realPath: string): Promise<void> {
@@ -500,7 +541,7 @@ export function createSession(options: {
   sourceContext: SourceContext;
 }): Session {
   return {
-    id: options.id || randomUUID(),
+    id: options.id || generateId(),
     workspaceId: options.workspaceId,
     createdAt: new Date(),
     trustLevel: options.trustLevel,

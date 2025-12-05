@@ -6,6 +6,7 @@
 
 import {
   Zone,
+  TrustLevel,
   Operation,
   Session,
   SecurityContext,
@@ -222,7 +223,7 @@ export interface AuditEntry {
   /** Session that performed the operation */
   sessionId: string;
   /** Trust level at time of operation */
-  trustLevel: string;
+  trustLevel: TrustLevel;
   /** Whether the operation was allowed */
   allowed: boolean;
   /** Reason if denied */
@@ -238,7 +239,7 @@ export interface AuditFilter {
   sessionId?: string;
   operation?: AuditEntry['operation'];
   zone?: Zone;
-  trustLevel?: string;
+  trustLevel?: TrustLevel;
   allowed?: boolean;
   startTime?: Date;
   endTime?: Date;

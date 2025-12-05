@@ -186,6 +186,62 @@ describe('Sandbox', () => {
       expect(violations.length).toBeGreaterThan(0);
       expect(violations[0].trustLevel).toBe('untrusted');
     });
+
+    it('cannot access other sessions (session isolation)', async () => {
+      // Try to access another session's data
+      await expect(
+        sandbox.write('/session/other-session/working/file.txt', 'hack')
+      ).rejects.toThrow(PermissionError);
+
+      await expect(
+        sandbox.read('/session/other-session/working/file.txt')
+      ).rejects.toThrow(PermissionError);
+    });
+
+    it('cannot discard staged commits (delete permission)', async () => {
+      // Stage a file first
+      const commitId = await sandbox.stage(
+        [{ repoPath: 'test.md', content: 'test' }],
+        'Test commit'
+      );
+
+      // Untrusted cannot delete from staged zone
+      await expect(sandbox.discardStaged(commitId)).rejects.toThrow(PermissionError);
+    });
+  });
+
+  describe('Session Isolation', () => {
+    it('prevents cross-session access at all trust levels', async () => {
+      // Even session-level trust cannot access other sessions
+      const { sandbox: sessionSandbox } = await createTestSandbox({
+        trustLevel: 'session',
+        sessionId: 'my-session',
+      });
+
+      await expect(
+        sessionSandbox.write('/session/other-session/working/file.txt', 'content')
+      ).rejects.toThrow(PermissionError);
+
+      await expect(
+        sessionSandbox.read('/session/other-session/working/file.txt')
+      ).rejects.toThrow(PermissionError);
+
+      await expect(
+        sessionSandbox.list('/session/other-session/working')
+      ).rejects.toThrow(PermissionError);
+    });
+
+    it('allows access to own session', async () => {
+      const { sandbox: sessionSandbox } = await createTestSandbox({
+        trustLevel: 'session',
+        sessionId: 'my-session',
+      });
+
+      // Should work - accessing own session
+      await sessionSandbox.write('/session/my-session/working/file.txt', 'content');
+      const content = await sessionSandbox.read('/session/my-session/working/file.txt');
+      expect(content).toBe('content');
+    });
   });
 
   describe('Workspace Trust Level', () => {
@@ -264,12 +320,12 @@ describe('Sandbox', () => {
     });
 
     it('validates paths correctly', () => {
-      expect(sandbox.isValidPath('/session/test/file.txt')).toBe(true);
+      expect(sandbox.isValidPath('/session/test-session/file.txt')).toBe(true);
       expect(sandbox.isValidPath('/unknown/path')).toBe(false);
     });
 
     it('gets zone for path', () => {
-      expect(sandbox.getZone('/session/test/file.txt')).toBe(Zone.SESSION);
+      expect(sandbox.getZone('/session/test-session/file.txt')).toBe(Zone.SESSION);
       expect(sandbox.getZone('/workspace/data/file.txt')).toBe(Zone.WORKSPACE);
     });
   });
@@ -362,7 +418,7 @@ describe('Sandbox', () => {
     it('checks permissions correctly', async () => {
       const { sandbox } = await createTestSandbox({ trustLevel: 'session' });
 
-      const sessionCheck = sandbox.checkPermission('read', '/session/test/file.txt');
+      const sessionCheck = sandbox.checkPermission('read', '/session/test-session/file.txt');
       expect(sessionCheck.allowed).toBe(true);
 
       const repoCheck = sandbox.checkPermission('read', '/repo/file.txt');
