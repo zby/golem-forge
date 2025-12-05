@@ -382,11 +382,72 @@ Tests: Various project structures
 
 ---
 
-## Phase 4: Git Integration (CLI)
+## Phase 4: Worker Delegation
+
+**Goal**: Enable workers to call other workers with dynamic instructions.
+
+### 4.1 Worker Call Tool
+**Stories**: 4.1 | **Est. Complexity**: Medium
+
+```
+Scope:
+- call_worker tool implementation
+- Pass input text and optional dynamic instructions
+- Caller's model inherited by callee (validated against compatible_models)
+- Attachment passing: caller specifies sandbox file paths as attachments
+- Return worker response as tool result
+
+Tool Schema:
+  call_worker:
+    worker: string       # Worker name or relative path (e.g., "analyzer.worker")
+    input: string        # Input text for the worker
+    instructions?: string  # Optional dynamic instructions (extend base)
+    attachments?: string[] # Sandbox file paths to attach (e.g., ["input/doc.pdf"])
+
+Deliverable: src/tools/worker-call.ts
+Tests: Worker delegation tests with ReplayClient
+```
+
+**Success Criteria**:
+- [ ] Parent worker can call child workers by name/path
+- [ ] Dynamic instructions override/extend child's base instructions
+- [ ] Model inheritance with compatibility validation
+- [ ] Attachments read from caller's sandbox and passed to child
+- [ ] Child response returned to parent
+
+### 4.2 Worker Registry Integration
+**Stories**: 4.3 | **Est. Complexity**: Low
+
+```
+Scope:
+- Resolve worker paths relative to caller's directory
+- Support both name-based and path-based lookups
+- Cache parsed worker definitions
+
+Deliverable: Updates to src/worker/registry.ts
+Tests: Registry resolution tests
+```
+
+### 4.3 Nested Approval Handling
+**Stories**: 4.2 | **Est. Complexity**: Medium
+
+```
+Scope:
+- Same approval callback propagates to child workers
+- Approval memory shared across delegation chain
+- Clear context in approval prompts (show delegation path)
+
+Deliverable: Updates to src/runtime/worker.ts
+Tests: Nested approval flow tests
+```
+
+---
+
+## Phase 5: Git Integration (CLI)
 
 **Goal**: Stage and commit workflow for CLI.
 
-### 4.1 Staging System
+### 5.1 Staging System
 **Stories**: 1.3, 2.4 | **Est. Complexity**: Medium
 
 ```
@@ -399,7 +460,7 @@ Deliverable: src/sandbox/staging.ts
 Tests: Staging workflow tests
 ```
 
-### 4.2 Git Commit Integration
+### 5.2 Git Commit Integration
 **Stories**: 1.3 | **Est. Complexity**: Medium
 
 ```
@@ -414,11 +475,11 @@ Tests: Git operation tests
 
 ---
 
-## Phase 5: Browser Extension
+## Phase 6: Browser Extension
 
 **Goal**: Port core to browser with OPFS backend.
 
-### 5.1 Browser Backend
+### 6.1 Browser Backend
 **Stories**: 1.1, 3.2 | **Est. Complexity**: High
 
 ```
@@ -432,7 +493,7 @@ Deliverable: src/sandbox/backends/browser.ts
 Tests: Browser-based tests (Playwright?)
 ```
 
-### 5.2 GitHub Sync (Octokit)
+### 6.2 GitHub Sync (Octokit)
 **Stories**: 1.3, 3.1, 3.3 | **Est. Complexity**: High
 
 ```
@@ -446,7 +507,7 @@ Deliverable: src/browser/git-sync.ts
 Tests: Mock Octokit tests
 ```
 
-### 5.3 Browser Approval UI
+### 6.3 Browser Approval UI
 **Stories**: 2.1, 4.2 | **Est. Complexity**: Medium
 
 ```
@@ -460,7 +521,7 @@ Deliverable: extension/popup/
 Tests: UI tests
 ```
 
-### 5.4 Extension Scaffold
+### 6.4 Extension Scaffold
 **Stories**: Various | **Est. Complexity**: Medium
 
 ```
@@ -474,7 +535,7 @@ Deliverable: extension/
 Tests: Extension load tests
 ```
 
-### 5.5 Content Integration
+### 6.5 Content Integration
 **Stories**: 5.1, 5.2, 5.3 | **Est. Complexity**: Medium
 
 ```
@@ -490,20 +551,9 @@ Tests: Page analysis tests
 
 ---
 
-## Phase 6: Polish & Features
+## Phase 7: Polish & Features
 
-### 6.1 Worker Delegation
-**Stories**: 4.1 | **Est. Complexity**: Medium
-
-```
-Scope:
-- worker_call tool
-- Allowlist enforcement
-- Attachment passing
-- Nested approval handling
-```
-
-### 6.2 Shell Toolset (CLI only)
+### 7.1 Shell Toolset (CLI only)
 **Stories**: N/A | **Est. Complexity**: Medium
 
 ```
@@ -513,7 +563,7 @@ Scope:
 - Output capture
 ```
 
-### 6.3 Audit & Reporting
+### 7.2 Audit & Reporting
 **Stories**: 6.1, 6.2, 6.3 | **Est. Complexity**: Low
 
 ```
@@ -545,6 +595,7 @@ golem-forge/
 │   │       └── memory.ts
 │   ├── tools/              # Tool definitions
 │   │   ├── filesystem.ts
+│   │   ├── worker-call.ts  # Worker delegation
 │   │   └── shell.ts        # CLI only
 │   ├── worker/             # Worker system
 │   │   ├── parser.ts
@@ -570,26 +621,28 @@ golem-forge/
 
 ## MVP Definition
 
-**CLI MVP** = Phase 1-3 complete
+**CLI MVP** = Phase 1-4 complete
 
 Can:
 - [x] Run workers with filesystem tools
 - [x] Enforce sandbox permissions by trust level
 - [x] Interactive approval with memory
-- [x] Stage files for commit
+- [x] Model resolution with compatible_models validation
+- [ ] Worker delegation (call_worker tool)
 
 Cannot:
-- [ ] Push to GitHub (Phase 4)
-- [ ] Worker delegation
-- [ ] Shell commands
-- [ ] Browser execution
+- [ ] Stage files for commit (Phase 5)
+- [ ] Push to GitHub (Phase 5)
+- [ ] Shell commands (Phase 7)
+- [ ] Browser execution (Phase 6)
 
-**Full MVP** = Phase 1-5 complete
+**Full MVP** = Phase 1-6 complete
 
 Adds:
-- [x] Browser extension with OPFS
-- [x] GitHub sync
-- [x] Web content analysis
+- [ ] Git staging and commit
+- [ ] Browser extension with OPFS
+- [ ] GitHub sync
+- [ ] Web content analysis
 
 ---
 
@@ -609,7 +662,7 @@ Adds:
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| OPFS API limitations | Medium | High | Test early in Phase 5.1 |
+| OPFS API limitations | Medium | High | Test early in Phase 6.1 |
 | Lemmy API changes | Low | Medium | Pin version, abstract |
 | Extension review rejection | Medium | Medium | Follow Manifest V3 best practices |
 | GitHub API rate limits | Low | Low | Implement caching, retry |

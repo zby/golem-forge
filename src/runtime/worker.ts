@@ -73,6 +73,10 @@ export interface WorkerRuntimeOptions {
   useTestSandbox?: boolean;
   /** Maximum tool call iterations */
   maxIterations?: number;
+  /** Inject a client directly (for testing with ReplayClient) */
+  client?: ChatClient;
+  /** Inject a context directly (for testing) */
+  context?: Context;
 }
 
 /**
@@ -250,17 +254,26 @@ export class WorkerRuntime {
     this.worker = options.worker;
     this.options = options;
 
-    // Create context
-    this.context = new Context();
+    // Use injected context or create new one
+    this.context = options.context ?? new Context();
     this.context.setSystemMessage(this.worker.instructions);
 
-    // Resolve model using priority order with compatibility validation
-    this.modelResolution = resolveModel(
-      this.worker,
-      options.model,
-      options.callerModel
-    );
-    this.client = createClient(this.modelResolution.model);
+    // Use injected client or create from model resolution
+    if (options.client) {
+      this.client = options.client;
+      this.modelResolution = {
+        model: `${options.client.getProvider()}:${options.client.getModel()}`,
+        source: "worker",
+      };
+    } else {
+      // Resolve model using priority order with compatibility validation
+      this.modelResolution = resolveModel(
+        this.worker,
+        options.model,
+        options.callerModel
+      );
+      this.client = createClient(this.modelResolution.model);
+    }
 
     // Create approval controller
     this.approvalController = new ApprovalController({

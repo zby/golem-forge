@@ -13,21 +13,26 @@ A multi-worker document analysis system demonstrating:
 │                    (index.worker)                            │
 │                                                              │
 │  1. List PDFs in input/                                      │
-│  2. Read PDF and classify document type                      │
-│  3. Create output directory (company name, paper title, etc) │
-│  4. Call analyzer with PDF content + dynamic instructions    │
-│  5. Save returned analysis to output/                        │
+│  2. Classify document type                                   │
+│  3. Call analyzer with:                                      │
+│     - PDF file as attachment                                 │
+│     - Type-specific instructions                             │
+│  4. Save returned analysis to output/{name}/analysis.md     │
 │                                                              │
 │  [Has sandbox: input/ (ro), output/ (rw)]                   │
 └─────────────────────┬───────────────────────────────────────┘
-                      │ call_worker (PDF content + instructions)
+                      │ call_worker(
+                      │   worker: "analyzer.worker",
+                      │   attachments: ["input/doc.pdf"],
+                      │   instructions: "Focus on..."
+                      │ )
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                     pdf_analyzer                             │
 │                    (analyzer.worker)                         │
 │                                                              │
-│  Receives: PDF content + type-specific instructions          │
-│  Returns: Markdown analysis (no file access)                 │
+│  Receives: PDF attachment + type-specific instructions       │
+│  Returns: Markdown analysis (~100 words)                     │
 │                                                              │
 │  [No sandbox - pure analysis, no I/O]                       │
 └─────────────────────────────────────────────────────────────┘
