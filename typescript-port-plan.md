@@ -1,6 +1,18 @@
 # llm-do TypeScript Port Plan
 
-## Overview
+> **DEPRECATED**: This plan has been superseded by [docs/implementation-plan.md](./docs/implementation-plan.md).
+>
+> Key changes in the new plan:
+> - Incorporates OPFS + GitHub sync architecture (no native messaging)
+> - Unified sandbox design with trust levels and zones
+> - User stories for validation
+> - Clearer phase gates
+>
+> This file is kept for historical reference.
+
+---
+
+## Overview (Historical)
 
 Port llm-do to TypeScript using [lemmy](https://github.com/badlogic/lemmy) as the LLM abstraction layer. This plan is structured as a series of experiments, each validating that a core abstraction ports cleanly to TypeScript.
 
