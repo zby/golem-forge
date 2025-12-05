@@ -86,9 +86,8 @@ export function createCLIApprovalCallback(options: CLIApprovalOptions = {}): App
       console.log("APPROVAL REQUEST");
       console.log("─".repeat(60));
 
-      if (showTrustLevel && "securityContext" in request) {
-        const ctx = request as ApprovalRequest & { securityContext?: { trustLevel?: string } };
-        const trustLevel = ctx.securityContext?.trustLevel || "session";
+      if (showTrustLevel && request.securityContext?.trustLevel) {
+        const trustLevel = request.securityContext.trustLevel;
         console.log(`Trust: ${TRUST_INDICATORS[trustLevel] || trustLevel}`);
       }
 

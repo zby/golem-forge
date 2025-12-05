@@ -154,6 +154,6 @@ export interface BackendConfig {
   projectRoot?: string;
   sandboxDir?: string;
   // Browser-specific (FileSystemDirectoryHandle is a browser-only API)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  opfsRoot?: any;
+  // Using unknown since this type only exists in browser environments
+  opfsRoot?: unknown;
 }

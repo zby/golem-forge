@@ -71,6 +71,14 @@ export class ApprovalResult {
  * Created when a tool call needs approval.
  * Passed to the approval callback for user decision.
  */
+/**
+ * Security context for approval requests.
+ */
+export interface SecurityContext {
+  /** Trust level for this operation */
+  trustLevel?: "untrusted" | "session" | "workspace" | "full";
+}
+
 export interface ApprovalRequest {
   /** Name of the tool requesting approval */
   toolName: string;
@@ -78,6 +86,8 @@ export interface ApprovalRequest {
   toolArgs: Record<string, unknown>;
   /** Human-readable description of what the tool wants to do */
   description: string;
+  /** Optional security context for display purposes */
+  securityContext?: SecurityContext;
 }
 
 /**

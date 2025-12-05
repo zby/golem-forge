@@ -7,8 +7,23 @@
 import { z } from 'zod';
 import { defineTool, type ToolDefinition } from '@mariozechner/lemmy';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyTool = ToolDefinition<any, any>;
+/**
+ * Base type for filesystem tools.
+ * Each tool has a specific schema, but we need a common type for collections.
+ * Using a mapped type that preserves the structure while allowing variance.
+ */
+type BaseTool = ToolDefinition<Record<string, unknown>, unknown>;
+
+/**
+ * Cast a specific tool to the base tool type for storage in collections.
+ * This is safe because tools are only executed via the lemmy runtime which
+ * validates arguments against the schema before calling execute.
+ */
+function asBaseTool<T extends Record<string, unknown>, R>(
+  tool: ToolDefinition<T, R>
+): BaseTool {
+  return tool as unknown as BaseTool;
+}
 import {
   Sandbox,
   PermissionError,
@@ -34,8 +49,8 @@ export interface FilesystemToolResult {
 /**
  * Create a read_file tool.
  */
-export function createReadFileTool(sandbox: Sandbox): AnyTool {
-  return defineTool({
+export function createReadFileTool(sandbox: Sandbox): BaseTool {
+  return asBaseTool(defineTool({
     name: 'read_file',
     description: 'Read the contents of a file from the sandbox filesystem',
     schema: z.object({
@@ -54,14 +69,14 @@ export function createReadFileTool(sandbox: Sandbox): AnyTool {
         return handleError(error, path);
       }
     },
-  });
+  }));
 }
 
 /**
  * Create a write_file tool.
  */
-export function createWriteFileTool(sandbox: Sandbox): AnyTool {
-  return defineTool({
+export function createWriteFileTool(sandbox: Sandbox): BaseTool {
+  return asBaseTool(defineTool({
     name: 'write_file',
     description: 'Write content to a file in the sandbox filesystem',
     schema: z.object({
@@ -80,14 +95,14 @@ export function createWriteFileTool(sandbox: Sandbox): AnyTool {
         return handleError(error, path);
       }
     },
-  });
+  }));
 }
 
 /**
  * Create a list_files tool.
  */
-export function createListFilesTool(sandbox: Sandbox): AnyTool {
-  return defineTool({
+export function createListFilesTool(sandbox: Sandbox): BaseTool {
+  return asBaseTool(defineTool({
     name: 'list_files',
     description: 'List files and directories in a sandbox directory',
     schema: z.object({
@@ -106,14 +121,14 @@ export function createListFilesTool(sandbox: Sandbox): AnyTool {
         return handleError(error, path);
       }
     },
-  });
+  }));
 }
 
 /**
  * Create a delete_file tool.
  */
-export function createDeleteFileTool(sandbox: Sandbox): AnyTool {
-  return defineTool({
+export function createDeleteFileTool(sandbox: Sandbox): BaseTool {
+  return asBaseTool(defineTool({
     name: 'delete_file',
     description: 'Delete a file from the sandbox filesystem',
     schema: z.object({
@@ -131,14 +146,14 @@ export function createDeleteFileTool(sandbox: Sandbox): AnyTool {
         return handleError(error, path);
       }
     },
-  });
+  }));
 }
 
 /**
  * Create a stage_for_commit tool.
  */
-export function createStageForCommitTool(sandbox: Sandbox): AnyTool {
-  return defineTool({
+export function createStageForCommitTool(sandbox: Sandbox): BaseTool {
+  return asBaseTool(defineTool({
     name: 'stage_for_commit',
     description: 'Stage files for committing to the repository. Files are staged but not committed until user approves.',
     schema: z.object({
@@ -168,14 +183,14 @@ export function createStageForCommitTool(sandbox: Sandbox): AnyTool {
         return handleError(error);
       }
     },
-  });
+  }));
 }
 
 /**
  * Create a file_exists tool.
  */
-export function createFileExistsTool(sandbox: Sandbox): AnyTool {
-  return defineTool({
+export function createFileExistsTool(sandbox: Sandbox): BaseTool {
+  return asBaseTool(defineTool({
     name: 'file_exists',
     description: 'Check if a file or directory exists in the sandbox',
     schema: z.object({
@@ -193,14 +208,14 @@ export function createFileExistsTool(sandbox: Sandbox): AnyTool {
         return handleError(error, path);
       }
     },
-  });
+  }));
 }
 
 /**
  * Create a file_info tool.
  */
-export function createFileInfoTool(sandbox: Sandbox): AnyTool {
-  return defineTool({
+export function createFileInfoTool(sandbox: Sandbox): BaseTool {
+  return asBaseTool(defineTool({
     name: 'file_info',
     description: 'Get metadata about a file (size, dates, type)',
     schema: z.object({
@@ -222,7 +237,7 @@ export function createFileInfoTool(sandbox: Sandbox): AnyTool {
         return handleError(error, path);
       }
     },
-  });
+  }));
 }
 
 /**
@@ -269,7 +284,7 @@ function handleError(error: unknown, path?: string): FilesystemToolResult {
  */
 export class FilesystemToolset implements SupportsNeedsApproval<unknown>, SupportsApprovalDescription<unknown> {
   private sandbox: Sandbox;
-  private tools: AnyTool[];
+  private tools: BaseTool[];
 
   constructor(sandbox: Sandbox) {
     this.sandbox = sandbox;
@@ -287,7 +302,7 @@ export class FilesystemToolset implements SupportsNeedsApproval<unknown>, Suppor
   /**
    * Get all filesystem tools.
    */
-  getTools(): AnyTool[] {
+  getTools(): BaseTool[] {
     return this.tools;
   }
 
@@ -386,6 +401,6 @@ export class FilesystemToolset implements SupportsNeedsApproval<unknown>, Suppor
  * Create all filesystem tools for a sandbox.
  * Convenience function that returns individual tools.
  */
-export function createFilesystemTools(sandbox: Sandbox): AnyTool[] {
+export function createFilesystemTools(sandbox: Sandbox): BaseTool[] {
   return new FilesystemToolset(sandbox).getTools();
 }
