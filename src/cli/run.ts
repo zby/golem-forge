@@ -222,8 +222,21 @@ async function executeWorker(
 }
 
 // Run CLI if this is the main module
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
-if (isMainModule) {
+// Handle symlinks by resolving the real path
+import { realpathSync } from "fs";
+import { fileURLToPath } from "url";
+
+function isMainModule(): boolean {
+  try {
+    const currentFile = fileURLToPath(import.meta.url);
+    const entryFile = realpathSync(process.argv[1]);
+    return currentFile === entryFile;
+  } catch {
+    return false;
+  }
+}
+
+if (isMainModule()) {
   runCLI().catch((err) => {
     console.error(err);
     process.exit(1);
