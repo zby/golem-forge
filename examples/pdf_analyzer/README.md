@@ -13,21 +13,23 @@ A multi-worker document analysis system demonstrating:
 │                    (index.worker)                            │
 │                                                              │
 │  1. List PDFs in input/                                      │
-│  2. Classify each document                                   │
-│  3. Create output directory                                  │
-│  4. Call analyzer with dynamic instructions                  │
-│  5. Save analysis to output/                                 │
+│  2. Read PDF and classify document type                      │
+│  3. Create output directory (company name, paper title, etc) │
+│  4. Call analyzer with PDF content + dynamic instructions    │
+│  5. Save returned analysis to output/                        │
+│                                                              │
+│  [Has sandbox: input/ (ro), output/ (rw)]                   │
 └─────────────────────┬───────────────────────────────────────┘
-                      │ call_worker
+                      │ call_worker (PDF content + instructions)
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                     pdf_analyzer                             │
 │                    (analyzer.worker)                         │
 │                                                              │
-│  Receives dynamic instructions based on document type:       │
-│  - Pitch decks: company, problem, solution, market...       │
-│  - Research: abstract, methodology, findings...              │
-│  - Reports: executive summary, metrics, conclusions...       │
+│  Receives: PDF content + type-specific instructions          │
+│  Returns: Markdown analysis (no file access)                 │
+│                                                              │
+│  [No sandbox - pure analysis, no I/O]                       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
