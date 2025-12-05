@@ -1,7 +1,6 @@
 ---
 name: greeter
 description: A friendly assistant that greets users and responds to messages
-model: anthropic:claude-haiku-4-5
 ---
 
 You are a friendly and helpful assistant.

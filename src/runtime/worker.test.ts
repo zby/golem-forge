@@ -31,7 +31,7 @@ vi.mock("@mariozechner/lemmy", async (importOriginal) => {
 });
 
 // Import after mock is set up
-import { WorkerRuntime, createWorkerRuntime } from "./worker.js";
+import { WorkerRuntime, createWorkerRuntime, matchModelPattern } from "./worker.js";
 
 describe("WorkerRuntime", () => {
   const simpleWorker: WorkerDefinition = {
@@ -354,5 +354,157 @@ describe("WorkerRuntime", () => {
 
       expect(runtime.getSandbox()).toBeDefined();
     });
+  });
+
+  describe("model resolution", () => {
+    it("uses worker model unconditionally when set", () => {
+      const workerWithModel: WorkerDefinition = {
+        ...simpleWorker,
+        model: "anthropic:claude-sonnet-4",
+      };
+
+      const runtime = new WorkerRuntime({
+        worker: workerWithModel,
+        model: "openai:gpt-4", // CLI model should be ignored
+      });
+
+      const resolution = runtime.getModelResolution();
+      expect(resolution.model).toBe("anthropic:claude-sonnet-4");
+      expect(resolution.source).toBe("worker");
+    });
+
+    it("uses CLI model when worker has no model", () => {
+      const runtime = new WorkerRuntime({
+        worker: simpleWorker,
+        model: "openai:gpt-4",
+      });
+
+      const resolution = runtime.getModelResolution();
+      expect(resolution.model).toBe("openai:gpt-4");
+      expect(resolution.source).toBe("cli");
+    });
+
+    it("uses caller model when no worker or CLI model", () => {
+      const runtime = new WorkerRuntime({
+        worker: simpleWorker,
+        callerModel: "anthropic:claude-sonnet-4",
+      });
+
+      const resolution = runtime.getModelResolution();
+      expect(resolution.model).toBe("anthropic:claude-sonnet-4");
+      expect(resolution.source).toBe("caller");
+    });
+
+    it("uses default model when none specified", () => {
+      const runtime = new WorkerRuntime({
+        worker: simpleWorker,
+      });
+
+      const resolution = runtime.getModelResolution();
+      expect(resolution.model).toBe("anthropic:claude-haiku-4-5");
+      expect(resolution.source).toBe("default");
+    });
+
+    it("validates CLI model against compatible_models", () => {
+      const workerWithCompatibility: WorkerDefinition = {
+        ...simpleWorker,
+        compatible_models: ["anthropic:*"],
+      };
+
+      expect(() => {
+        new WorkerRuntime({
+          worker: workerWithCompatibility,
+          model: "openai:gpt-4",
+        });
+      }).toThrow('Model "openai:gpt-4" is not compatible');
+    });
+
+    it("allows compatible CLI model", () => {
+      const workerWithCompatibility: WorkerDefinition = {
+        ...simpleWorker,
+        compatible_models: ["anthropic:*"],
+      };
+
+      const runtime = new WorkerRuntime({
+        worker: workerWithCompatibility,
+        model: "anthropic:claude-sonnet-4",
+      });
+
+      expect(runtime.getModelResolution().model).toBe("anthropic:claude-sonnet-4");
+    });
+
+    it("validates caller model against compatible_models", () => {
+      const workerWithCompatibility: WorkerDefinition = {
+        ...simpleWorker,
+        compatible_models: ["anthropic:*", "google:*"],
+      };
+
+      expect(() => {
+        new WorkerRuntime({
+          worker: workerWithCompatibility,
+          callerModel: "openai:gpt-4",
+        });
+      }).toThrow('Caller model "openai:gpt-4" is not compatible');
+    });
+
+    it("rejects empty compatible_models array", () => {
+      const workerWithEmptyCompat: WorkerDefinition = {
+        ...simpleWorker,
+        compatible_models: [],
+      };
+
+      expect(() => {
+        new WorkerRuntime({
+          worker: workerWithEmptyCompat,
+        });
+      }).toThrow("empty compatible_models");
+    });
+
+    it("requires compatible model when default is incompatible", () => {
+      const workerRequiringOpenai: WorkerDefinition = {
+        ...simpleWorker,
+        compatible_models: ["openai:*"],
+      };
+
+      expect(() => {
+        new WorkerRuntime({
+          worker: workerRequiringOpenai,
+        });
+      }).toThrow("default \"anthropic:claude-haiku-4-5\" is not compatible");
+    });
+  });
+});
+
+describe("matchModelPattern", () => {
+  it("matches exact model names", () => {
+    expect(matchModelPattern("anthropic:claude-sonnet-4", "anthropic:claude-sonnet-4")).toBe(true);
+    expect(matchModelPattern("anthropic:claude-sonnet-4", "anthropic:claude-haiku")).toBe(false);
+  });
+
+  it("matches wildcard patterns", () => {
+    expect(matchModelPattern("anthropic:claude-sonnet-4", "*")).toBe(true);
+    expect(matchModelPattern("openai:gpt-4", "*")).toBe(true);
+  });
+
+  it("matches provider wildcards", () => {
+    expect(matchModelPattern("anthropic:claude-sonnet-4", "anthropic:*")).toBe(true);
+    expect(matchModelPattern("anthropic:claude-haiku-4-5", "anthropic:*")).toBe(true);
+    expect(matchModelPattern("openai:gpt-4", "anthropic:*")).toBe(false);
+  });
+
+  it("matches suffix wildcards", () => {
+    expect(matchModelPattern("anthropic:claude-haiku-4-5", "anthropic:claude-haiku-*")).toBe(true);
+    expect(matchModelPattern("anthropic:claude-sonnet-4", "anthropic:claude-haiku-*")).toBe(false);
+  });
+
+  it("matches multiple wildcards", () => {
+    expect(matchModelPattern("anthropic:claude-3-5-sonnet-20241022", "*:*sonnet*")).toBe(true);
+    expect(matchModelPattern("openai:gpt-4o-mini", "*:*gpt*")).toBe(true);
+  });
+
+  it("escapes regex special characters", () => {
+    // Dots in model names should be matched literally
+    expect(matchModelPattern("openai:gpt-4.5", "openai:gpt-4.5")).toBe(true);
+    expect(matchModelPattern("openai:gpt-4x5", "openai:gpt-4.5")).toBe(false);
   });
 });

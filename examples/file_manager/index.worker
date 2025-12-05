@@ -1,7 +1,6 @@
 ---
 name: file_manager
 description: Manage files in a sandboxed workspace directory
-model: anthropic:claude-haiku-4-5
 toolsets:
   filesystem: {}
 ---

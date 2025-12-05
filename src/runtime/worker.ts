@@ -57,8 +57,10 @@ export interface WorkerResult {
 export interface WorkerRuntimeOptions {
   /** The worker definition to execute */
   worker: WorkerDefinition;
-  /** Model to use (overrides worker default) */
+  /** Model from CLI --model flag (validated against compatible_models) */
   model?: string;
+  /** Caller's model when delegating from another worker (validated against compatible_models) */
+  callerModel?: string;
   /** Approval mode */
   approvalMode?: ApprovalMode;
   /** Approval callback for interactive mode */
@@ -83,6 +85,117 @@ function parseModelId(modelId: string): { provider: string; model: string } {
     throw new Error(`Invalid model ID format: ${modelId}. Expected format: provider:model`);
   }
   return { provider: parts[0], model: parts[1] };
+}
+
+/**
+ * Match a model ID against a glob pattern.
+ * Supports wildcards: "*" matches any sequence of characters.
+ *
+ * Examples:
+ *   - "*" matches anything
+ *   - "anthropic:*" matches any Anthropic model
+ *   - "anthropic:claude-haiku-*" matches Haiku variants
+ */
+export function matchModelPattern(modelId: string, pattern: string): boolean {
+  // Convert glob pattern to regex
+  const regexPattern = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&") // Escape regex special chars except *
+    .replace(/\*/g, ".*"); // Convert * to .*
+  const regex = new RegExp(`^${regexPattern}$`);
+  return regex.test(modelId);
+}
+
+/**
+ * Check if a model is compatible with a worker's compatible_models list.
+ *
+ * @param modelId - The model to check
+ * @param compatibleModels - List of patterns, or undefined for "any model"
+ * @returns true if compatible, false otherwise
+ */
+function isModelCompatible(modelId: string, compatibleModels: string[] | undefined): boolean {
+  // If not set, any model is compatible
+  if (compatibleModels === undefined) {
+    return true;
+  }
+
+  // Empty array is invalid config - should have been caught by validation
+  if (compatibleModels.length === 0) {
+    return false;
+  }
+
+  // Check if model matches any pattern
+  return compatibleModels.some((pattern) => matchModelPattern(modelId, pattern));
+}
+
+/**
+ * Model resolution result.
+ */
+export interface ModelResolution {
+  model: string;
+  source: "worker" | "cli" | "caller" | "default";
+}
+
+/**
+ * Resolve the model to use based on priority order.
+ *
+ * Resolution order:
+ *   1. Worker's `model` field (if set) → wins unconditionally
+ *   2. CLI `--model` flag → validated against compatible_models
+ *   3. Caller's model (inherited during delegation) → validated against compatible_models
+ *   4. Default model → validated against compatible_models
+ *   5. Error if none available
+ */
+function resolveModel(
+  worker: WorkerDefinition,
+  cliModel: string | undefined,
+  callerModel: string | undefined
+): ModelResolution {
+  const compatibleModels = worker.compatible_models;
+
+  // Validate compatible_models config
+  if (compatibleModels !== undefined && compatibleModels.length === 0) {
+    throw new Error(`Worker "${worker.name}" has empty compatible_models - this is invalid configuration`);
+  }
+
+  // 1. Worker's model wins unconditionally
+  if (worker.model) {
+    return { model: worker.model, source: "worker" };
+  }
+
+  // 2. CLI model - validated against compatible_models
+  if (cliModel) {
+    if (!isModelCompatible(cliModel, compatibleModels)) {
+      const patterns = compatibleModels?.join(", ") || "any";
+      throw new Error(
+        `Model "${cliModel}" is not compatible with worker "${worker.name}". ` +
+        `Compatible patterns: ${patterns}`
+      );
+    }
+    return { model: cliModel, source: "cli" };
+  }
+
+  // 3. Caller's model - validated against compatible_models
+  if (callerModel) {
+    if (!isModelCompatible(callerModel, compatibleModels)) {
+      const patterns = compatibleModels?.join(", ") || "any";
+      throw new Error(
+        `Caller model "${callerModel}" is not compatible with worker "${worker.name}". ` +
+        `Compatible patterns: ${patterns}`
+      );
+    }
+    return { model: callerModel, source: "caller" };
+  }
+
+  // 4. Default model - validated against compatible_models
+  const defaultModel = "anthropic:claude-haiku-4-5";
+  if (!isModelCompatible(defaultModel, compatibleModels)) {
+    const patterns = compatibleModels?.join(", ") || "any";
+    throw new Error(
+      `No model specified and default "${defaultModel}" is not compatible with worker "${worker.name}". ` +
+      `Compatible patterns: ${patterns}. Please specify a model with --model.`
+    );
+  }
+  return { model: defaultModel, source: "default" };
 }
 
 /**
@@ -131,6 +244,7 @@ export class WorkerRuntime {
   private executor!: ApprovedExecutor; // Initialized in initialize()
   private sandbox?: Sandbox;
   private toolsets: ApprovalToolset[] = [];
+  private modelResolution: ModelResolution;
 
   constructor(options: WorkerRuntimeOptions) {
     this.worker = options.worker;
@@ -140,15 +254,26 @@ export class WorkerRuntime {
     this.context = new Context();
     this.context.setSystemMessage(this.worker.instructions);
 
-    // Create client
-    const model = options.model || this.worker.model || "anthropic:claude-haiku-4-5";
-    this.client = createClient(model);
+    // Resolve model using priority order with compatibility validation
+    this.modelResolution = resolveModel(
+      this.worker,
+      options.model,
+      options.callerModel
+    );
+    this.client = createClient(this.modelResolution.model);
 
     // Create approval controller
     this.approvalController = new ApprovalController({
       mode: options.approvalMode || "approve_all",
       approvalCallback: options.approvalCallback,
     });
+  }
+
+  /**
+   * Get the resolved model and its source.
+   */
+  getModelResolution(): ModelResolution {
+    return this.modelResolution;
   }
 
   /**

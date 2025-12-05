@@ -1,7 +1,6 @@
 ---
 name: note_taker
 description: Save timestamped notes to a log file with write approval
-model: anthropic:claude-haiku-4-5
 toolsets:
   filesystem: {}
 ---
