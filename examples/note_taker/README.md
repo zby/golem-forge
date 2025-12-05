@@ -12,16 +12,18 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 ## Usage
 
 ```bash
-cd examples/note_taker
+# Run from the examples directory
+golem-forge note_taker "Remember to review the PR tomorrow"
 
-# Add a note (will prompt for approval)
-npx golem-forge main "Remember to review the PR tomorrow"
+# Or from within the worker directory
+cd examples/note_taker
+golem-forge . "Remember to review the PR tomorrow"
 
 # Add another note
-npx golem-forge main "Meeting with team at 3pm"
+golem-forge note_taker "Meeting with team at 3pm"
 
 # Read all notes
-npx golem-forge main "Show me all my notes"
+golem-forge note_taker "Show me all my notes"
 ```
 
 ## Approval Flow
@@ -34,9 +36,9 @@ APPROVAL REQUEST
 ──────────────────────────────────────────────────────
 Trust: [Session]
 Tool: write_file
-Description: Write 45 bytes to: /session/.../notes/activity.log
+Description: Write 45 bytes to: notes/activity.log
 Arguments:
-  path: /session/.../notes/activity.log
+  path: notes/activity.log
   content: 2024-01-15 14:30 - Remember to review the PR tomorrow
 ──────────────────────────────────────────────────────
 Approve? [y]es / [n]o / [r]emember:
@@ -49,7 +51,7 @@ Options:
 
 ## Worker Definition
 
-See `main.worker`:
+See `index.worker`:
 
 ```yaml
 name: note_taker

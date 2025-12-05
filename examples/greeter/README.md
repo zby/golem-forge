@@ -12,18 +12,20 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 ## Usage
 
 ```bash
+# Run from the examples directory
+golem-forge greeter "Hello, how are you today?"
+
+# Or from within the worker directory
 cd examples/greeter
+golem-forge . "Hello, how are you today?"
 
-# Run the worker with a message
-npx golem-forge main "Hello, how are you today?"
-
-# Or with a different model
-npx golem-forge main "Tell me a joke" --model openai:gpt-4o-mini
+# With a different model
+golem-forge greeter "Tell me a joke" --model openai:gpt-4o-mini
 ```
 
 ## Worker Definition
 
-See `main.worker`:
+See `index.worker`:
 
 ```yaml
 name: greeter

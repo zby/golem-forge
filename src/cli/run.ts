@@ -7,10 +7,11 @@
 
 import { Command } from "commander";
 import * as fs from "fs/promises";
+import * as path from "path";
 import { createWorkerRuntime, type WorkerRuntimeOptions } from "../runtime/index.js";
-import { WorkerRegistry } from "../worker/index.js";
+import { parseWorkerString } from "../worker/index.js";
 import { createCLIApprovalCallback } from "./approval.js";
-import { findProjectRoot, getEffectiveConfig, resolveWorkerPaths } from "./project.js";
+import { getEffectiveConfig } from "./project.js";
 import type { ApprovalMode } from "../approval/index.js";
 import type { TrustLevel } from "../sandbox/index.js";
 
@@ -30,7 +31,7 @@ interface CLIOptions {
 /**
  * Read input from various sources.
  */
-async function readInput(options: CLIOptions, args: string[]): Promise<string> {
+async function readInput(options: CLIOptions, inputArgs: string[]): Promise<string> {
   // Input from --input flag
   if (options.input) {
     return options.input;
@@ -41,9 +42,9 @@ async function readInput(options: CLIOptions, args: string[]): Promise<string> {
     return fs.readFile(options.file, "utf-8");
   }
 
-  // Input from positional arguments (after worker name)
-  if (args.length > 1) {
-    return args.slice(1).join(" ");
+  // Input from positional arguments
+  if (inputArgs.length > 0) {
+    return inputArgs.join(" ");
   }
 
   // Read from stdin if available
@@ -56,6 +57,20 @@ async function readInput(options: CLIOptions, args: string[]): Promise<string> {
   }
 
   throw new Error("No input provided. Use --input, --file, positional args, or pipe to stdin.");
+}
+
+/**
+ * Find index.worker file in directory.
+ */
+async function findIndexWorker(workerDir: string): Promise<string> {
+  const indexWorkerPath = path.join(workerDir, "index.worker");
+
+  try {
+    await fs.access(indexWorkerPath);
+    return indexWorkerPath;
+  } catch {
+    throw new Error(`No index.worker file found in ${workerDir}`);
+  }
 }
 
 /**
@@ -98,18 +113,17 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .name("golem-forge")
     .description("Run LLM workers with tool support and approval")
     .version("0.1.0")
-    .argument("<worker>", "Worker name or path to .worker file")
+    .argument("[dir]", "Worker directory containing index.worker", ".")
     .argument("[input...]", "Input text for the worker")
     .option("-m, --model <model>", "Model to use (e.g., anthropic:claude-haiku-4-5)")
     .option("-t, --trust <level>", "Trust level: untrusted, session, workspace, full", parseTrustLevel, "session")
     .option("-a, --approval <mode>", "Approval mode: interactive, approve_all, strict", parseApprovalMode, "interactive")
     .option("-i, --input <text>", "Input text (alternative to positional args)")
     .option("-f, --file <path>", "Read input from file")
-    .option("-p, --project <path>", "Project root directory")
     .option("-v, --verbose", "Verbose output")
-    .action(async (workerArg: string, inputArgs: string[], options: CLIOptions) => {
+    .action(async (dirArg: string, inputArgs: string[], options: CLIOptions) => {
       try {
-        await executeWorker(workerArg, inputArgs, options);
+        await executeWorker(dirArg, inputArgs, options);
       } catch (err) {
         console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
         process.exit(1);
@@ -123,53 +137,40 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
  * Execute a worker with the given options.
  */
 async function executeWorker(
-  workerArg: string,
+  dirArg: string,
   inputArgs: string[],
   options: CLIOptions
 ): Promise<void> {
-  // Find project root
-  const projectInfo = await findProjectRoot(options.project);
-  const projectRoot = projectInfo?.root || process.cwd();
-  const effectiveConfig = getEffectiveConfig(projectInfo?.config, {
+  // Resolve worker directory to absolute path
+  const workerDir = path.resolve(dirArg);
+
+  // Find index.worker in directory
+  const workerFilePath = await findIndexWorker(workerDir);
+
+  // Read and parse worker file
+  const workerContent = await fs.readFile(workerFilePath, "utf-8");
+  const parseResult = parseWorkerString(workerContent);
+  if (!parseResult.success) {
+    throw new Error(`Failed to parse ${workerFilePath}: ${parseResult.error}`);
+  }
+
+  const workerDefinition = parseResult.worker;
+
+  // Get effective config (CLI options override worker defaults)
+  const effectiveConfig = getEffectiveConfig(undefined, {
     model: options.model,
     trustLevel: options.trust,
     approvalMode: options.approval,
   });
 
   if (options.verbose) {
-    console.log(`Project root: ${projectRoot}`);
-    if (projectInfo) {
-      console.log(`Detected by: ${projectInfo.detectedBy}`);
-    }
-  }
-
-  // Create worker registry
-  const registry = new WorkerRegistry();
-
-  // Add project worker paths
-  const workerPaths = resolveWorkerPaths(projectRoot, effectiveConfig.workerPaths || []);
-  for (const workerPath of workerPaths) {
-    registry.addSearchPath(workerPath);
-  }
-
-  // Also add current directory
-  registry.addSearchPath(process.cwd());
-
-  // Look up worker
-  const lookupResult = await registry.get(workerArg);
-  if (!lookupResult.found) {
-    throw new Error(lookupResult.error);
-  }
-
-  const worker = lookupResult.worker;
-
-  if (options.verbose) {
-    console.log(`Worker: ${worker.definition.name}`);
-    console.log(`File: ${worker.filePath}`);
+    console.log(`Worker directory: ${workerDir}`);
+    console.log(`Worker file: ${workerFilePath}`);
+    console.log(`Worker: ${workerDefinition.name}`);
   }
 
   // Read input
-  const input = await readInput(options, [workerArg, ...inputArgs]);
+  const input = await readInput(options, inputArgs);
 
   if (options.verbose) {
     console.log(`Input: ${input.slice(0, 100)}${input.length > 100 ? "..." : ""}`);
@@ -181,14 +182,14 @@ async function executeWorker(
     ? createCLIApprovalCallback()
     : undefined;
 
-  // Create runtime options
+  // Create runtime options - use worker directory as project root
   const runtimeOptions: WorkerRuntimeOptions = {
-    worker: worker.definition,
-    model: effectiveConfig.model,
+    worker: workerDefinition,
+    model: options.model || workerDefinition.model || effectiveConfig.model,
     approvalMode: effectiveConfig.approvalMode as ApprovalMode,
     approvalCallback,
     trustLevel: effectiveConfig.trustLevel as TrustLevel,
-    projectRoot,
+    projectRoot: workerDir,
   };
 
   // Create and initialize runtime

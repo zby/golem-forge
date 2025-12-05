@@ -7,20 +7,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 
-// Mock modules - factories must not reference external variables
-vi.mock("../worker/index.js", () => {
-  const mockGet = vi.fn();
-  const mockAddSearchPath = vi.fn();
-  return {
-    WorkerRegistry: vi.fn().mockImplementation(() => ({
-      get: mockGet,
-      addSearchPath: mockAddSearchPath,
-    })),
-    __mockGet: mockGet,
-    __mockAddSearchPath: mockAddSearchPath,
-  };
-});
-
+// Mock modules
 vi.mock("../runtime/index.js", () => {
   const mockRun = vi.fn();
   const mockCreateWorkerRuntime = vi.fn().mockResolvedValue({
@@ -38,45 +25,47 @@ vi.mock("./approval.js", () => ({
 }));
 
 vi.mock("./project.js", () => {
-  const mockFindProjectRoot = vi.fn().mockResolvedValue(null);
   const mockGetEffectiveConfig = vi.fn().mockReturnValue({
+    model: "anthropic:claude-haiku-4-5",
     trustLevel: "session",
     approvalMode: "interactive",
     workerPaths: ["workers"],
   });
-  const mockResolveWorkerPaths = vi.fn().mockImplementation((root: string, paths: string[]) =>
-    paths.map((p: string) => path.join(root, p))
-  );
   return {
-    findProjectRoot: mockFindProjectRoot,
     getEffectiveConfig: mockGetEffectiveConfig,
-    resolveWorkerPaths: mockResolveWorkerPaths,
-    __mockFindProjectRoot: mockFindProjectRoot,
     __mockGetEffectiveConfig: mockGetEffectiveConfig,
   };
 });
 
 // Import after mocks
 import { runCLI } from "./run.js";
-import { findProjectRoot, getEffectiveConfig } from "./project.js";
-import * as workerModule from "../worker/index.js";
+import { getEffectiveConfig } from "./project.js";
 import * as runtimeModule from "../runtime/index.js";
 
 // Get mock references
-const mockGet = (workerModule as unknown as { __mockGet: ReturnType<typeof vi.fn> }).__mockGet;
-const mockAddSearchPath = (workerModule as unknown as { __mockAddSearchPath: ReturnType<typeof vi.fn> }).__mockAddSearchPath;
 const mockRun = (runtimeModule as unknown as { __mockRun: ReturnType<typeof vi.fn> }).__mockRun;
 const mockCreateWorkerRuntime = (runtimeModule as unknown as { __mockCreateWorkerRuntime: ReturnType<typeof vi.fn> }).__mockCreateWorkerRuntime;
 
 describe("runCLI", () => {
   let tempDir: string;
+  let workerDir: string;
   let originalCwd: string;
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
   let processExitSpy: ReturnType<typeof vi.spyOn>;
 
+  const workerContent = `---
+name: test-worker
+---
+Test instructions
+`;
+
   beforeEach(async () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "cli-run-test-"));
+    workerDir = path.join(tempDir, "test-worker");
+    await fs.mkdir(workerDir);
+    await fs.writeFile(path.join(workerDir, "index.worker"), workerContent);
+
     originalCwd = process.cwd();
     process.chdir(tempDir);
 
@@ -86,19 +75,6 @@ describe("runCLI", () => {
     consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     processExitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process.exit called");
-    });
-
-    // Default mock for successful worker lookup
-    mockGet.mockResolvedValue({
-      found: true,
-      worker: {
-        filePath: "/test/worker.worker",
-        definition: {
-          name: "test-worker",
-          instructions: "Test instructions",
-        },
-        mtime: Date.now(),
-      },
     });
 
     // Default mock for successful run
@@ -125,15 +101,29 @@ describe("runCLI", () => {
   });
 
   describe("argument parsing", () => {
-    it("should parse worker name and input from positional args", async () => {
-      await runCLI(["node", "cli", "my-worker", "hello", "world"]);
+    it("should run worker from directory with index.worker", async () => {
+      await runCLI(["node", "cli", workerDir, "--input", "hello"]);
 
-      expect(mockGet).toHaveBeenCalledWith("my-worker");
+      expect(mockRun).toHaveBeenCalledWith("hello");
+    });
+
+    it("should use current directory as default", async () => {
+      // Create index.worker in temp dir
+      await fs.writeFile(path.join(tempDir, "index.worker"), workerContent);
+
+      await runCLI(["node", "cli", "--input", "test input"]);
+
+      expect(mockRun).toHaveBeenCalledWith("test input");
+    });
+
+    it("should parse input from positional args after directory", async () => {
+      await runCLI(["node", "cli", workerDir, "hello", "world"]);
+
       expect(mockRun).toHaveBeenCalledWith("hello world");
     });
 
     it("should parse input from --input flag", async () => {
-      await runCLI(["node", "cli", "my-worker", "--input", "test input"]);
+      await runCLI(["node", "cli", workerDir, "--input", "test input"]);
 
       expect(mockRun).toHaveBeenCalledWith("test input");
     });
@@ -142,7 +132,7 @@ describe("runCLI", () => {
       const inputFile = path.join(tempDir, "input.txt");
       await fs.writeFile(inputFile, "file content here");
 
-      await runCLI(["node", "cli", "my-worker", "--file", inputFile]);
+      await runCLI(["node", "cli", workerDir, "--file", inputFile]);
 
       expect(mockRun).toHaveBeenCalledWith("file content here");
     });
@@ -151,7 +141,7 @@ describe("runCLI", () => {
       await runCLI([
         "node",
         "cli",
-        "my-worker",
+        workerDir,
         "--model",
         "openai:gpt-4o-mini",
         "--input",
@@ -168,7 +158,7 @@ describe("runCLI", () => {
       await runCLI([
         "node",
         "cli",
-        "my-worker",
+        workerDir,
         "--trust",
         "workspace",
         "--input",
@@ -185,7 +175,7 @@ describe("runCLI", () => {
       await runCLI([
         "node",
         "cli",
-        "my-worker",
+        workerDir,
         "--approval",
         "approve_all",
         "--input",
@@ -199,73 +189,39 @@ describe("runCLI", () => {
     });
   });
 
-  describe("worker lookup", () => {
-    it("should look up worker by name", async () => {
-      await runCLI(["node", "cli", "my-worker", "--input", "test"]);
+  describe("worker directory handling", () => {
+    it("should find index.worker in specified directory", async () => {
+      await runCLI(["node", "cli", workerDir, "--input", "test"]);
 
-      expect(mockGet).toHaveBeenCalledWith("my-worker");
+      expect(mockCreateWorkerRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          worker: expect.objectContaining({ name: "test-worker" }),
+          projectRoot: workerDir,
+        })
+      );
     });
 
-    it("should look up worker by file path", async () => {
-      await runCLI(["node", "cli", "/path/to/worker.worker", "--input", "test"]);
-
-      expect(mockGet).toHaveBeenCalledWith("/path/to/worker.worker");
-    });
-
-    it("should exit with error when worker not found", async () => {
-      mockGet.mockResolvedValue({
-        found: false,
-        error: "Worker 'unknown' not found",
-      });
+    it("should exit with error when directory has no index.worker", async () => {
+      const emptyDir = path.join(tempDir, "empty");
+      await fs.mkdir(emptyDir);
 
       await expect(
-        runCLI(["node", "cli", "unknown", "--input", "test"])
+        runCLI(["node", "cli", emptyDir, "--input", "test"])
       ).rejects.toThrow("process.exit called");
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Worker 'unknown' not found")
-      );
-    });
-  });
-
-  describe("project detection", () => {
-    it("should use project root from --project flag", async () => {
-      const projectDir = path.join(tempDir, "my-project");
-      await fs.mkdir(projectDir);
-
-      await runCLI([
-        "node",
-        "cli",
-        "my-worker",
-        "--project",
-        projectDir,
-        "--input",
-        "test",
-      ]);
-
-      expect(findProjectRoot).toHaveBeenCalledWith(projectDir);
-    });
-
-    it("should detect project root automatically", async () => {
-      vi.mocked(findProjectRoot).mockResolvedValue({
-        root: "/detected/project",
-        detectedBy: ".golem-forge.json",
-        config: { model: "test:model" },
-      });
-
-      await runCLI(["node", "cli", "my-worker", "--input", "test"]);
-
-      expect(findProjectRoot).toHaveBeenCalled();
-      expect(getEffectiveConfig).toHaveBeenCalledWith(
-        { model: "test:model" },
-        expect.anything()
+        expect.stringContaining("No index.worker file found")
       );
     });
 
-    it("should add worker paths to registry", async () => {
-      await runCLI(["node", "cli", "my-worker", "--input", "test"]);
+    it("should exit with error when directory does not exist", async () => {
+      await expect(
+        runCLI(["node", "cli", "/nonexistent/path", "--input", "test"])
+      ).rejects.toThrow("process.exit called");
 
-      expect(mockAddSearchPath).toHaveBeenCalled();
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("No index.worker file found")
+      );
     });
   });
 
@@ -279,7 +235,7 @@ describe("runCLI", () => {
         cost: 0.005,
       });
 
-      await runCLI(["node", "cli", "my-worker", "--input", "test"]);
+      await runCLI(["node", "cli", workerDir, "--input", "test"]);
 
       expect(consoleLogSpy).toHaveBeenCalledWith("Hello from worker");
     });
@@ -293,7 +249,7 @@ describe("runCLI", () => {
         cost: 0.0123,
       });
 
-      await runCLI(["node", "cli", "my-worker", "--verbose", "--input", "test"]);
+      await runCLI(["node", "cli", workerDir, "--verbose", "--input", "test"]);
 
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tool calls: 3"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tokens: 100 in / 50 out"));
@@ -308,7 +264,7 @@ describe("runCLI", () => {
       });
 
       await expect(
-        runCLI(["node", "cli", "my-worker", "--input", "test"])
+        runCLI(["node", "cli", workerDir, "--input", "test"])
       ).rejects.toThrow("process.exit called");
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -322,7 +278,7 @@ describe("runCLI", () => {
       await runCLI([
         "node",
         "cli",
-        "my-worker",
+        workerDir,
         "positional",
         "args",
         "--input",
@@ -339,7 +295,7 @@ describe("runCLI", () => {
       await runCLI([
         "node",
         "cli",
-        "my-worker",
+        workerDir,
         "positional",
         "--file",
         inputFile,
@@ -355,7 +311,7 @@ describe("runCLI", () => {
 
       try {
         await expect(
-          runCLI(["node", "cli", "my-worker"])
+          runCLI(["node", "cli", workerDir])
         ).rejects.toThrow("process.exit called");
 
         expect(consoleErrorSpy).toHaveBeenCalledWith(
@@ -376,7 +332,7 @@ describe("runCLI", () => {
         workerPaths: ["workers"],
       });
 
-      await runCLI(["node", "cli", "my-worker", "--input", "test"]);
+      await runCLI(["node", "cli", workerDir, "--input", "test"]);
 
       expect(mockCreateWorkerRuntime).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -392,13 +348,13 @@ describe("runCLI", () => {
   describe("option validation", () => {
     it("should reject invalid trust level", async () => {
       await expect(
-        runCLI(["node", "cli", "my-worker", "--trust", "invalid", "--input", "test"])
+        runCLI(["node", "cli", workerDir, "--trust", "invalid", "--input", "test"])
       ).rejects.toThrow("Invalid trust level: invalid");
     });
 
     it("should reject invalid approval mode", async () => {
       await expect(
-        runCLI(["node", "cli", "my-worker", "--approval", "invalid", "--input", "test"])
+        runCLI(["node", "cli", workerDir, "--approval", "invalid", "--input", "test"])
       ).rejects.toThrow("Invalid approval mode: invalid");
     });
 
@@ -407,14 +363,6 @@ describe("runCLI", () => {
 
       for (const level of validLevels) {
         vi.clearAllMocks();
-        mockGet.mockResolvedValue({
-          found: true,
-          worker: {
-            filePath: "/test/worker.worker",
-            definition: { name: "test-worker", instructions: "Test" },
-            mtime: Date.now(),
-          },
-        });
         mockRun.mockResolvedValue({
           success: true,
           response: "OK",
@@ -422,10 +370,10 @@ describe("runCLI", () => {
         });
         mockCreateWorkerRuntime.mockResolvedValue({ run: mockRun });
 
-        await runCLI(["node", "cli", "my-worker", "--trust", level, "--input", "test"]);
+        await runCLI(["node", "cli", workerDir, "--trust", level, "--input", "test"]);
 
         expect(getEffectiveConfig).toHaveBeenCalledWith(
-          expect.anything(),
+          undefined,
           expect.objectContaining({ trustLevel: level })
         );
       }
@@ -436,14 +384,6 @@ describe("runCLI", () => {
 
       for (const mode of validModes) {
         vi.clearAllMocks();
-        mockGet.mockResolvedValue({
-          found: true,
-          worker: {
-            filePath: "/test/worker.worker",
-            definition: { name: "test-worker", instructions: "Test" },
-            mtime: Date.now(),
-          },
-        });
         mockRun.mockResolvedValue({
           success: true,
           response: "OK",
@@ -451,10 +391,10 @@ describe("runCLI", () => {
         });
         mockCreateWorkerRuntime.mockResolvedValue({ run: mockRun });
 
-        await runCLI(["node", "cli", "my-worker", "--approval", mode, "--input", "test"]);
+        await runCLI(["node", "cli", workerDir, "--approval", mode, "--input", "test"]);
 
         expect(getEffectiveConfig).toHaveBeenCalledWith(
-          expect.anything(),
+          undefined,
           expect.objectContaining({ approvalMode: mode })
         );
       }
