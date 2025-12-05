@@ -11,7 +11,7 @@ Key expectations that frequently trip up automation agents. See `README.md` for 
 - `docs/notes/` - working design documents and explorations (see Notes section)
 - `typescript-port-plan.md` - implementation plan with experiments
 - `experiments/` - validation experiments (code moves to src/ after validation)
-- `lemmy/` - symlinked LLM abstraction library
+- Uses [Vercel AI SDK](https://ai-sdk.dev/) for LLM abstraction
 
 ---
 

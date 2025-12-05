@@ -164,7 +164,7 @@ See [`examples/`](examples/) for working code.
 
 ## Status
 
-**Experimental** - Built on [lemmy](https://github.com/badlogic/lemmy). APIs may change.
+**Experimental** - Built on [Vercel AI SDK](https://ai-sdk.dev/). APIs may change.
 
 **Caveats:** Sandboxes and approvals reduce risk but aren't guarantees. Prompt injection can trick LLMs into misusing granted tools. Treat these as mitigations, not proof of security.
 
