@@ -13,9 +13,9 @@ import type { ApprovalCallback, ApprovalDecision, ApprovalRequest } from "./type
  *
  * - **interactive**: Prompts user via callback (blocks until decision)
  * - **approve_all**: Auto-approves all requests (for testing)
- * - **strict**: Auto-denies all requests (for CI/production safety)
+ * - **auto_deny**: Auto-denies all requests (for CI/production safety)
  */
-export type ApprovalMode = "interactive" | "approve_all" | "strict";
+export type ApprovalMode = "interactive" | "approve_all" | "auto_deny";
 
 /**
  * Options for creating an ApprovalController.
@@ -34,7 +34,7 @@ export interface ApprovalControllerOptions {
  *
  * - **interactive**: Prompts user via callback (blocks until decision)
  * - **approve_all**: Auto-approves all requests (for testing)
- * - **strict**: Auto-denies all requests (for CI/production safety)
+ * - **auto_deny**: Auto-denies all requests (for CI/production safety)
  *
  * @example
  * ```typescript
@@ -42,7 +42,7 @@ export interface ApprovalControllerOptions {
  * const controller = new ApprovalController({ mode: "approve_all" });
  *
  * // Reject everything (for CI/production)
- * const controller = new ApprovalController({ mode: "strict" });
+ * const controller = new ApprovalController({ mode: "auto_deny" });
  *
  * // Interactive mode with custom callback
  * const controller = new ApprovalController({
@@ -96,7 +96,7 @@ export class ApprovalController {
    *
    * Handles the request based on the current mode:
    * - approve_all: Returns approved=true immediately
-   * - strict: Returns approved=false with note
+   * - auto_deny: Returns approved=false with note
    * - interactive: Checks cache, then prompts via callback
    *
    * @param request - The approval request
@@ -109,10 +109,10 @@ export class ApprovalController {
       return { approved: true, remember: "none" };
     }
 
-    if (this.mode === "strict") {
+    if (this.mode === "auto_deny") {
       return {
         approved: false,
-        note: `Strict mode: ${request.toolName} requires approval`,
+        note: `Auto-deny mode: ${request.toolName} requires approval`,
         remember: "none",
       };
     }
@@ -145,7 +145,7 @@ export class ApprovalController {
    *
    * Useful for passing to systems that expect an ApprovalCallback.
    * The returned callback delegates to requestApproval(), which handles
-   * all modes (approve_all, strict, interactive) and session caching.
+   * all modes (approve_all, auto_deny, interactive) and session caching.
    *
    * @returns An ApprovalCallback that delegates to this controller
    * @throws Error if interactive mode has no callback set (on first call)

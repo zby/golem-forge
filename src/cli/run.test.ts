@@ -156,23 +156,6 @@ Test instructions
       );
     });
 
-    it("should pass trust level option", async () => {
-      await runCLI([
-        "node",
-        "cli",
-        workerDir,
-        "--trust",
-        "workspace",
-        "--input",
-        "test",
-      ]);
-
-      expect(getEffectiveConfig).toHaveBeenCalledWith(
-        undefined,
-        expect.objectContaining({ trustLevel: "workspace" })
-      );
-    });
-
     it("should pass approval mode option", async () => {
       await runCLI([
         "node",
@@ -490,50 +473,23 @@ Instructions
       expect(mockCreateWorkerRuntime).toHaveBeenCalledWith(
         expect.objectContaining({
           worker: expect.objectContaining({ name: "test-worker" }),
-          model: "anthropic:claude-haiku-4-5",
+          configModel: "anthropic:claude-haiku-4-5",  // from project config
+          model: undefined,                           // no CLI --model flag
           approvalMode: "approve_all",
-          trustLevel: "workspace",
         })
       );
     });
   });
 
   describe("option validation", () => {
-    it("should reject invalid trust level", async () => {
-      await expect(
-        runCLI(["node", "cli", workerDir, "--trust", "invalid", "--input", "test"])
-      ).rejects.toThrow("Invalid trust level: invalid");
-    });
-
     it("should reject invalid approval mode", async () => {
       await expect(
         runCLI(["node", "cli", workerDir, "--approval", "invalid", "--input", "test"])
       ).rejects.toThrow("Invalid approval mode: invalid");
     });
 
-    it("should accept valid trust levels", async () => {
-      const validLevels = ["untrusted", "session", "workspace", "full"];
-
-      for (const level of validLevels) {
-        vi.clearAllMocks();
-        mockRun.mockResolvedValue({
-          success: true,
-          response: "OK",
-          toolCallCount: 0,
-        });
-        mockCreateWorkerRuntime.mockResolvedValue({ run: mockRun });
-
-        await runCLI(["node", "cli", workerDir, "--trust", level, "--input", "test"]);
-
-        expect(getEffectiveConfig).toHaveBeenCalledWith(
-          undefined,
-          expect.objectContaining({ trustLevel: level })
-        );
-      }
-    });
-
     it("should accept valid approval modes", async () => {
-      const validModes = ["interactive", "approve_all", "strict"];
+      const validModes = ["interactive", "approve_all", "auto_deny"];
 
       for (const mode of validModes) {
         vi.clearAllMocks();

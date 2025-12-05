@@ -26,17 +26,17 @@ describe("ApprovalController", () => {
     });
   });
 
-  describe("strict mode", () => {
+  describe("auto_deny mode", () => {
     it("auto-denies all requests", async () => {
-      const controller = new ApprovalController({ mode: "strict" });
+      const controller = new ApprovalController({ mode: "auto_deny" });
       const decision = await controller.requestApproval(testRequest);
 
       expect(decision.approved).toBe(false);
-      expect(decision.note).toContain("Strict mode");
+      expect(decision.note).toContain("Auto-deny mode");
     });
 
     it("returns callback that auto-denies", async () => {
-      const controller = new ApprovalController({ mode: "strict" });
+      const controller = new ApprovalController({ mode: "auto_deny" });
       const callback = controller.getCallback();
       const decision = await callback(testRequest);
 

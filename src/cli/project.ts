@@ -18,7 +18,7 @@ export interface ProjectConfig {
   /** Worker search paths relative to project root */
   workerPaths?: string[];
   /** Default approval mode */
-  approvalMode?: "interactive" | "approve_all" | "strict";
+  approvalMode?: "interactive" | "approve_all" | "auto_deny";
 }
 
 /**

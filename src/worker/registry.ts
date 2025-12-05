@@ -3,6 +3,10 @@
  *
  * Scans directories for .worker files, caches parsed definitions,
  * and provides lookup by name or alias.
+ *
+ * NOTE: This module uses Node.js `fs` directly and is intended for CLI usage only.
+ * It is not portable to browser or other non-Node.js environments.
+ * For portable worker loading, use the sandbox abstraction layer.
  */
 
 import * as fs from "fs/promises";
@@ -157,7 +161,7 @@ export class WorkerRegistry {
 
       // Read and parse
       const content = await fs.readFile(absolute, "utf-8");
-      const result = parseWorkerString(content);
+      const result = parseWorkerString(content, absolute);
 
       if (result.success) {
         const cachedWorker: CachedWorker = {
@@ -193,8 +197,11 @@ export class WorkerRegistry {
       const absolutePath = path.resolve(nameOrPath);
       const result = await this.loadWorker(absolutePath);
       if (result.success) {
-        // loadWorker always populates cache on success
-        return { found: true, worker: this.cache.get(absolutePath)! };
+        const cached = this.cache.get(absolutePath);
+        if (!cached) {
+          return { found: false, error: `Internal error: cache not populated after loading ${absolutePath}` };
+        }
+        return { found: true, worker: cached };
       }
       return { found: false, error: result.error };
     }
@@ -213,7 +220,11 @@ export class WorkerRegistry {
           // File changed, reload
           const result = await this.loadWorker(filePath);
           if (result.success) {
-            return { found: true, worker: this.cache.get(filePath)! };
+            const reloaded = this.cache.get(filePath);
+            if (!reloaded) {
+              return { found: false, error: `Internal error: cache not populated after loading ${filePath}` };
+            }
+            return { found: true, worker: reloaded };
           }
         } catch {
           // File removed, remove from index
@@ -229,14 +240,22 @@ export class WorkerRegistry {
       const directPath = path.join(searchPath, `${nameOrPath}.worker`);
       const directResult = await this.loadWorker(directPath);
       if (directResult.success) {
-        return { found: true, worker: this.cache.get(directPath)! };
+        const directCached = this.cache.get(directPath);
+        if (!directCached) {
+          return { found: false, error: `Internal error: cache not populated after loading ${directPath}` };
+        }
+        return { found: true, worker: directCached };
       }
 
       // Try subdirectory with same name
       const subDirPath = path.join(searchPath, nameOrPath, `${nameOrPath}.worker`);
       const subDirResult = await this.loadWorker(subDirPath);
       if (subDirResult.success) {
-        return { found: true, worker: this.cache.get(subDirPath)! };
+        const subDirCached = this.cache.get(subDirPath);
+        if (!subDirCached) {
+          return { found: false, error: `Internal error: cache not populated after loading ${subDirPath}` };
+        }
+        return { found: true, worker: subDirCached };
       }
     }
 

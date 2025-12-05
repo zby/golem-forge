@@ -78,9 +78,9 @@ describe("ApprovedExecutor", () => {
     });
   });
 
-  describe("with strict mode", () => {
+  describe("with auto_deny mode", () => {
     it("denies all tools that need approval", async () => {
-      const controller = new ApprovalController({ mode: "strict" });
+      const controller = new ApprovalController({ mode: "auto_deny" });
       const executor = new ApprovedExecutor({ executeToolFn, approvalController: controller });
 
       const toolCall: ToolCall = {
@@ -98,7 +98,7 @@ describe("ApprovedExecutor", () => {
 
   describe("with custom toolset", () => {
     it("pre-approves safe tools", async () => {
-      const controller = new ApprovalController({ mode: "strict" }); // strict, but toolset overrides
+      const controller = new ApprovalController({ mode: "auto_deny" }); // auto_deny, but toolset overrides
       const executor = new ApprovedExecutor({
         executeToolFn,
         approvalController: controller,

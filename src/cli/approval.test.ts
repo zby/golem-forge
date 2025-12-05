@@ -69,7 +69,7 @@ describe('createAutoDenyCallback', () => {
 
     expect(decision.approved).toBe(false);
     expect(decision.remember).toBe('none');
-    expect(decision.note).toBe('Auto-denied in strict mode');
+    expect(decision.note).toBe('Auto-denied in auto_deny mode');
   });
 
   it('should use custom reason when provided', async () => {

@@ -94,6 +94,9 @@ const MIME_TYPES: Record<string, string> = {
   ".json": "application/json",
 };
 
+/** Maximum attachment file size (20 MB) */
+const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
+
 /**
  * Load attachments from file paths.
  * Relative paths are resolved against the worker directory first, then the current working directory.
@@ -112,6 +115,13 @@ async function loadAttachments(filePaths: string[], workerDir: string): Promise<
 
     for (const candidate of [...new Set(candidates)]) {
       try {
+        // Check file size before reading to avoid loading huge files into memory
+        const stat = await fs.stat(candidate);
+        if (stat.size > MAX_ATTACHMENT_SIZE) {
+          throw new Error(
+            `File too large: ${stat.size} bytes (max ${MAX_ATTACHMENT_SIZE / 1024 / 1024} MB)`
+          );
+        }
         data = await fs.readFile(candidate);
         resolvedName = path.basename(candidate);
         break;
@@ -308,9 +318,11 @@ async function executeWorker(
     : undefined;
 
   // Create runtime options - use detected project root
+  // Model resolution is handled by WorkerRuntime.resolveModel() with proper priority
   const runtimeOptions: WorkerRuntimeOptions = {
     worker: workerDefinition,
-    model: options.model || workerDefinition.model || effectiveConfig.model,
+    model: options.model,              // CLI --model flag (priority 2)
+    configModel: effectiveConfig.model, // Project config default (priority 4)
     approvalMode: effectiveConfig.approvalMode as ApprovalMode,
     approvalCallback,
     projectRoot,

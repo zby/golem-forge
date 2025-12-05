@@ -221,14 +221,14 @@ describe('getEffectiveConfig', () => {
 
     const overrides: Partial<ProjectConfig> = {
       model: 'anthropic:claude-haiku-4-5',
-      approvalMode: 'strict',
+      approvalMode: 'auto_deny',
     };
 
     const config = getEffectiveConfig(projectConfig, overrides);
 
     expect(config.model).toBe('anthropic:claude-haiku-4-5'); // override
     expect(config.trustLevel).toBe('workspace'); // project
-    expect(config.approvalMode).toBe('strict'); // override
+    expect(config.approvalMode).toBe('auto_deny'); // override
   });
 
   it('should handle undefined values in overrides', () => {

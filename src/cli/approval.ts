@@ -137,7 +137,7 @@ export function createAutoApproveCallback(): ApprovalCallback {
 }
 
 /**
- * Create an auto-deny callback for strict mode.
+ * Create an auto-deny callback for auto_deny mode.
  * Useful for security-sensitive environments.
  */
 export function createAutoDenyCallback(reason?: string): ApprovalCallback {
@@ -145,7 +145,7 @@ export function createAutoDenyCallback(reason?: string): ApprovalCallback {
     return {
       approved: false,
       remember: "none",
-      note: reason || "Auto-denied in strict mode",
+      note: reason || "Auto-denied in auto_deny mode",
     };
   };
 }
