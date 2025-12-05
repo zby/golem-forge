@@ -16,6 +16,7 @@ import {
 import type { WorkerDefinition } from "../worker/schema.js";
 import {
   ApprovalController,
+  ApprovalResult,
   type ApprovalCallback,
   type ApprovalMode,
 } from "../approval/index.js";
@@ -112,9 +113,9 @@ export class WorkerRuntime {
   private context: Context;
   private client: ChatClient;
   private approvalController: ApprovalController;
-  private executor: ApprovedExecutor;
+  private executor!: ApprovedExecutor; // Initialized in initialize()
   private sandbox?: Sandbox;
-  private toolset?: ApprovalToolset;
+  private toolsets: ApprovalToolset[] = [];
 
   constructor(options: WorkerRuntimeOptions) {
     this.worker = options.worker;
@@ -132,12 +133,6 @@ export class WorkerRuntime {
     this.approvalController = new ApprovalController({
       mode: options.approvalMode || "approve_all",
       approvalCallback: options.approvalCallback,
-    });
-
-    // Create executor (will be configured with tools later)
-    this.executor = new ApprovedExecutor({
-      context: this.context,
-      approvalController: this.approvalController,
     });
   }
 
@@ -162,28 +157,52 @@ export class WorkerRuntime {
     // Register tools based on worker config
     await this.registerTools();
 
-    // Re-create executor with toolset
+    // Create executor with composite toolset
+    const compositeToolset = this.toolsets.length > 0
+      ? this.createCompositeToolset()
+      : undefined;
+
     this.executor = new ApprovedExecutor({
       context: this.context,
       approvalController: this.approvalController,
-      toolset: this.toolset,
+      toolset: compositeToolset,
     });
+  }
+
+  /**
+   * Create a composite toolset that delegates to all registered toolsets.
+   */
+  private createCompositeToolset(): ApprovalToolset {
+    const toolsets = this.toolsets;
+    return {
+      needsApproval(name: string, toolArgs: Record<string, unknown>, ctx: unknown) {
+        // Check each toolset - first blocked or needs_approval wins
+        for (const ts of toolsets) {
+          const result = ts.needsApproval(name, toolArgs, ctx);
+          if (result.isBlocked || result.isNeedsApproval) {
+            return result;
+          }
+        }
+        // If all toolsets say pre-approved, return pre-approved
+        return ApprovalResult.preApproved();
+      },
+    };
   }
 
   /**
    * Register tools based on worker configuration.
    */
   private async registerTools(): Promise<void> {
-    const toolsets = this.worker.toolsets || {};
+    const toolsetsConfig = this.worker.toolsets || {};
 
-    for (const [toolsetName, _config] of Object.entries(toolsets)) {
+    for (const [toolsetName] of Object.entries(toolsetsConfig)) {
       switch (toolsetName) {
         case "filesystem":
           if (!this.sandbox) {
             throw new Error("Filesystem toolset requires a sandbox. Set projectRoot or useTestSandbox.");
           }
           const fsToolset = new FilesystemToolset(this.sandbox);
-          this.toolset = fsToolset;
+          this.toolsets.push(fsToolset);
           const fsTools = createFilesystemTools(this.sandbox);
           for (const tool of fsTools) {
             this.context.addTool(tool);
@@ -192,7 +211,8 @@ export class WorkerRuntime {
 
         // Add more toolsets here as they're implemented
         default:
-          console.warn(`Unknown toolset: ${toolsetName}`);
+          // Silently skip unknown toolsets - they may be handled elsewhere
+          break;
       }
     }
   }

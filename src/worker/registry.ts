@@ -35,8 +35,6 @@ export type WorkerLookupResult =
 export interface WorkerRegistryOptions {
   /** Search paths for workers (defaults to LLM_DO_PATH env var) */
   searchPaths?: string[];
-  /** Whether to watch for file changes (not implemented yet) */
-  watch?: boolean;
 }
 
 /**
@@ -49,7 +47,9 @@ export class WorkerRegistry {
   private scanned: Set<string> = new Set(); // directories that have been scanned
 
   constructor(options: WorkerRegistryOptions = {}) {
-    this.searchPaths = options.searchPaths ?? this.getDefaultSearchPaths();
+    // Resolve all paths to absolute for consistency
+    const paths = options.searchPaths ?? this.getDefaultSearchPaths();
+    this.searchPaths = paths.map((p) => path.resolve(p));
   }
 
   /**
@@ -134,9 +134,8 @@ export class WorkerRegistry {
           await this.loadWorker(entryPath);
         }
       }
-    } catch (err) {
+    } catch {
       // Permission errors or other issues, skip silently
-      console.warn(`Failed to scan directory ${absolute}: ${err}`);
     }
   }
 
@@ -191,14 +190,13 @@ export class WorkerRegistry {
   async get(nameOrPath: string): Promise<WorkerLookupResult> {
     // First, check if it's a direct file path
     if (nameOrPath.endsWith(".worker") || nameOrPath.includes(path.sep) || nameOrPath.includes("/")) {
-      const result = await this.loadWorker(nameOrPath);
+      const absolutePath = path.resolve(nameOrPath);
+      const result = await this.loadWorker(absolutePath);
       if (result.success) {
-        const cached = this.cache.get(path.resolve(nameOrPath));
-        if (cached) {
-          return { found: true, worker: cached };
-        }
+        // loadWorker always populates cache on success
+        return { found: true, worker: this.cache.get(absolutePath)! };
       }
-      return { found: false, error: result.success ? "Worker not found" : result.error };
+      return { found: false, error: result.error };
     }
 
     // Check name index
@@ -225,30 +223,20 @@ export class WorkerRegistry {
       }
     }
 
-    // Try to find by scanning search paths
+    // Try to find by scanning search paths (loadWorker handles non-existent files)
     for (const searchPath of this.searchPaths) {
       // Try direct name match
       const directPath = path.join(searchPath, `${nameOrPath}.worker`);
-      try {
-        await fs.access(directPath);
-        const result = await this.loadWorker(directPath);
-        if (result.success) {
-          return { found: true, worker: this.cache.get(directPath)! };
-        }
-      } catch {
-        // File doesn't exist, continue
+      const directResult = await this.loadWorker(directPath);
+      if (directResult.success) {
+        return { found: true, worker: this.cache.get(directPath)! };
       }
 
       // Try subdirectory with same name
       const subDirPath = path.join(searchPath, nameOrPath, `${nameOrPath}.worker`);
-      try {
-        await fs.access(subDirPath);
-        const result = await this.loadWorker(subDirPath);
-        if (result.success) {
-          return { found: true, worker: this.cache.get(subDirPath)! };
-        }
-      } catch {
-        // File doesn't exist, continue
+      const subDirResult = await this.loadWorker(subDirPath);
+      if (subDirResult.success) {
+        return { found: true, worker: this.cache.get(subDirPath)! };
       }
     }
 
