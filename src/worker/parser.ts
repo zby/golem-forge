@@ -3,10 +3,13 @@
  *
  * Parses .worker files using gray-matter for frontmatter extraction
  * and Zod for schema validation.
+ *
+ * Note: This module only provides parseWorkerString() for parsing content.
+ * File I/O should be handled by the caller using the appropriate mechanism
+ * (sandbox.read() for portable code, fs for CLI-only scripts).
  */
 
 import matter from "gray-matter";
-import { readFile } from "fs/promises";
 import {
   WorkerDefinitionSchema,
   type ParseWorkerResult,
@@ -45,24 +48,6 @@ export function parseWorkerString(content: string): ParseWorkerResult {
     return {
       success: false,
       error: `Failed to parse worker file: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
-}
-
-/**
- * Parse a .worker file from a file path.
- *
- * @param filePath - Path to the .worker file
- * @returns ParseWorkerResult with either the parsed worker or an error
- */
-export async function parseWorkerFile(filePath: string): Promise<ParseWorkerResult> {
-  try {
-    const content = await readFile(filePath, "utf-8");
-    return parseWorkerString(content);
-  } catch (err) {
-    return {
-      success: false,
-      error: `Failed to read worker file: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
 }
