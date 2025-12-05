@@ -34,12 +34,10 @@ function createTool<T extends z.ZodType>(options: {
 }
 import {
   Sandbox,
-  PermissionError,
   NotFoundError,
   isSandboxError,
 } from '../sandbox/index.js';
 import {
-  ApprovalResult,
   type SupportsNeedsApproval,
   type SupportsApprovalDescription,
 } from '../approval/index.js';
@@ -63,7 +61,7 @@ export function createReadFileTool(sandbox: Sandbox): BaseTool {
     name: 'read_file',
     description: 'Read the contents of a file from the sandbox filesystem',
     parameters: z.object({
-      path: z.string().describe('Path to the file. Use simple relative paths like "file.txt" or "dir/file.txt"'),
+      path: z.string().describe('Path to the file. Use absolute paths like "/workspace/file.txt" or "/cache/file.txt"'),
     }),
     execute: async ({ path }) => {
       try {
@@ -89,7 +87,7 @@ export function createWriteFileTool(sandbox: Sandbox): BaseTool {
     name: 'write_file',
     description: 'Write content to a file in the sandbox filesystem',
     parameters: z.object({
-      path: z.string().describe('Path to write to. Use simple relative paths like "file.txt" or "dir/file.txt"'),
+      path: z.string().describe('Path to write to. Use absolute paths like "/workspace/file.txt"'),
       content: z.string().describe('Content to write to the file'),
     }),
     execute: async ({ path, content }) => {
@@ -115,7 +113,7 @@ export function createListFilesTool(sandbox: Sandbox): BaseTool {
     name: 'list_files',
     description: 'List files and directories in a sandbox directory',
     parameters: z.object({
-      path: z.string().describe('Directory path to list. Use "." for current directory or relative paths like "subdir"'),
+      path: z.string().describe('Directory path to list. Use "/workspace" or "/cache" or subdirectories'),
     }),
     execute: async ({ path }) => {
       try {
@@ -141,7 +139,7 @@ export function createDeleteFileTool(sandbox: Sandbox): BaseTool {
     name: 'delete_file',
     description: 'Delete a file from the sandbox filesystem',
     parameters: z.object({
-      path: z.string().describe('Path to the file to delete. Use simple relative paths like "file.txt"'),
+      path: z.string().describe('Path to the file to delete'),
     }),
     execute: async ({ path }) => {
       try {
@@ -159,44 +157,6 @@ export function createDeleteFileTool(sandbox: Sandbox): BaseTool {
 }
 
 /**
- * Create a stage_for_commit tool.
- */
-export function createStageForCommitTool(sandbox: Sandbox): BaseTool {
-  return createTool({
-    name: 'stage_for_commit',
-    description: 'Stage files for committing to the repository. Files are staged but not committed until user approves.',
-    needsApproval: true,
-    parameters: z.object({
-      files: z.array(z.object({
-        path: z.string().describe('Path in repository (relative to repo root)'),
-        content: z.string().describe('File content'),
-      })).describe('Files to stage'),
-      message: z.string().describe('Commit message describing the changes'),
-    }),
-    execute: async ({ files, message }) => {
-      try {
-        const stageRequests = files.map((f) => ({
-          repoPath: f.path,
-          content: f.content,
-        }));
-
-        const commitId = await sandbox.stage(stageRequests, message);
-
-        return {
-          success: true,
-          commitId,
-          stagedFiles: files.length,
-          message: 'Files staged successfully. User must approve before commit.',
-          paths: files.map((f) => f.path),
-        };
-      } catch (error) {
-        return handleError(error);
-      }
-    },
-  });
-}
-
-/**
  * Create a file_exists tool.
  */
 export function createFileExistsTool(sandbox: Sandbox): BaseTool {
@@ -204,7 +164,7 @@ export function createFileExistsTool(sandbox: Sandbox): BaseTool {
     name: 'file_exists',
     description: 'Check if a file or directory exists in the sandbox',
     parameters: z.object({
-      path: z.string().describe('Path to check. Use simple relative paths like "file.txt"'),
+      path: z.string().describe('Path to check'),
     }),
     execute: async ({ path }) => {
       try {
@@ -229,7 +189,7 @@ export function createFileInfoTool(sandbox: Sandbox): BaseTool {
     name: 'file_info',
     description: 'Get metadata about a file (size, dates, type)',
     parameters: z.object({
-      path: z.string().describe('Path to the file. Use simple relative paths like "file.txt"'),
+      path: z.string().describe('Path to the file'),
     }),
     execute: async ({ path }) => {
       try {
@@ -237,7 +197,6 @@ export function createFileInfoTool(sandbox: Sandbox): BaseTool {
         return {
           success: true,
           path: stat.path,
-          zone: stat.zone,
           size: stat.size,
           isDirectory: stat.isDirectory,
           createdAt: stat.createdAt.toISOString(),
@@ -254,15 +213,6 @@ export function createFileInfoTool(sandbox: Sandbox): BaseTool {
  * Handle errors and return LLM-friendly messages.
  */
 function handleError(error: unknown, path?: string): FilesystemToolResult {
-  if (error instanceof PermissionError) {
-    return {
-      success: false,
-      error: `Permission denied: ${error.message}`,
-      hint: 'This file is outside your accessible zones. Check your trust level.',
-      path,
-    };
-  }
-
   if (error instanceof NotFoundError) {
     return {
       success: false,
@@ -323,7 +273,6 @@ export class FilesystemToolset implements SupportsNeedsApproval<unknown>, Suppor
       createWriteFileTool(this.sandbox),
       createListFilesTool(this.sandbox),
       createDeleteFileTool(this.sandbox),
-      createStageForCommitTool(this.sandbox),
       createFileExistsTool(this.sandbox),
       createFileInfoTool(this.sandbox),
     ];
@@ -337,48 +286,27 @@ export class FilesystemToolset implements SupportsNeedsApproval<unknown>, Suppor
   }
 
   /**
-   * Determine if a tool needs approval based on sandbox permissions.
+   * Determine if a tool needs approval.
+   * In the simplified sandbox, we use worker config for approval decisions.
+   * @returns true if approval is needed, false if pre-approved
    */
-  needsApproval(name: string, args: Record<string, unknown>): ApprovalResult {
+  needsApproval(name: string, args: Record<string, unknown>): boolean {
     const path = args.path as string | undefined;
 
-    // Tools that always need approval
-    if (name === 'stage_for_commit') {
-      return ApprovalResult.needsApproval();
+    // Read operations are always allowed without approval
+    if (name === 'file_exists' || name === 'read_file' || name === 'list_files' || name === 'file_info') {
+      return false;
     }
 
-    // Tools that don't access files directly
-    if (name === 'file_exists') {
-      // exists() is safe - it doesn't reveal content
-      return ApprovalResult.preApproved();
-    }
-
-    // For file operations, check sandbox permissions
-    if (path) {
-      const operation = this.getOperationForTool(name);
-      if (operation) {
-        const check = this.sandbox.checkPermission(operation, path);
-        if (!check.allowed) {
-          return ApprovalResult.blocked(check.reason || 'Permission denied');
-        }
-
-        // Check if zone requires approval
-        const zoneConfig = this.sandbox.getSecurityContext().permissions[check.zone];
-        if (zoneConfig.requiresApproval) {
-          return ApprovalResult.needsApproval();
-        }
-
-        // Check worker's sandbox config for write_approval
-        if (operation === 'write' || operation === 'delete') {
-          if (this.requiresWriteApprovalFromConfig(path)) {
-            return ApprovalResult.needsApproval();
-          }
-        }
+    // Write/delete operations: check worker config
+    if (path && (name === 'write_file' || name === 'delete_file')) {
+      if (this.requiresWriteApprovalFromConfig(path)) {
+        return true;
       }
     }
 
-    // Default: pre-approved for allowed operations
-    return ApprovalResult.preApproved();
+    // Default: pre-approved
+    return false;
   }
 
   /**
@@ -431,37 +359,12 @@ export class FilesystemToolset implements SupportsNeedsApproval<unknown>, Suppor
         return `List directory: ${path}`;
       case 'delete_file':
         return `Delete file: ${path}`;
-      case 'stage_for_commit': {
-        const files = args.files as Array<{ path: string }>;
-        const message = args.message as string;
-        const paths = files?.map(f => f.path).join(', ') || '';
-        return `Stage ${files?.length || 0} file(s) for commit: ${paths}\nMessage: ${message}`;
-      }
       case 'file_exists':
         return `Check if exists: ${path}`;
       case 'file_info':
         return `Get file info: ${path}`;
       default:
         return `Execute ${name}`;
-    }
-  }
-
-  /**
-   * Map tool name to sandbox operation.
-   */
-  private getOperationForTool(name: string): 'read' | 'write' | 'delete' | 'list' | null {
-    switch (name) {
-      case 'read_file':
-      case 'file_info':
-        return 'read';
-      case 'write_file':
-        return 'write';
-      case 'list_files':
-        return 'list';
-      case 'delete_file':
-        return 'delete';
-      default:
-        return null;
     }
   }
 }

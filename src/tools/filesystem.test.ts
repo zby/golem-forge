@@ -20,7 +20,7 @@ import {
   Zone,
   TrustLevel,
 } from '../sandbox/index.js';
-import { ApprovalResult } from '../approval/index.js';
+import { BlockedError } from '../approval/index.js';
 
 /**
  * Helper to create a test sandbox.
@@ -275,35 +275,34 @@ describe('FilesystemToolset', () => {
   });
 
   describe('needsApproval', () => {
-    it('pre-approves file_exists', () => {
+    it('pre-approves file_exists (returns false)', () => {
       const result = toolset.needsApproval('file_exists', { path: '/session/test/file.txt' });
-      expect(result.isPreApproved).toBe(true);
+      expect(result).toBe(false);
     });
 
-    it('requires approval for stage_for_commit', () => {
+    it('requires approval for stage_for_commit (returns true)', () => {
       const result = toolset.needsApproval('stage_for_commit', {
         files: [{ path: 'test.md', content: 'content' }],
         message: 'test',
       });
-      expect(result.isNeedsApproval).toBe(true);
+      expect(result).toBe(true);
     });
 
-    it('pre-approves allowed operations', () => {
+    it('pre-approves allowed operations (returns false)', () => {
       const result = toolset.needsApproval('read_file', {
         path: '/session/test-session/working/file.txt',
       });
-      expect(result.isPreApproved).toBe(true);
+      expect(result).toBe(false);
     });
 
-    it('blocks disallowed operations', async () => {
+    it('throws BlockedError for disallowed operations', async () => {
       // Create toolset with untrusted sandbox
       const { sandbox: untrustedSandbox } = await createTestSandbox({ trustLevel: 'untrusted' });
       const untrustedToolset = new FilesystemToolset(untrustedSandbox);
 
-      const result = untrustedToolset.needsApproval('read_file', {
+      expect(() => untrustedToolset.needsApproval('read_file', {
         path: '/repo/secret.txt',
-      });
-      expect(result.isBlocked).toBe(true);
+      })).toThrow(BlockedError);
     });
   });
 

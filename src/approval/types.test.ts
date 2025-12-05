@@ -1,43 +1,37 @@
 import { describe, it, expect } from "vitest";
 import {
-  ApprovalResult,
+  BlockedError,
   supportsNeedsApproval,
   supportsApprovalDescription,
 } from "./types.js";
 
-describe("ApprovalResult", () => {
-  it("creates blocked result with reason", () => {
-    const result = ApprovalResult.blocked("Tool is disabled");
-    expect(result.status).toBe("blocked");
-    expect(result.blockReason).toBe("Tool is disabled");
-    expect(result.isBlocked).toBe(true);
-    expect(result.isPreApproved).toBe(false);
-    expect(result.isNeedsApproval).toBe(false);
+describe("BlockedError", () => {
+  it("creates error with tool name and reason", () => {
+    const error = new BlockedError("write_file", "Permission denied");
+    expect(error.toolName).toBe("write_file");
+    expect(error.reason).toBe("Permission denied");
+    expect(error.message).toBe("Tool 'write_file' blocked: Permission denied");
+    expect(error.name).toBe("BlockedError");
   });
 
-  it("creates pre_approved result", () => {
-    const result = ApprovalResult.preApproved();
-    expect(result.status).toBe("pre_approved");
-    expect(result.blockReason).toBeUndefined();
-    expect(result.isBlocked).toBe(false);
-    expect(result.isPreApproved).toBe(true);
-    expect(result.isNeedsApproval).toBe(false);
-  });
-
-  it("creates needs_approval result", () => {
-    const result = ApprovalResult.needsApproval();
-    expect(result.status).toBe("needs_approval");
-    expect(result.blockReason).toBeUndefined();
-    expect(result.isBlocked).toBe(false);
-    expect(result.isPreApproved).toBe(false);
-    expect(result.isNeedsApproval).toBe(true);
+  it("is an instance of Error", () => {
+    const error = new BlockedError("read_file", "Access denied");
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toBeInstanceOf(BlockedError);
   });
 });
 
 describe("Type guards", () => {
   it("supportsNeedsApproval detects interface", () => {
     const toolset = {
-      needsApproval: () => ApprovalResult.preApproved(),
+      needsApproval: () => true,
+    };
+    expect(supportsNeedsApproval(toolset)).toBe(true);
+  });
+
+  it("supportsNeedsApproval works with boolean return", () => {
+    const toolset = {
+      needsApproval: () => false,
     };
     expect(supportsNeedsApproval(toolset)).toBe(true);
   });

@@ -1,67 +1,30 @@
 /**
  * Core approval types.
  *
- * This module defines the fundamental data types for the blocking approval system:
- * - ApprovalResult: Structured result from approval checking
- * - ApprovalRequest: Returned by tools to request approval
- * - ApprovalDecision: User's decision about a tool call
- * - SupportsNeedsApproval: Interface for toolsets with custom approval logic
- * - SupportsApprovalDescription: Interface for custom approval descriptions
- */
-
-/**
- * Status of an approval check.
- */
-export type ApprovalStatus = "blocked" | "pre_approved" | "needs_approval";
-
-/**
- * Result of checking if a tool call needs approval.
+ * This module defines the fundamental data types for the blocking approval system.
+ * Uses AI SDK v6 patterns where possible:
+ * - needsApproval: boolean (matches SDK tool property)
+ * - ToolApprovalResponse pattern for decisions
  *
- * Use factory methods to create instances:
- * - ApprovalResult.blocked(reason) - Operation forbidden by policy
- * - ApprovalResult.preApproved() - No user prompt needed
- * - ApprovalResult.needsApproval() - Requires user approval
+ * "Blocked" operations (e.g., sandbox permission denied) are handled separately
+ * by throwing BlockedError, not through the approval flow.
  */
-export class ApprovalResult {
-  readonly status: ApprovalStatus;
-  readonly blockReason?: string;
 
-  private constructor(status: ApprovalStatus, blockReason?: string) {
-    this.status = status;
-    this.blockReason = blockReason;
-  }
+// Note: AI SDK v6 exports ToolApprovalRequest and ToolApprovalResponse for message protocol.
+// We use a simpler approach: needsApproval returns boolean, BlockedError for forbidden ops.
 
-  /**
-   * Operation is forbidden by policy.
-   */
-  static blocked(reason: string): ApprovalResult {
-    return new ApprovalResult("blocked", reason);
-  }
-
-  /**
-   * Operation is pre-approved, no user prompt needed.
-   */
-  static preApproved(): ApprovalResult {
-    return new ApprovalResult("pre_approved");
-  }
-
-  /**
-   * Operation requires user approval.
-   */
-  static needsApproval(): ApprovalResult {
-    return new ApprovalResult("needs_approval");
-  }
-
-  get isBlocked(): boolean {
-    return this.status === "blocked";
-  }
-
-  get isPreApproved(): boolean {
-    return this.status === "pre_approved";
-  }
-
-  get isNeedsApproval(): boolean {
-    return this.status === "needs_approval";
+/**
+ * Error thrown when an operation is blocked by policy.
+ * This is separate from the approval flow - blocked operations
+ * should not even be presented to the user for approval.
+ */
+export class BlockedError extends Error {
+  constructor(
+    public readonly toolName: string,
+    public readonly reason: string
+  ) {
+    super(`Tool '${toolName}' blocked: ${reason}`);
+    this.name = "BlockedError";
   }
 }
 
@@ -122,22 +85,26 @@ export type ApprovalCallback = (request: ApprovalRequest) => Promise<ApprovalDec
  * Interface for toolsets with custom approval logic.
  *
  * Toolsets implementing this interface provide fine-grained control
- * over which tool calls are blocked, pre-approved, or need user approval.
+ * over which tool calls need user approval.
+ *
+ * Note: For blocked operations (e.g., sandbox permission denied),
+ * throw BlockedError instead of returning from needsApproval().
  */
 export interface SupportsNeedsApproval<TContext = unknown> {
   /**
-   * Determine approval status for a tool call.
+   * Determine if a tool call needs approval.
    *
    * @param name - Tool name being called
    * @param toolArgs - Arguments passed to the tool
    * @param ctx - Execution context
-   * @returns ApprovalResult with status: blocked, pre_approved, or needs_approval
+   * @returns true if approval is needed, false if pre-approved
+   * @throws BlockedError if the operation is forbidden by policy
    */
   needsApproval(
     name: string,
     toolArgs: Record<string, unknown>,
     ctx: TContext
-  ): ApprovalResult;
+  ): boolean;
 }
 
 /**

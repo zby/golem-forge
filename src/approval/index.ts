@@ -8,8 +8,7 @@
 
 // Types
 export {
-  ApprovalResult,
-  type ApprovalStatus,
+  BlockedError,
   type ApprovalRequest,
   type ApprovalDecision,
   type RememberOption,

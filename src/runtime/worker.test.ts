@@ -268,6 +268,54 @@ describe("WorkerRuntime", () => {
 
       expect(result.tokens).toEqual({ input: 30, output: 15 });
     });
+
+    it("handles hallucinated tool calls (tool not registered)", async () => {
+      // LLM hallucinates a tool that doesn't exist
+      mockGenerateText
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            {
+              toolCallId: "call_1",
+              toolName: "nonexistent_tool",
+              args: { param: "value" },
+            },
+          ],
+          finishReason: "tool-calls",
+          usage: { inputTokens: 10, outputTokens: 15 },
+        })
+        // After receiving error, LLM completes normally
+        .mockResolvedValueOnce({
+          text: "I apologize, that tool doesn't exist.",
+          toolCalls: [],
+          finishReason: "stop",
+          usage: { inputTokens: 30, outputTokens: 20 },
+        });
+
+      const runtime = new WorkerRuntime({
+        worker: workerWithFilesystem,
+        useTestSandbox: true,
+        approvalMode: "approve_all",
+      });
+      await runtime.initialize();
+
+      const result = await runtime.run("Use a fake tool");
+
+      // The run should complete successfully (LLM recovered from the error)
+      expect(result.success).toBe(true);
+      expect(result.response).toBe("I apologize, that tool doesn't exist.");
+      // Tool call was attempted but failed
+      expect(result.toolCallCount).toBe(1);
+      // Verify the error was communicated back to the LLM
+      expect(mockGenerateText).toHaveBeenCalledTimes(2);
+
+      // Check that the second call included the tool error
+      const secondCall = mockGenerateText.mock.calls[1][0];
+      const messages = secondCall.messages;
+      const toolMessage = messages.find((m: { role: string }) => m.role === "tool");
+      expect(toolMessage).toBeDefined();
+      expect(toolMessage.content[0].result).toContain("Tool not found");
+    });
   });
 
   describe("approval controller", () => {

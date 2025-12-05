@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { z } from "zod";
 import { ApprovedExecutor, type ToolExecutorFn } from "./approved-executor.js";
 import type { ToolCall } from "../ai/types.js";
 import {
   ApprovalController,
-  ApprovalResult,
+  BlockedError,
   type ApprovalDecision,
   type SupportsNeedsApproval,
 } from "../approval/index.js";
@@ -43,10 +42,10 @@ function createMockExecutor(): ToolExecutorFn {
 
 // Test toolset with custom approval logic
 class TestToolset implements SupportsNeedsApproval<unknown> {
-  needsApproval(name: string): ApprovalResult {
-    if (name === "safe_tool") return ApprovalResult.preApproved();
-    if (name === "forbidden_tool") return ApprovalResult.blocked("Tool is forbidden");
-    return ApprovalResult.needsApproval();
+  needsApproval(name: string): boolean {
+    if (name === "safe_tool") return false; // pre-approved
+    if (name === "forbidden_tool") throw new BlockedError(name, "Tool is forbidden");
+    return true; // needs approval
   }
 }
 

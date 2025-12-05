@@ -12,7 +12,6 @@ import { google } from "@ai-sdk/google";
 import type { WorkerDefinition } from "../worker/schema.js";
 import {
   ApprovalController,
-  ApprovalResult,
   type ApprovalCallback,
   type ApprovalMode,
   type SecurityContext as ApprovalSecurityContext,
@@ -401,16 +400,17 @@ export class WorkerRuntime {
   private createCompositeToolset(): ApprovalToolset {
     const toolsets = this.toolsets;
     return {
-      needsApproval(name: string, toolArgs: Record<string, unknown>, ctx: unknown) {
-        // Check each toolset - first blocked or needs_approval wins
+      needsApproval(name: string, toolArgs: Record<string, unknown>, ctx: unknown): boolean {
+        // Check each toolset - if any requires approval, return true
+        // If any throws BlockedError, let it propagate
         for (const ts of toolsets) {
           const result = ts.needsApproval(name, toolArgs, ctx);
-          if (result.isBlocked || result.isNeedsApproval) {
-            return result;
+          if (result) {
+            return true; // needs approval
           }
         }
-        // If all toolsets say pre-approved, return pre-approved
-        return ApprovalResult.preApproved();
+        // All toolsets say pre-approved
+        return false;
       },
       getApprovalDescription(name: string, toolArgs: Record<string, unknown>, ctx: unknown) {
         // Find the first toolset that provides a custom description

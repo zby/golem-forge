@@ -8,7 +8,7 @@
 import type { ToolCall, ExecuteToolResult } from "../ai/types.js";
 import {
   ApprovalController,
-  ApprovalResult,
+  BlockedError,
   type ApprovalRequest,
   type SecurityContext,
   type SupportsNeedsApproval,
@@ -68,9 +68,9 @@ export type ApprovedExecuteResult = ExecuteToolResult & {
  *
  * Integrates the tool system with the approval system:
  * 1. Checks if tool needs approval (via toolset or default)
- * 2. If blocked, returns error without executing
- * 3. If pre-approved, executes immediately
- * 4. If needs approval, prompts via controller
+ * 2. If blocked (throws BlockedError), returns error without executing
+ * 3. If pre-approved (needsApproval=false), executes immediately
+ * 4. If needs approval (needsApproval=true), prompts via controller
  * 5. Executes or returns denial error
  */
 export class ApprovedExecutor {
@@ -90,21 +90,24 @@ export class ApprovedExecutor {
    * Execute a single tool call with approval checking.
    */
   async executeTool(toolCall: ToolCall): Promise<ApprovedExecuteResult> {
-    // 1. Check approval status
-    const approvalResult = this.checkApproval(toolCall);
-
-    // 2. Handle blocked
-    if (approvalResult.isBlocked) {
-      return this.createBlockedResult(toolCall, approvalResult.blockReason!);
+    // 1. Check if approval is needed (may throw BlockedError)
+    let needsApproval: boolean;
+    try {
+      needsApproval = this.checkNeedsApproval(toolCall);
+    } catch (err) {
+      if (err instanceof BlockedError) {
+        return this.createBlockedResult(toolCall, err.reason);
+      }
+      throw err;
     }
 
-    // 3. Handle pre-approved - execute immediately
-    if (approvalResult.isPreApproved) {
+    // 2. If pre-approved, execute immediately
+    if (!needsApproval) {
       const result = await this.executeToolFn(toolCall);
       return { ...result, preApproved: true };
     }
 
-    // 4. Handle needs approval - prompt user
+    // 3. Request approval from user
     const request = this.createApprovalRequest(toolCall);
     const decision = await this.controller.requestApproval(request);
 
@@ -112,7 +115,7 @@ export class ApprovedExecutor {
       return this.createDeniedResult(toolCall, decision.note);
     }
 
-    // 5. Execute the tool
+    // 4. Execute the tool
     const result = await this.executeToolFn(toolCall);
     return { ...result };
   }
@@ -134,15 +137,17 @@ export class ApprovedExecutor {
 
   /**
    * Check if a tool call needs approval.
+   * @returns true if approval is needed, false if pre-approved
+   * @throws BlockedError if the operation is blocked by policy
    */
-  private checkApproval(toolCall: ToolCall): ApprovalResult {
+  private checkNeedsApproval(toolCall: ToolCall): boolean {
     // If toolset implements SupportsNeedsApproval, use it
     if (this.toolset && supportsNeedsApproval(this.toolset)) {
       return this.toolset.needsApproval(toolCall.toolName, toolCall.args, undefined);
     }
 
     // Default: all tools need approval
-    return ApprovalResult.needsApproval();
+    return true;
   }
 
   /**
