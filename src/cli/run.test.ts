@@ -49,6 +49,14 @@ vi.mock("./project.js", () => {
   };
 });
 
+const { mockCreateTraceFormatter } = vi.hoisted(() => ({
+  mockCreateTraceFormatter: vi.fn(() => vi.fn()),
+}));
+
+vi.mock("./trace.js", () => ({
+  createTraceFormatter: mockCreateTraceFormatter,
+}));
+
 // Import after mocks
 import { runCLI } from "./run.js";
 import { getEffectiveConfig } from "./project.js";
@@ -265,6 +273,43 @@ Test instructions
       expect(consoleErrorSpy).toHaveBeenCalledWith(
         expect.stringContaining("Worker failed: Worker execution failed")
       );
+    });
+  });
+
+  describe("trace levels", () => {
+    it("should create trace formatter for full trace level", async () => {
+      await runCLI(["node", "cli", workerDir, "--trace", "full", "--input", "test"]);
+
+      expect(mockCreateTraceFormatter).toHaveBeenCalledTimes(1);
+    });
+
+    it("should create trace formatter for debug trace level", async () => {
+      await runCLI(["node", "cli", workerDir, "--trace", "debug", "--input", "test"]);
+
+      expect(mockCreateTraceFormatter).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(["quiet", "summary"])('should not create trace formatter for %s trace level', async (level) => {
+      await runCLI(["node", "cli", workerDir, "--trace", level, "--input", "test"]);
+
+      expect(mockCreateTraceFormatter).not.toHaveBeenCalled();
+    });
+
+    it.each(["full", "debug"])('should not print inline stats for %s trace level', async (level) => {
+      mockRun.mockResolvedValue({
+        success: true,
+        response: "Streamed response",
+        toolCallCount: 2,
+        tokens: { input: 75, output: 25 },
+        cost: 0.0042,
+      });
+
+      await runCLI(["node", "cli", workerDir, "--trace", level, "--input", "test"]);
+
+      const loggedStats = consoleLogSpy.mock.calls.some(args =>
+        args.some(arg => typeof arg === "string" && arg.includes("Tool calls:"))
+      );
+      expect(loggedStats).toBe(false);
     });
   });
 

@@ -116,7 +116,7 @@ Options:
   -i, --input <text>       Input text (alternative to positional args)
   -f, --file <path>        Read input from file
   --attach <path>          Attach a file (image, PDF, etc.)
-  --trace <level>          Trace level: quiet, summary, verbose
+  --trace <level>          Trace level: quiet, summary, full, debug
 ```
 
 ## Approval Modes

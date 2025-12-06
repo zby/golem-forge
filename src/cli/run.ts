@@ -482,10 +482,10 @@ async function executeWorker(
     }
   }
 
+  const isStreamingTrace = options.trace === 'full' || options.trace === 'debug';
+
   // Create trace formatter for full/debug levels (real-time streaming)
-  const onEvent = (options.trace === 'full' || options.trace === 'debug')
-    ? createTraceFormatter()
-    : undefined;
+  const onEvent = isStreamingTrace ? createTraceFormatter() : undefined;
 
   // Create runtime options - use detected project root
   // Model is already resolved: CLI --model > env var > project config
@@ -525,7 +525,8 @@ async function executeWorker(
 
   // Output based on trace level
   const showResponse = options.trace === 'quiet' || options.trace === 'summary';
-  const showStats = options.trace !== 'quiet';
+  // Summary level prints stats inline; streaming levels show them via trace formatter output
+  const showStats = options.trace === 'summary' || (!isStreamingTrace && options.trace !== 'quiet');
 
   if (result.success) {
     // For quiet/summary, print the response (full/debug shows it via streaming)
