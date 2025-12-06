@@ -502,8 +502,7 @@ Instructions
       expect(mockCreateWorkerRuntime).toHaveBeenCalledWith(
         expect.objectContaining({
           worker: expect.objectContaining({ name: "test-worker" }),
-          configModel: "anthropic:claude-haiku-4-5",  // from project config
-          model: undefined,                           // no CLI --model flag
+          model: "anthropic:claude-haiku-4-5",  // resolved from project config
           approvalMode: "approve_all",
         })
       );

@@ -548,6 +548,77 @@ if (toolName === 'git_push') {
 }
 ```
 
+## Authentication
+
+### Strategy by Target Type
+
+| Target | Auth Method |
+|--------|-------------|
+| Local repo (filesystem) | None needed |
+| Local repo → remote | System git (user's SSH/credential helper) |
+| GitHub remote | Token (GITHUB_TOKEN or `gh` CLI) |
+
+### Local Repositories
+
+For local git targets, delegate to system git for push operations:
+
+```typescript
+// Local push uses git CLI, inherits user's auth config
+await exec(`git -C ${targetPath} push origin ${branch}`);
+```
+
+This respects user's existing setup (SSH keys, credential helpers, etc.) without us managing credentials.
+
+### GitHub Authentication
+
+Hybrid approach with fallback chain:
+
+```typescript
+async function getGitHubAuth(): Promise<{ username: string; password: string }> {
+  // 1. Explicit token (CI-friendly)
+  if (process.env.GITHUB_TOKEN) {
+    return { username: 'oauth2', password: process.env.GITHUB_TOKEN };
+  }
+
+  // 2. gh CLI (developer-friendly)
+  try {
+    const { stdout } = await exec('gh auth token');
+    return { username: 'oauth2', password: stdout.trim() };
+  } catch {
+    // gh not installed or not logged in
+  }
+
+  // 3. Fail with helpful message
+  throw new GitAuthError(
+    'GitHub authentication required.\n' +
+    'Either:\n' +
+    '  - Set GITHUB_TOKEN environment variable, or\n' +
+    '  - Run `gh auth login` to authenticate with GitHub CLI'
+  );
+}
+```
+
+### Usage in GitBackend
+
+```typescript
+class CLIGitBackend implements GitBackend {
+  async push(opts: { commitId: string; target: GitTarget }): Promise<PushResult> {
+    if (opts.target.type === 'local') {
+      return this.pushViaGitCLI(opts);      // Uses system git
+    } else if (opts.target.type === 'github') {
+      const auth = await getGitHubAuth();
+      return this.pushViaIsomorphicGit(opts, auth);  // Uses token
+    }
+  }
+}
+```
+
+### Scope (Phase 1)
+
+- **GitHub only** - GitLab/Bitbucket deferred to future phases
+- **No OAuth flow** - Rely on `gh` CLI or pre-configured token
+- **No token storage** - Read from env/gh CLI each time
+
 ## Migration Path
 
 ### Phase 1: Add Git Tools (Current)
@@ -597,17 +668,20 @@ Filesystem that logs all changes, syncs to git automatically.
    - User reviews at `git_push` approval
    - `git_merge` available for algorithmic three-way merge
 
-2. **Large files**: Should we support LFS?
-   - Probably not in Phase 1, add based on user feedback
+2. ~~**Large files**~~: Resolved - No LFS support in Phase 1.
+   - Large files go directly in repo (works for moderate sizes)
+   - Document limitation clearly (see "Limitations" section)
+   - Revisit if users report issues with LFS-tracked repos or repo bloat
 
 3. ~~**Branch creation**~~: Resolved - see "Branching" section above.
    - Yes, `git_push` auto-creates branches with approval prompt noting "new branch"
    - Optional `git_branches` tool for listing available branches
    - Worker frontmatter can specify branch naming templates
 
-4. **Credentials**: How to handle GitHub auth?
-   - CLI: `gh` CLI or GITHUB_TOKEN env var
-   - Browser: OAuth flow in extension popup
+4. ~~**Credentials**~~: Resolved - see "Authentication" section above.
+   - Local repos: delegate to system git (user's existing auth)
+   - GitHub: GITHUB_TOKEN env var → `gh auth token` fallback
+   - GitHub only for Phase 1 (GitLab/Bitbucket deferred)
 
 ## Implementation Plan
 
@@ -617,8 +691,9 @@ Filesystem that logs all changes, syncs to git automatically.
 src/git/
 ├── types.ts           # GitTarget, StagedCommit, MergeResult, etc.
 ├── backend.ts         # GitBackend interface
-├── cli-backend.ts     # CLI implementation (isomorphic-git + Octokit)
+├── cli-backend.ts     # CLI implementation (isomorphic-git + git CLI)
 ├── merge.ts           # Three-way merge using diff3/isomorphic-git
+├── auth.ts            # GitHub auth (GITHUB_TOKEN / gh CLI)
 └── tools.ts           # Git tool definitions
 
 src/cli/
@@ -646,6 +721,54 @@ src/git/
 ├── tools.test.ts          # Tool schemas and behavior
 └── integration.test.ts    # End-to-end with real repos
 ```
+
+## Limitations (Phase 1)
+
+### Git LFS Not Supported
+
+Git Large File Storage (LFS) is not supported in Phase 1.
+
+**Impact:**
+
+| Scenario | Behavior |
+|----------|----------|
+| Pull file tracked by LFS | Gets pointer file, not actual content |
+| Push large binary file | Goes directly to repo (may bloat history) |
+
+**Workarounds:**
+
+1. **Avoid large binaries in worker output** - Generate text formats where possible
+2. **External storage for large files** - Worker can write URLs/references instead of actual files
+3. **Pre-fetch LFS files** - User can `git lfs pull` before running worker, copy to sandbox manually
+
+**Worker documentation hint:**
+```yaml
+---
+name: report-generator
+description: Generates quarterly reports
+# Note: Avoid generating files >10MB. Large assets should be
+# referenced by URL rather than embedded.
+---
+```
+
+**Future consideration:** Add LFS read support if users report issues with LFS-tracked repositories.
+
+### GitHub Only (Remote)
+
+Remote git targets only support GitHub in Phase 1.
+
+- GitLab, Bitbucket, and other providers are not supported
+- Local git repositories work regardless of their remote origin
+
+### No Interactive Git Operations
+
+Operations requiring interactive input are not supported:
+
+- Interactive rebase
+- Merge conflict resolution via editor
+- GPG signing prompts
+
+All operations are non-interactive by design.
 
 ## Summary
 

@@ -49,7 +49,7 @@ describe("WorkerRuntime", () => {
       const runtime = new WorkerRuntime({
         worker: simpleWorker,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       expect(runtime).toBeInstanceOf(WorkerRuntime);
@@ -59,7 +59,7 @@ describe("WorkerRuntime", () => {
       const runtime = new WorkerRuntime({
         worker: simpleWorker,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       // The instructions are stored and used when run() is called
@@ -71,7 +71,7 @@ describe("WorkerRuntime", () => {
         new WorkerRuntime({
           worker: simpleWorker,
           approvalMode: "interactive",
-          configModel: TEST_MODEL,
+          model: TEST_MODEL,
         });
       }).toThrow("requires an approvalCallback");
     });
@@ -81,7 +81,7 @@ describe("WorkerRuntime", () => {
         worker: simpleWorker,
         approvalMode: "interactive",
         approvalCallback: async () => ({ approved: true, remember: "none" }),
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       expect(runtime).toBeInstanceOf(WorkerRuntime);
@@ -94,7 +94,7 @@ describe("WorkerRuntime", () => {
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       await runtime.initialize();
@@ -107,7 +107,7 @@ describe("WorkerRuntime", () => {
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       await runtime.initialize();
@@ -123,7 +123,7 @@ describe("WorkerRuntime", () => {
       const runtime = new WorkerRuntime({
         worker: workerWithFilesystem,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       await expect(runtime.initialize()).rejects.toThrow("Filesystem toolset requires a sandbox");
@@ -142,7 +142,7 @@ describe("WorkerRuntime", () => {
       const runtime = new WorkerRuntime({
         worker: simpleWorker,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       const result = await runtime.run("Hello!");
@@ -159,7 +159,7 @@ describe("WorkerRuntime", () => {
       const runtime = new WorkerRuntime({
         worker: simpleWorker,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       const result = await runtime.run("Hello!");
@@ -174,7 +174,7 @@ describe("WorkerRuntime", () => {
       const runtime = new WorkerRuntime({
         worker: simpleWorker,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       const result = await runtime.run("Hello!");
@@ -210,7 +210,7 @@ describe("WorkerRuntime", () => {
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
       await runtime.initialize();
 
@@ -246,7 +246,7 @@ describe("WorkerRuntime", () => {
         useTestSandbox: true,
         approvalMode: "approve_all",
         maxIterations: 3,
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
       await runtime.initialize();
 
@@ -276,7 +276,7 @@ describe("WorkerRuntime", () => {
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
       await runtime.initialize();
 
@@ -312,7 +312,7 @@ describe("WorkerRuntime", () => {
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
       await runtime.initialize();
 
@@ -340,7 +340,7 @@ describe("WorkerRuntime", () => {
       const runtime = new WorkerRuntime({
         worker: simpleWorker,
         approvalMode: "auto_deny",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       expect(runtime.getApprovalController().mode).toBe("auto_deny");
@@ -350,7 +350,7 @@ describe("WorkerRuntime", () => {
       const runtime = new WorkerRuntime({
         worker: simpleWorker,
         approvalCallback: async () => ({ approved: true, remember: "none" }),
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       expect(runtime.getApprovalController().mode).toBe("interactive");
@@ -362,7 +362,7 @@ describe("WorkerRuntime", () => {
       const runtime = await createWorkerRuntime({
         worker: simpleWorker,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       expect(runtime).toBeInstanceOf(WorkerRuntime);
@@ -373,7 +373,7 @@ describe("WorkerRuntime", () => {
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
-        configModel: TEST_MODEL,
+        model: TEST_MODEL,
       });
 
       expect(runtime.getSandbox()).toBeDefined();
@@ -381,31 +381,17 @@ describe("WorkerRuntime", () => {
   });
 
   describe("model resolution", () => {
-    it("uses CLI model with highest priority", () => {
+    it("uses provided model", () => {
       const runtime = new WorkerRuntime({
         worker: simpleWorker,
         model: "openai:gpt-4",
         approvalMode: "approve_all",
       });
 
-      const resolution = runtime.getModelResolution();
-      expect(resolution.model).toBe("openai:gpt-4");
-      expect(resolution.source).toBe("cli");
+      expect(runtime.getModelId()).toBe("openai:gpt-4");
     });
 
-    it("uses config model when none specified via CLI", () => {
-      const runtime = new WorkerRuntime({
-        worker: simpleWorker,
-        approvalMode: "approve_all",
-        configModel: "openai:gpt-4o-mini",
-      });
-
-      const resolution = runtime.getModelResolution();
-      expect(resolution.model).toBe("openai:gpt-4o-mini");
-      expect(resolution.source).toBe("config");
-    });
-
-    it("throws error when no model specified anywhere", () => {
+    it("throws error when no model specified", () => {
       expect(() => {
         new WorkerRuntime({
           worker: simpleWorker,
@@ -414,7 +400,7 @@ describe("WorkerRuntime", () => {
       }).toThrow("No model specified");
     });
 
-    it("validates CLI model against compatible_models", () => {
+    it("validates model against compatible_models", () => {
       const workerWithCompatibility: WorkerDefinition = {
         ...simpleWorker,
         compatible_models: ["anthropic:*"],
@@ -429,7 +415,7 @@ describe("WorkerRuntime", () => {
       }).toThrow('Model "openai:gpt-4" is not compatible');
     });
 
-    it("allows compatible CLI model", () => {
+    it("allows compatible model", () => {
       const workerWithCompatibility: WorkerDefinition = {
         ...simpleWorker,
         compatible_models: ["anthropic:*"],
@@ -441,7 +427,7 @@ describe("WorkerRuntime", () => {
         approvalMode: "approve_all",
       });
 
-      expect(runtime.getModelResolution().model).toBe("anthropic:claude-sonnet-4");
+      expect(runtime.getModelId()).toBe("anthropic:claude-sonnet-4");
     });
 
     it("rejects empty compatible_models array", () => {
@@ -453,24 +439,10 @@ describe("WorkerRuntime", () => {
       expect(() => {
         new WorkerRuntime({
           worker: workerWithEmptyCompat,
+          model: TEST_MODEL,
           approvalMode: "approve_all",
         });
       }).toThrow("empty compatible_models");
-    });
-
-    it("validates config model against compatible_models", () => {
-      const workerRequiringOpenai: WorkerDefinition = {
-        ...simpleWorker,
-        compatible_models: ["openai:*"],
-      };
-
-      expect(() => {
-        new WorkerRuntime({
-          worker: workerRequiringOpenai,
-          approvalMode: "approve_all",
-          configModel: "anthropic:claude-haiku-4-5",
-        });
-      }).toThrow('Config model "anthropic:claude-haiku-4-5" is not compatible');
     });
 
     it("error message includes compatible patterns when no model specified", () => {

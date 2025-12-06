@@ -461,11 +461,10 @@ async function executeWorker(
   }
 
   // Create runtime options - use detected project root
-  // Model resolution is handled by WorkerRuntime.resolveModel() with proper priority
+  // Model is already resolved: CLI --model > env var > project config
   const runtimeOptions: WorkerRuntimeOptions = {
     worker: workerDefinition,
-    model: options.model,              // CLI --model flag (priority 2)
-    configModel: effectiveConfig.model, // Project config default (priority 4)
+    model: options.model || effectiveConfig.model,
     approvalMode: effectiveConfig.approvalMode as ApprovalMode,
     approvalCallback,
     projectRoot,

@@ -53,10 +53,8 @@ export interface WorkerResult {
 export interface WorkerRuntimeOptions {
   /** The worker definition to execute */
   worker: WorkerDefinition;
-  /** Model from CLI --model flag (highest priority) */
+  /** Model to use (already resolved from CLI/env/config by caller) */
   model?: string;
-  /** Default model from env var or project config */
-  configModel?: string;
   /** Approval mode */
   approvalMode?: ApprovalMode;
   /** Approval callback for interactive mode */
@@ -162,29 +160,15 @@ function isModelCompatible(modelId: string, compatibleModels: string[] | undefin
 }
 
 /**
- * Model resolution result.
- */
-export interface ModelResolution {
-  model: string;
-  source: "cli" | "config";
-}
-
-/**
- * Resolve the model to use based on priority order.
+ * Validate and resolve the model for a worker.
  *
- * Resolution order:
- *   1. CLI `--model` flag → validated against compatible_models
- *   2. Config model (from env var or project config) → validated against compatible_models
- *   3. Error if none available
- *
- * Workers declare constraints via compatible_models, users declare preferences via CLI/env/config.
- * To require a specific model, set compatible_models to a single exact entry.
+ * The model should already be resolved by the caller (CLI/env/config priority).
+ * This function validates it against the worker's compatible_models constraints.
  */
 function resolveModel(
   worker: WorkerDefinition,
-  cliModel: string | undefined,
-  configModel: string | undefined
-): ModelResolution {
+  model: string | undefined
+): string {
   const compatibleModels = worker.compatible_models;
 
   // Validate compatible_models config
@@ -192,31 +176,19 @@ function resolveModel(
     throw new Error(`Worker "${worker.name}" has empty compatible_models - this is invalid configuration`);
   }
 
-  // 1. CLI model - validated against compatible_models
-  if (cliModel) {
-    if (!isModelCompatible(cliModel, compatibleModels)) {
+  // Validate model against compatible_models
+  if (model) {
+    if (!isModelCompatible(model, compatibleModels)) {
       const patterns = compatibleModels?.join(", ") || "any";
       throw new Error(
-        `Model "${cliModel}" is not compatible with worker "${worker.name}". ` +
+        `Model "${model}" is not compatible with worker "${worker.name}". ` +
         `Compatible patterns: ${patterns}`
       );
     }
-    return { model: cliModel, source: "cli" };
+    return model;
   }
 
-  // 2. Config model - validated against compatible_models
-  if (configModel) {
-    if (!isModelCompatible(configModel, compatibleModels)) {
-      const patterns = compatibleModels?.join(", ") || "any";
-      throw new Error(
-        `Config model "${configModel}" is not compatible with worker "${worker.name}". ` +
-        `Compatible patterns: ${patterns}`
-      );
-    }
-    return { model: configModel, source: "config" };
-  }
-
-  // 3. No model available - error with helpful message
+  // No model available - error with helpful message
   const patternsHint = compatibleModels ? ` Compatible patterns: ${compatibleModels.join(", ")}` : "";
   throw new Error(
     `No model specified for worker "${worker.name}". ` +
@@ -257,10 +229,10 @@ export class WorkerRuntime {
   private worker: WorkerDefinition;
   private options: WorkerRuntimeOptions;
   private model: LanguageModel;
+  private resolvedModelId: string;
   private tools: Record<string, Tool> = {};
   private approvalController: ApprovalController;
   private sandbox?: Sandbox;
-  private modelResolution: ModelResolution;
 
   constructor(options: WorkerRuntimeOptions) {
     this.worker = options.worker;
@@ -269,18 +241,11 @@ export class WorkerRuntime {
     // Use injected model or create from model resolution
     if (options.injectedModel) {
       this.model = options.injectedModel;
-      this.modelResolution = {
-        model: "injected:model",
-        source: "config",
-      };
+      this.resolvedModelId = "injected:model";
     } else {
-      // Resolve model using priority order with compatibility validation
-      this.modelResolution = resolveModel(
-        this.worker,
-        options.model,
-        options.configModel
-      );
-      this.model = createModel(this.modelResolution.model);
+      // Validate model against compatible_models
+      this.resolvedModelId = resolveModel(this.worker, options.model);
+      this.model = createModel(this.resolvedModelId);
     }
 
     // Determine approval mode - default to "interactive" for safety
@@ -306,10 +271,10 @@ export class WorkerRuntime {
   }
 
   /**
-   * Get the resolved model and its source.
+   * Get the resolved model ID.
    */
-  getModelResolution(): ModelResolution {
-    return this.modelResolution;
+  getModelId(): string {
+    return this.resolvedModelId;
   }
 
   /**
@@ -385,7 +350,6 @@ export class WorkerRuntime {
             delegationContext: this.options.delegationContext,
             projectRoot: this.options.projectRoot,
             model: this.options.model,
-            configModel: this.options.configModel,
           });
           for (const tool of workerToolset.getTools()) {
             this.tools[tool.name] = tool;

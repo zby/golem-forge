@@ -88,10 +88,8 @@ export interface WorkerCallToolsetOptions {
   projectRoot?: string;
   /** Maximum delegation depth (default: 5) */
   maxDelegationDepth?: number;
-  /** CLI model to pass to child workers */
+  /** Model to pass to child workers (already resolved from CLI/env/config) */
   model?: string;
-  /** Config model (from env/project config) to pass to child workers */
-  configModel?: string;
 }
 
 /**
@@ -211,10 +209,8 @@ interface ExecuteDelegationOptions {
   delegationContext?: DelegationContext;
   projectRoot?: string;
   maxDelegationDepth: number;
-  /** CLI model to pass to child worker */
+  /** Model to pass to child worker (already resolved) */
   model?: string;
-  /** Config model to pass to child worker */
-  configModel?: string;
 }
 
 /**
@@ -240,7 +236,6 @@ async function executeWorkerDelegation(
     projectRoot,
     maxDelegationDepth,
     model,
-    configModel,
   } = options;
 
   // Check delegation depth
@@ -325,7 +320,6 @@ async function executeWorkerDelegation(
     const childRuntime = new WorkerRuntime({
       worker: modifiedWorker,
       model: model,
-      configModel: configModel,
       approvalMode: approvalMode,
       approvalCallback: approvalCallback,
       projectRoot: projectRoot,
@@ -390,7 +384,6 @@ export function createCallWorkerTool(
     projectRoot,
     maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
     model,
-    configModel,
   } = options;
 
   return {
@@ -429,7 +422,6 @@ export function createCallWorkerTool(
         projectRoot,
         maxDelegationDepth,
         model,
-        configModel,
       });
     },
   };
@@ -470,7 +462,6 @@ export function createNamedWorkerTool(
     projectRoot,
     maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
     model,
-    configModel,
   } = options;
 
   return {
@@ -498,7 +489,6 @@ export function createNamedWorkerTool(
         projectRoot,
         maxDelegationDepth,
         model,
-        configModel,
       });
     },
   };
