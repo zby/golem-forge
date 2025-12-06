@@ -10,8 +10,12 @@ Build a multi-runtime LLM worker system with TypeScript, starting with CLI and t
 
 ## Related Documents
 
-- **[User Stories](./user-stories.md)** - Requirements and validation criteria
+- **[User Stories](./user-stories.md)** - Index to all user stories
+  - [Common Stories](./user_stories/common.md) - Shared across deployments
+  - [CLI Stories](./user_stories/cli.md) - Command-line workflows
+  - [Browser Stories](./user_stories/browser.md) - Extension workflows
 - **[Sandbox Design](./sandbox-design.md)** - Core sandbox abstraction
+- **[Git Integration Design](./notes/git-integration-design.md)** - Git as security boundary
 - **[Browser Extension Architecture](./browser-extension-architecture.md)** - Browser-specific design
 - **[Tool Approval Design](./tool-approval-design.md)** - SDK-native approval pattern
 
