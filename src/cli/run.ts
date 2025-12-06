@@ -332,7 +332,8 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .option("-A, --attach <file>", "Attach file explicitly (can be used multiple times)", collectAttachments, [])
     .option("-p, --project <path>", "Project root directory (auto-detected if not specified)")
     .option("-v, --verbose", "Verbose output")
-    .option("-t, --trace", "Trace mode: show all messages, tool calls, and responses")
+    .option("-t, --trace", "Trace mode: show all messages, tool calls, and responses", true)
+    .option("--no-trace", "Disable trace mode")
     .action(async (dirArg: string, inputArgs: string[], options: CLIOptions) => {
       try {
         await executeWorker(dirArg, inputArgs, options);
