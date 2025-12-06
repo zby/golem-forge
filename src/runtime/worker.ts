@@ -53,11 +53,9 @@ export interface WorkerResult {
 export interface WorkerRuntimeOptions {
   /** The worker definition to execute */
   worker: WorkerDefinition;
-  /** Model from CLI --model flag (validated against compatible_models) */
+  /** Model from CLI --model flag (highest priority) */
   model?: string;
-  /** Caller's model when delegating from another worker (validated against compatible_models) */
-  callerModel?: string;
-  /** Default model from project config (lowest priority, before hardcoded default) */
+  /** Default model from env var or project config */
   configModel?: string;
   /** Approval mode */
   approvalMode?: ApprovalMode;
@@ -168,24 +166,23 @@ function isModelCompatible(modelId: string, compatibleModels: string[] | undefin
  */
 export interface ModelResolution {
   model: string;
-  source: "worker" | "cli" | "caller" | "config" | "default";
+  source: "cli" | "config";
 }
 
 /**
  * Resolve the model to use based on priority order.
  *
  * Resolution order:
- *   1. Worker's `model` field (if set) → wins unconditionally
- *   2. CLI `--model` flag → validated against compatible_models
- *   3. Caller's model (inherited during delegation) → validated against compatible_models
- *   4. Project config model → validated against compatible_models
- *   5. Hardcoded default model → validated against compatible_models
- *   6. Error if none available
+ *   1. CLI `--model` flag → validated against compatible_models
+ *   2. Config model (from env var or project config) → validated against compatible_models
+ *   3. Error if none available
+ *
+ * Workers declare constraints via compatible_models, users declare preferences via CLI/env/config.
+ * To require a specific model, set compatible_models to a single exact entry.
  */
 function resolveModel(
   worker: WorkerDefinition,
   cliModel: string | undefined,
-  callerModel: string | undefined,
   configModel: string | undefined
 ): ModelResolution {
   const compatibleModels = worker.compatible_models;
@@ -195,12 +192,7 @@ function resolveModel(
     throw new Error(`Worker "${worker.name}" has empty compatible_models - this is invalid configuration`);
   }
 
-  // 1. Worker's model wins unconditionally
-  if (worker.model) {
-    return { model: worker.model, source: "worker" };
-  }
-
-  // 2. CLI model - validated against compatible_models
+  // 1. CLI model - validated against compatible_models
   if (cliModel) {
     if (!isModelCompatible(cliModel, compatibleModels)) {
       const patterns = compatibleModels?.join(", ") || "any";
@@ -212,19 +204,7 @@ function resolveModel(
     return { model: cliModel, source: "cli" };
   }
 
-  // 3. Caller's model - validated against compatible_models
-  if (callerModel) {
-    if (!isModelCompatible(callerModel, compatibleModels)) {
-      const patterns = compatibleModels?.join(", ") || "any";
-      throw new Error(
-        `Caller model "${callerModel}" is not compatible with worker "${worker.name}". ` +
-        `Compatible patterns: ${patterns}`
-      );
-    }
-    return { model: callerModel, source: "caller" };
-  }
-
-  // 4. Project config model - validated against compatible_models
+  // 2. Config model - validated against compatible_models
   if (configModel) {
     if (!isModelCompatible(configModel, compatibleModels)) {
       const patterns = compatibleModels?.join(", ") || "any";
@@ -236,16 +216,12 @@ function resolveModel(
     return { model: configModel, source: "config" };
   }
 
-  // 5. Hardcoded default model - validated against compatible_models
-  const defaultModel = "anthropic:claude-haiku-4-5";
-  if (!isModelCompatible(defaultModel, compatibleModels)) {
-    const patterns = compatibleModels?.join(", ") || "any";
-    throw new Error(
-      `No model specified and default "${defaultModel}" is not compatible with worker "${worker.name}". ` +
-      `Compatible patterns: ${patterns}. Please specify a model with --model.`
-    );
-  }
-  return { model: defaultModel, source: "default" };
+  // 3. No model available - error with helpful message
+  const patternsHint = compatibleModels ? ` Compatible patterns: ${compatibleModels.join(", ")}` : "";
+  throw new Error(
+    `No model specified for worker "${worker.name}". ` +
+    `Set GOLEM_FORGE_MODEL environment variable or use --model flag.${patternsHint}`
+  );
 }
 
 /**
@@ -295,14 +271,13 @@ export class WorkerRuntime {
       this.model = options.injectedModel;
       this.modelResolution = {
         model: "injected:model",
-        source: "worker",
+        source: "config",
       };
     } else {
       // Resolve model using priority order with compatibility validation
       this.modelResolution = resolveModel(
         this.worker,
         options.model,
-        options.callerModel,
         options.configModel
       );
       this.model = createModel(this.modelResolution.model);
@@ -409,6 +384,8 @@ export class WorkerRuntime {
             approvalMode: this.options.approvalMode || "interactive",
             delegationContext: this.options.delegationContext,
             projectRoot: this.options.projectRoot,
+            model: this.options.model,
+            configModel: this.options.configModel,
           });
           for (const tool of workerToolset.getTools()) {
             this.tools[tool.name] = tool;

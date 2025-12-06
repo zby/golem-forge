@@ -151,7 +151,6 @@ describe("WorkerCallToolset", () => {
     it("detects circular delegation", async () => {
       const delegationContext: DelegationContext = {
         delegationPath: ["orchestrator", "analyzer"],
-        callerModel: "anthropic:claude-haiku-4-5",
       };
 
       const tool = createCallWorkerTool({
@@ -176,7 +175,6 @@ describe("WorkerCallToolset", () => {
     it("enforces max delegation depth", async () => {
       const delegationContext: DelegationContext = {
         delegationPath: ["a", "b", "c", "d", "e"],
-        callerModel: "anthropic:claude-haiku-4-5",
       };
 
       const tool = createCallWorkerTool({
@@ -232,7 +230,6 @@ describe("WorkerCallToolset", () => {
     it("detects circular delegation", async () => {
       const delegationContext: DelegationContext = {
         delegationPath: ["orchestrator", "analyzer"],
-        callerModel: "anthropic:claude-haiku-4-5",
       };
 
       const tool = createNamedWorkerTool({
@@ -256,7 +253,6 @@ describe("WorkerCallToolset", () => {
     it("enforces max delegation depth", async () => {
       const delegationContext: DelegationContext = {
         delegationPath: ["a", "b", "c", "d", "e"],
-        callerModel: "anthropic:claude-haiku-4-5",
       };
 
       const tool = createNamedWorkerTool({

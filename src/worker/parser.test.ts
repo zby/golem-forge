@@ -74,11 +74,10 @@ You orchestrate tasks.
       }
     });
 
-    it("parses worker with model specification", () => {
+    it("parses worker with compatible_models specification", () => {
       const content = `---
 name: fast_worker
-description: Uses a fast model
-model: anthropic:claude-haiku-4-5
+description: Uses Anthropic or OpenAI
 compatible_models:
   - "anthropic:*"
   - "openai:gpt-4o-mini"
@@ -91,8 +90,8 @@ You respond quickly.
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.worker.model).toBe("anthropic:claude-haiku-4-5");
         expect(result.worker.compatible_models).toContain("anthropic:*");
+        expect(result.worker.compatible_models).toContain("openai:gpt-4o-mini");
       }
     });
 

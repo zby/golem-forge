@@ -64,8 +64,6 @@ export type NamedWorkerInput = z.infer<typeof NamedWorkerInputSchema>;
 export interface DelegationContext {
   /** Chain of worker names from root to current (e.g., ["orchestrator", "analyzer"]) */
   delegationPath: string[];
-  /** The resolved model being used by the parent (for inheritance) */
-  callerModel: string;
 }
 
 /**
@@ -90,6 +88,10 @@ export interface WorkerCallToolsetOptions {
   projectRoot?: string;
   /** Maximum delegation depth (default: 5) */
   maxDelegationDepth?: number;
+  /** CLI model to pass to child workers */
+  model?: string;
+  /** Config model (from env/project config) to pass to child workers */
+  configModel?: string;
 }
 
 /**
@@ -167,10 +169,6 @@ function createChildSandbox(
   return createRestrictedSandbox(parentSandbox, allowedZones);
 }
 
-/**
- * Default model for delegation context when caller model is not specified.
- */
-const DEFAULT_CALLER_MODEL = "anthropic:claude-haiku-4-5";
 
 /**
  * Reserved tool names that workers cannot use to avoid conflicts.
@@ -213,6 +211,10 @@ interface ExecuteDelegationOptions {
   delegationContext?: DelegationContext;
   projectRoot?: string;
   maxDelegationDepth: number;
+  /** CLI model to pass to child worker */
+  model?: string;
+  /** Config model to pass to child worker */
+  configModel?: string;
 }
 
 /**
@@ -237,6 +239,8 @@ async function executeWorkerDelegation(
     delegationContext,
     projectRoot,
     maxDelegationDepth,
+    model,
+    configModel,
   } = options;
 
   // Check delegation depth
@@ -275,22 +279,7 @@ async function executeWorkerDelegation(
 
     const childWorker = lookupResult.worker.definition;
 
-    // Validate model compatibility if we have a caller model
-    const callerModel = delegationContext?.callerModel;
-    if (callerModel && childWorker.compatible_models !== undefined) {
-      const isCompatible = checkModelCompatibility(
-        callerModel,
-        childWorker.compatible_models
-      );
-      if (!isCompatible) {
-        return {
-          success: false,
-          error: `Model '${callerModel}' is not compatible with worker '${childWorker.name}'. Compatible models: ${childWorker.compatible_models.join(", ")}`,
-          workerName,
-          toolCallCount: 0,
-        };
-      }
-    }
+    // Model compatibility is validated by WorkerRuntime during construction
 
     // Read attachments from sandbox if specified
     const attachmentData = await readAttachments(sandbox, attachments);
@@ -331,12 +320,12 @@ async function executeWorkerDelegation(
 
     const childDelegationContext: DelegationContext = {
       delegationPath: [...currentPath, childWorker.name],
-      callerModel: callerModel || DEFAULT_CALLER_MODEL,
     };
 
     const childRuntime = new WorkerRuntime({
       worker: modifiedWorker,
-      callerModel: callerModel,
+      model: model,
+      configModel: configModel,
       approvalMode: approvalMode,
       approvalCallback: approvalCallback,
       projectRoot: projectRoot,
@@ -383,7 +372,7 @@ async function executeWorkerDelegation(
  * This tool enables workers to delegate to other workers.
  * It handles:
  * - Worker lookup by name (must be in allowed_workers list)
- * - Model inheritance from caller
+ * - Model configuration passing to child workers
  * - Attachment passing from sandbox
  * - Shared approval controller
  */
@@ -400,6 +389,8 @@ export function createCallWorkerTool(
     delegationContext,
     projectRoot,
     maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
+    model,
+    configModel,
   } = options;
 
   return {
@@ -437,6 +428,8 @@ export function createCallWorkerTool(
         delegationContext,
         projectRoot,
         maxDelegationDepth,
+        model,
+        configModel,
       });
     },
   };
@@ -476,6 +469,8 @@ export function createNamedWorkerTool(
     delegationContext,
     projectRoot,
     maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
+    model,
+    configModel,
   } = options;
 
   return {
@@ -502,35 +497,11 @@ export function createNamedWorkerTool(
         delegationContext,
         projectRoot,
         maxDelegationDepth,
+        model,
+        configModel,
       });
     },
   };
-}
-
-/**
- * Check if a model matches any pattern in compatible_models.
- */
-function checkModelCompatibility(
-  modelId: string,
-  compatibleModels: string[]
-): boolean {
-  for (const pattern of compatibleModels) {
-    if (matchModelPattern(modelId, pattern)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Match a model ID against a glob pattern.
- */
-function matchModelPattern(modelId: string, pattern: string): boolean {
-  const regexPattern = pattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*/g, ".*");
-  const regex = new RegExp(`^${regexPattern}$`);
-  return regex.test(modelId);
 }
 
 /**

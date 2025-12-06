@@ -119,7 +119,7 @@ Workers read/write files through explicitly configured sandboxes. Security by co
 Each allowed worker becomes a directly callable tool with enforcement layers:
 - Allowlists restrict which workers can be called (each becomes a named tool)
 - Attachment validation (count, size, extensions) happens before execution
-- Model inheritance: worker definition → caller's model → CLI model → error
+- Model validated against worker's `compatible_models` constraints
 - Tool access NOT inherited—each worker declares its own
 - Results can be structured (validated JSON) or freeform text
 - Fallback `call_worker` tool available for dynamic worker discovery

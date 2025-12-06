@@ -141,12 +141,21 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
 
 /**
  * Get effective configuration by merging project config with defaults.
+ *
+ * Priority order for model:
+ *   1. CLI --model flag (in overrides)
+ *   2. Project config model
+ *   3. GOLEM_FORGE_MODEL environment variable
  */
 export function getEffectiveConfig(
   projectConfig?: ProjectConfig,
   overrides?: Partial<ProjectConfig>
 ): ProjectConfig {
+  // Environment variable serves as fallback default for model
+  const envModel = process.env.GOLEM_FORGE_MODEL;
+
   const defaults: ProjectConfig = {
+    model: envModel,
     trustLevel: "session",
     approvalMode: "interactive",
     workerPaths: ["workers", ".workers"],

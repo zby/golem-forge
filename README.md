@@ -47,7 +47,13 @@ npm install golem-forge
 # Set your API key
 export ANTHROPIC_API_KEY="sk-ant-..."  # or OPENAI_API_KEY
 
+# Set default model (optional - can also use --model flag)
+export GOLEM_FORGE_MODEL="anthropic:claude-haiku-4-5"
+
 # Run a project
+npx golem-forge ./examples/greeter "Tell me a joke"
+
+# Or specify model explicitly
 npx golem-forge ./examples/greeter "Tell me a joke" --model anthropic:claude-haiku-4-5
 ```
 
@@ -147,6 +153,43 @@ Functions become LLM-callable tools. Reference them in your worker's toolsets co
 - **Attachment policies** - Control file inputs (size, count, types)
 - **Config inheritance** - `golem-forge.config.yaml` provides defaults, workers override
 
+## Model Configuration
+
+Models are configured with a simple priority system:
+
+1. **CLI flag** (`--model`) - highest priority, overrides everything
+2. **Environment variable** (`GOLEM_FORGE_MODEL`) - default for all projects
+3. **Project config** (`golem-forge.config.yaml`) - project-specific default
+
+```bash
+# Set globally via environment
+export GOLEM_FORGE_MODEL="anthropic:claude-haiku-4-5"
+
+# Override per-run
+npx golem-forge ./project "input" --model openai:gpt-4o
+```
+
+Workers can constrain which models they support using `compatible_models`:
+
+```yaml
+# workers/analyzer.worker
+---
+name: analyzer
+description: Requires Anthropic models for best results
+compatible_models:
+  - "anthropic:*"          # Any Anthropic model
+  - "openai:gpt-4o"        # Or this specific OpenAI model
+---
+```
+
+If the user's model doesn't match a worker's constraints, the CLI errors with a helpful message showing compatible patterns.
+
+To require a specific model, use a single exact entry:
+```yaml
+compatible_models:
+  - "anthropic:claude-sonnet-4"  # Only this model allowed
+```
+
 ## Project Configuration
 
 Create a `golem-forge.config.yaml` in your project root to configure sandbox zones and other settings:
@@ -154,7 +197,7 @@ Create a `golem-forge.config.yaml` in your project root to configure sandbox zon
 ```yaml
 # golem-forge.config.yaml
 
-# Default model for all workers
+# Default model for this project (overridden by GOLEM_FORGE_MODEL or --model)
 model: anthropic:claude-haiku-4-5
 
 # Sandbox configuration

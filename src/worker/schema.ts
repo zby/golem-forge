@@ -74,8 +74,11 @@ export type ToolsetsConfig = z.infer<typeof ToolsetsConfigSchema>;
 export const WorkerFrontmatterSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
-  model: z.string().optional(),
-  /** If undefined, any model is compatible. Supports wildcards like "anthropic:*". */
+  /**
+   * Model compatibility constraints. Supports wildcards like "anthropic:*".
+   * If undefined, any model is compatible.
+   * To require a specific model, use a single exact entry: ["anthropic:claude-sonnet-4"]
+   */
   compatible_models: z.array(z.string()).optional(),
   output_schema_ref: z.string().optional(),
   sandbox: WorkerSandboxConfigSchema.optional(),

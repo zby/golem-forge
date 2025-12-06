@@ -1,7 +1,8 @@
 ---
 name: file_processor
 description: Processes files in a sandboxed environment
-model: anthropic:claude-sonnet-4
+compatible_models:
+  - "anthropic:claude-sonnet-4"
 sandbox:
   paths:
     input:
