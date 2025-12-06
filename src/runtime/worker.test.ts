@@ -331,7 +331,8 @@ describe("WorkerRuntime", () => {
       const messages = secondCall.messages;
       const toolMessage = messages.find((m: { role: string }) => m.role === "tool");
       expect(toolMessage).toBeDefined();
-      expect(toolMessage.content[0].output).toContain("Tool not found");
+      // AI SDK v6: output is wrapped in { type: "json", value: ... }
+      expect(toolMessage.content[0].output.value).toContain("Tool not found");
     });
   });
 

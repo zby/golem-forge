@@ -501,7 +501,8 @@ export class WorkerRuntime {
             type: "tool-result",
             toolCallId: tc.toolCallId,
             toolName: tc.toolName,
-            output,
+            // AI SDK v6 requires output to be wrapped in { type: "json", value: ... }
+            output: { type: "json", value: output },
           });
         }
 
