@@ -11,17 +11,12 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
 import type { WorkerDefinition } from "../worker/schema.js";
-import {
-  ApprovalController,
-  type ApprovalCallback,
-  type ApprovalMode,
-} from "../approval/index.js";
+import { ApprovalController } from "../approval/index.js";
 import {
   FilesystemToolset,
   WorkerCallToolset,
   createCustomToolset,
   CustomToolsetConfigSchema,
-  type DelegationContext,
   type ZoneApprovalMap,
   type CustomToolsetConfig,
 } from "../tools/index.js";
@@ -30,77 +25,26 @@ import {
   createSandbox,
   createTestSandbox,
   type Sandbox,
-  type SandboxConfig,
 } from "../sandbox/index.js";
 import type { Attachment } from "../ai/types.js";
 import type { RuntimeEventCallback, RuntimeEventData } from "./events.js";
+import { ToolExecutor, type ToolCall as ToolExecutorCall } from "./tool-executor.js";
+import type {
+  WorkerRunner,
+  WorkerRunnerFactory,
+  WorkerRunnerOptions,
+  WorkerResult,
+  RunInput,
+} from "./interfaces.js";
 
-/**
- * Result of a worker execution.
- */
-export interface WorkerResult {
-  /** Whether execution completed successfully */
-  success: boolean;
-  /** Final text response from the LLM */
-  response?: string;
-  /** Error message if failed */
-  error?: string;
-  /** Number of tool calls made */
-  toolCallCount: number;
-  /** Token usage statistics */
-  tokens?: { input: number; output: number };
-  /** Total cost */
-  cost?: number;
-}
+// Re-export types from interfaces.ts
+export type { WorkerResult, RunInput, WorkerRunner, WorkerRunnerFactory, WorkerRunnerOptions } from "./interfaces.js";
 
 /**
  * Options for creating a WorkerRuntime.
+ * Alias for WorkerRunnerOptions - single source of truth in interfaces.ts.
  */
-export interface WorkerRuntimeOptions {
-  /** The worker definition to execute */
-  worker: WorkerDefinition;
-  /** Model to use (already resolved from CLI/env/config by caller) */
-  model?: string;
-  /** Approval mode */
-  approvalMode?: ApprovalMode;
-  /** Approval callback for interactive mode */
-  approvalCallback?: ApprovalCallback;
-  /** Project root for CLI sandbox */
-  projectRoot?: string;
-  /** Path to the worker file (for resolving relative module paths) */
-  workerFilePath?: string;
-  /** Use test sandbox instead of CLI sandbox */
-  useTestSandbox?: boolean;
-  /** Maximum tool call iterations */
-  maxIterations?: number;
-  /** Inject a model directly (for testing) */
-  injectedModel?: LanguageModel;
-  /** Shared approval controller (for worker delegation) */
-  sharedApprovalController?: ApprovalController;
-  /** Shared sandbox (for worker delegation) */
-  sharedSandbox?: Sandbox;
-  /** Delegation context when called by another worker */
-  delegationContext?: DelegationContext;
-  /** Worker registry for delegation lookups */
-  registry?: WorkerRegistry;
-  /** Custom sandbox configuration (from project config) */
-  sandboxConfig?: SandboxConfig;
-  /** Callback for runtime events (for tracing/debugging) */
-  onEvent?: RuntimeEventCallback;
-}
-
-/**
- * Input for running a worker.
- * Can be a simple string or an object with content and optional attachments.
- */
-export type RunInput =
-  | string
-  | {
-      /** Text content */
-      content: string;
-      /** Optional file attachments (images, PDFs, etc.) */
-      attachments?: Attachment[];
-    };
+export type WorkerRuntimeOptions = WorkerRunnerOptions;
 
 /**
  * Re-export Attachment type for convenience.
@@ -235,8 +179,9 @@ function createModel(modelId: string): LanguageModel {
 /**
  * Runtime for executing workers.
  * Uses AI SDK's native needsApproval for tool approval.
+ * Implements WorkerRunner interface for dependency inversion.
  */
-export class WorkerRuntime {
+export class WorkerRuntime implements WorkerRunner {
   private worker: WorkerDefinition;
   private options: WorkerRuntimeOptions;
   private model: LanguageModel;
@@ -246,6 +191,7 @@ export class WorkerRuntime {
   private sandbox?: Sandbox;
   private onEvent?: RuntimeEventCallback;
   private initialized = false;
+  private toolExecutor?: ToolExecutor;
 
   constructor(options: WorkerRuntimeOptions) {
     this.worker = options.worker;
@@ -326,6 +272,13 @@ export class WorkerRuntime {
     // Tools have needsApproval set directly, SDK handles approval flow
     await this.registerTools();
 
+    // Create tool executor with registered tools
+    this.toolExecutor = new ToolExecutor({
+      tools: this.tools,
+      approvalController: this.approvalController,
+      onEvent: this.onEvent,
+    });
+
     this.initialized = true;
   }
 
@@ -396,6 +349,7 @@ export class WorkerRuntime {
             delegationContext: this.options.delegationContext,
             projectRoot: this.options.projectRoot,
             model: this.options.model,
+            workerRunnerFactory: defaultWorkerRunnerFactory,
           });
           for (const tool of workerToolset.getTools()) {
             this.tools[tool.name] = tool;
@@ -545,8 +499,8 @@ export class WorkerRuntime {
             args: getToolArgs(tc),
           })),
           usage: result.usage ? {
-            input: result.usage.inputTokens,
-            output: result.usage.outputTokens,
+            input: result.usage.inputTokens ?? 0,
+            output: result.usage.outputTokens ?? 0,
           } : undefined,
         });
         if (!toolCalls || toolCalls.length === 0) {
@@ -584,126 +538,29 @@ export class WorkerRuntime {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any);
 
-        // Execute tools ourselves
-        const toolResultMessages: Array<{ type: "tool-result"; toolCallId: string; toolName: string; output: unknown }> = [];
-        const toolTotal = toolCalls.length;
+        // Execute tools via ToolExecutor
+        const executorCalls: ToolExecutorCall[] = toolCalls.map(tc => ({
+          toolCallId: tc.toolCallId,
+          toolName: tc.toolName,
+          toolArgs: getToolArgs(tc),
+        }));
 
-        for (let toolIdx = 0; toolIdx < toolCalls.length; toolIdx++) {
-          const tc = toolCalls[toolIdx];
-          const toolStartTime = Date.now();
-          toolCallCount++;
+        // Increment count BEFORE execution so failures don't underreport
+        toolCallCount += executorCalls.length;
 
-          const toolName = tc.toolName;
-          const toolArgs = getToolArgs(tc);
-          const tool = this.tools[toolName];
+        const executionResults = await this.toolExecutor!.executeBatch(executorCalls, {
+          messages,
+          iteration: iterationNum,
+        });
 
-          // Emit tool_call_start event
-          this.emit({
-            type: "tool_call_start",
-            iteration: iterationNum,
-            toolIndex: toolIdx + 1,
-            toolTotal,
-            toolCallId: tc.toolCallId,
-            toolName,
-            toolArgs,
-          });
-
-          let output: unknown;
-          let isError = false;
-
-          if (!tool) {
-            // Tool doesn't exist
-            output = `Error: Tool not found: ${toolName}`;
-            isError = true;
-          } else if (!tool.execute) {
-            // Tool has no execute function
-            output = `Error: Tool ${toolName} has no execute function`;
-            isError = true;
-          } else {
-            // Check if tool needs approval
-            const needsApproval = typeof tool.needsApproval === 'function'
-              ? await tool.needsApproval(toolArgs, { toolCallId: tc.toolCallId, messages })
-              : tool.needsApproval;
-
-            if (needsApproval) {
-              // Emit approval_request event
-              this.emit({
-                type: "approval_request",
-                toolName,
-                toolArgs,
-                description: `Execute tool: ${toolName}`,
-              });
-
-              // Get approval from controller
-              const decision = await this.approvalController.requestApproval({
-                toolName,
-                toolArgs,
-                description: `Execute tool: ${toolName}`,
-              });
-
-              // Emit approval_decision event
-              this.emit({
-                type: "approval_decision",
-                toolName,
-                approved: decision.approved,
-                cached: false, // TODO: detect if cached from controller
-                remember: decision.remember || "none",
-              });
-
-              if (!decision.approved) {
-                output = `Error: [DENIED] Tool execution denied${decision.note ? `: ${decision.note}` : ''}`;
-                isError = true;
-              } else {
-                // Execute approved tool
-                try {
-                  output = await tool.execute(toolArgs, { toolCallId: tc.toolCallId, messages });
-                } catch (err) {
-                  output = `Error: ${err instanceof Error ? err.message : String(err)}`;
-                  isError = true;
-                }
-              }
-            } else {
-              // Pre-approved, execute directly
-              try {
-                output = await tool.execute(toolArgs, { toolCallId: tc.toolCallId, messages });
-              } catch (err) {
-                output = `Error: ${err instanceof Error ? err.message : String(err)}`;
-                isError = true;
-              }
-            }
-          }
-
-          // Emit tool_call_end or tool_call_error event
-          const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
-          const maxOutputLen = 1000;
-          if (isError) {
-            this.emit({
-              type: "tool_call_error",
-              iteration: iterationNum,
-              toolCallId: tc.toolCallId,
-              toolName,
-              error: outputStr,
-            });
-          } else {
-            this.emit({
-              type: "tool_call_end",
-              iteration: iterationNum,
-              toolCallId: tc.toolCallId,
-              toolName,
-              output: outputStr.length > maxOutputLen ? outputStr.slice(0, maxOutputLen) : outputStr,
-              truncated: outputStr.length > maxOutputLen,
-              durationMs: Date.now() - toolStartTime,
-            });
-          }
-
-          toolResultMessages.push({
-            type: "tool-result",
-            toolCallId: tc.toolCallId,
-            toolName: tc.toolName,
-            // AI SDK v6 requires output to be wrapped in { type: "json", value: ... }
-            output: { type: "json", value: output },
-          });
-        }
+        // Convert results to tool-result messages
+        const toolResultMessages = executionResults.map(result => ({
+          type: "tool-result" as const,
+          toolCallId: result.toolCallId,
+          toolName: result.toolName,
+          // AI SDK v6 requires output to be wrapped in { type: "json", value: ... }
+          output: { type: "json", value: result.output },
+        }));
 
         // Add tool results to messages
         messages.push({
@@ -789,3 +646,13 @@ export async function createWorkerRuntime(options: WorkerRuntimeOptions): Promis
   await runtime.initialize();
   return runtime;
 }
+
+/**
+ * Default factory for creating WorkerRunner instances.
+ * Uses WorkerRuntime as the implementation.
+ */
+export const defaultWorkerRunnerFactory: WorkerRunnerFactory = {
+  create(options: WorkerRunnerOptions): WorkerRunner {
+    return new WorkerRuntime(options);
+  },
+};

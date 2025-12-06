@@ -13,6 +13,7 @@ import type { Sandbox, ZoneAccessMode } from "../sandbox/index.js";
 import { createRestrictedSandbox } from "../sandbox/index.js";
 import { WorkerRegistry } from "../worker/registry.js";
 import type { WorkerDefinition, WorkerSandboxConfig } from "../worker/schema.js";
+import type { WorkerRunnerFactory } from "../runtime/interfaces.js";
 
 /**
  * Schema for call_worker tool input (generic fallback).
@@ -90,6 +91,8 @@ export interface WorkerCallToolsetOptions {
   maxDelegationDepth?: number;
   /** Model to pass to child workers (already resolved from CLI/env/config) */
   model?: string;
+  /** Factory for creating child WorkerRunner instances (breaks circular dependency) */
+  workerRunnerFactory?: WorkerRunnerFactory;
 }
 
 /**
@@ -211,6 +214,8 @@ interface ExecuteDelegationOptions {
   maxDelegationDepth: number;
   /** Model to pass to child worker (already resolved) */
   model?: string;
+  /** Factory for creating child WorkerRunner instances */
+  workerRunnerFactory?: WorkerRunnerFactory;
 }
 
 /**
@@ -236,6 +241,7 @@ async function executeWorkerDelegation(
     projectRoot,
     maxDelegationDepth,
     model,
+    workerRunnerFactory,
   } = options;
 
   // Check delegation depth
@@ -309,15 +315,20 @@ async function executeWorkerDelegation(
       };
     }
 
-    // Create child runtime
-    // Import WorkerRuntime dynamically to avoid circular dependency
-    const { WorkerRuntime } = await import("../runtime/worker.js");
-
+    // Create child runtime using factory (avoids circular dependency)
     const childDelegationContext: DelegationContext = {
       delegationPath: [...currentPath, childWorker.name],
     };
 
-    const childRuntime = new WorkerRuntime({
+    // Get factory - use dynamic import as fallback if not provided
+    let factory = workerRunnerFactory;
+    if (!factory) {
+      // Fallback to dynamic import for backwards compatibility
+      const { defaultWorkerRunnerFactory } = await import("../runtime/worker.js");
+      factory = defaultWorkerRunnerFactory;
+    }
+
+    const childRuntime = factory.create({
       worker: modifiedWorker,
       model: model,
       approvalMode: approvalMode,
@@ -384,6 +395,7 @@ export function createCallWorkerTool(
     projectRoot,
     maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
     model,
+    workerRunnerFactory,
   } = options;
 
   return {
@@ -422,6 +434,7 @@ export function createCallWorkerTool(
         projectRoot,
         maxDelegationDepth,
         model,
+        workerRunnerFactory,
       });
     },
   };
@@ -462,6 +475,7 @@ export function createNamedWorkerTool(
     projectRoot,
     maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
     model,
+    workerRunnerFactory,
   } = options;
 
   return {
@@ -489,6 +503,7 @@ export function createNamedWorkerTool(
         projectRoot,
         maxDelegationDepth,
         model,
+        workerRunnerFactory,
       });
     },
   };

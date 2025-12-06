@@ -5,10 +5,14 @@
 export {
   WorkerRuntime,
   createWorkerRuntime,
+  defaultWorkerRunnerFactory,
   type WorkerResult,
   type WorkerRuntimeOptions,
   type RunInput,
   type Attachment,
+  type WorkerRunner,
+  type WorkerRunnerFactory,
+  type WorkerRunnerOptions,
 } from "./worker.js";
 
 export type {
@@ -26,3 +30,11 @@ export type {
   ExecutionEndEvent,
   ExecutionErrorEvent,
 } from "./events.js";
+
+export {
+  ToolExecutor,
+  type ToolCall,
+  type ToolExecutionContext,
+  type ToolExecutionResult,
+  type ToolExecutorOptions,
+} from "./tool-executor.js";

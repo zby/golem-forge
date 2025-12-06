@@ -167,8 +167,13 @@ export type RuntimeEvent =
 
 /**
  * Event data without timestamp (for internal use before emit adds timestamp).
+ * Uses distributive conditional type to preserve the discriminated union.
  */
-export type RuntimeEventData = Omit<RuntimeEvent, "timestamp">;
+export type RuntimeEventData = RuntimeEvent extends infer E
+  ? E extends RuntimeEvent
+    ? Omit<E, "timestamp">
+    : never
+  : never;
 
 /**
  * Callback function for receiving runtime events.
