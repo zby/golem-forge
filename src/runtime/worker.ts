@@ -28,6 +28,7 @@ import {
   type SandboxConfig,
 } from "../sandbox/index.js";
 import type { Attachment } from "../ai/types.js";
+import type { RuntimeEventCallback } from "./events.js";
 
 /**
  * Result of a worker execution.
@@ -77,6 +78,8 @@ export interface WorkerRuntimeOptions {
   registry?: WorkerRegistry;
   /** Custom sandbox configuration (from project config) */
   sandboxConfig?: SandboxConfig;
+  /** Callback for runtime events (for tracing/debugging) */
+  onEvent?: RuntimeEventCallback;
 }
 
 /**
@@ -233,6 +236,7 @@ export class WorkerRuntime {
   private tools: Record<string, Tool> = {};
   private approvalController: ApprovalController;
   private sandbox?: Sandbox;
+  private onEvent?: RuntimeEventCallback;
 
   constructor(options: WorkerRuntimeOptions) {
     this.worker = options.worker;
@@ -267,6 +271,19 @@ export class WorkerRuntime {
         mode: approvalMode,
         approvalCallback: options.approvalCallback,
       });
+    }
+
+    // Store event callback for tracing
+    this.onEvent = options.onEvent;
+  }
+
+  /**
+   * Emit a runtime event if a callback is registered.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private emit(event: any): void {
+    if (this.onEvent) {
+      this.onEvent({ ...event, timestamp: new Date() });
     }
   }
 
@@ -374,6 +391,14 @@ export class WorkerRuntime {
     let toolCallCount = 0;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
+    const startTime = Date.now();
+
+    // Emit execution start event
+    this.emit({
+      type: "execution_start",
+      workerName: this.worker.name,
+      model: this.resolvedModelId,
+    });
 
     try {
       // Build initial messages
@@ -407,6 +432,16 @@ export class WorkerRuntime {
       const hasTools = Object.keys(this.tools).length > 0;
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
+        const iterationNum = iteration + 1;
+
+        // Emit message_send event
+        this.emit({
+          type: "message_send",
+          iteration: iterationNum,
+          messages: messages.map(m => ({ role: m.role as "system" | "user" | "assistant" | "tool", content: m.content })),
+          toolCount: Object.keys(this.tools).length,
+        });
+
         // Call generateText - SDK handles tool execution and approval
         const result = await generateText({
           model: this.model,
@@ -420,11 +455,37 @@ export class WorkerRuntime {
 
         // Check if we have tool calls
         const toolCalls = result.toolCalls;
+
+        // Emit response_receive event
+        this.emit({
+          type: "response_receive",
+          iteration: iterationNum,
+          text: result.text || undefined,
+          toolCalls: (toolCalls || []).map(tc => ({
+            id: tc.toolCallId,
+            name: tc.toolName,
+            args: getToolArgs(tc),
+          })),
+          usage: result.usage ? {
+            input: result.usage.inputTokens,
+            output: result.usage.outputTokens,
+          } : undefined,
+        });
         if (!toolCalls || toolCalls.length === 0) {
           // No tool calls, we're done
+          const response = result.text || "";
+          this.emit({
+            type: "execution_end",
+            success: true,
+            response,
+            totalIterations: iterationNum,
+            totalToolCalls: toolCallCount,
+            totalTokens: { input: totalInputTokens, output: totalOutputTokens },
+            durationMs: Date.now() - startTime,
+          });
           return {
             success: true,
-            response: result.text || "",
+            response,
             toolCallCount,
             tokens: { input: totalInputTokens, output: totalOutputTokens },
           };
@@ -447,22 +508,39 @@ export class WorkerRuntime {
 
         // Execute tools ourselves
         const toolResultMessages: Array<{ type: "tool-result"; toolCallId: string; toolName: string; output: unknown }> = [];
+        const toolTotal = toolCalls.length;
 
-        for (const tc of toolCalls) {
+        for (let toolIdx = 0; toolIdx < toolCalls.length; toolIdx++) {
+          const tc = toolCalls[toolIdx];
+          const toolStartTime = Date.now();
           toolCallCount++;
 
           const toolName = tc.toolName;
           const toolArgs = getToolArgs(tc);
           const tool = this.tools[toolName];
 
+          // Emit tool_call_start event
+          this.emit({
+            type: "tool_call_start",
+            iteration: iterationNum,
+            toolIndex: toolIdx + 1,
+            toolTotal,
+            toolCallId: tc.toolCallId,
+            toolName,
+            toolArgs,
+          });
+
           let output: unknown;
+          let isError = false;
 
           if (!tool) {
             // Tool doesn't exist
             output = `Error: Tool not found: ${toolName}`;
+            isError = true;
           } else if (!tool.execute) {
             // Tool has no execute function
             output = `Error: Tool ${toolName} has no execute function`;
+            isError = true;
           } else {
             // Check if tool needs approval
             const needsApproval = typeof tool.needsApproval === 'function'
@@ -470,6 +548,14 @@ export class WorkerRuntime {
               : tool.needsApproval;
 
             if (needsApproval) {
+              // Emit approval_request event
+              this.emit({
+                type: "approval_request",
+                toolName,
+                toolArgs,
+                description: `Execute tool: ${toolName}`,
+              });
+
               // Get approval from controller
               const decision = await this.approvalController.requestApproval({
                 toolName,
@@ -477,14 +563,25 @@ export class WorkerRuntime {
                 description: `Execute tool: ${toolName}`,
               });
 
+              // Emit approval_decision event
+              this.emit({
+                type: "approval_decision",
+                toolName,
+                approved: decision.approved,
+                cached: false, // TODO: detect if cached from controller
+                remember: decision.remember || "none",
+              });
+
               if (!decision.approved) {
                 output = `Error: [DENIED] Tool execution denied${decision.note ? `: ${decision.note}` : ''}`;
+                isError = true;
               } else {
                 // Execute approved tool
                 try {
                   output = await tool.execute(toolArgs, { toolCallId: tc.toolCallId, messages });
                 } catch (err) {
                   output = `Error: ${err instanceof Error ? err.message : String(err)}`;
+                  isError = true;
                 }
               }
             } else {
@@ -493,8 +590,32 @@ export class WorkerRuntime {
                 output = await tool.execute(toolArgs, { toolCallId: tc.toolCallId, messages });
               } catch (err) {
                 output = `Error: ${err instanceof Error ? err.message : String(err)}`;
+                isError = true;
               }
             }
+          }
+
+          // Emit tool_call_end or tool_call_error event
+          const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
+          const maxOutputLen = 1000;
+          if (isError) {
+            this.emit({
+              type: "tool_call_error",
+              iteration: iterationNum,
+              toolCallId: tc.toolCallId,
+              toolName,
+              error: outputStr,
+            });
+          } else {
+            this.emit({
+              type: "tool_call_end",
+              iteration: iterationNum,
+              toolCallId: tc.toolCallId,
+              toolName,
+              output: outputStr.length > maxOutputLen ? outputStr.slice(0, maxOutputLen) : outputStr,
+              truncated: outputStr.length > maxOutputLen,
+              durationMs: Date.now() - toolStartTime,
+            });
           }
 
           toolResultMessages.push({
@@ -515,16 +636,34 @@ export class WorkerRuntime {
       }
 
       // Hit max iterations
+      const maxIterError = `Maximum iterations (${maxIterations}) exceeded`;
+      this.emit({
+        type: "execution_error",
+        success: false,
+        error: maxIterError,
+        totalIterations: maxIterations,
+        totalToolCalls: toolCallCount,
+        durationMs: Date.now() - startTime,
+      });
       return {
         success: false,
-        error: `Maximum iterations (${maxIterations}) exceeded`,
+        error: maxIterError,
         toolCallCount,
         tokens: { input: totalInputTokens, output: totalOutputTokens },
       };
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      this.emit({
+        type: "execution_error",
+        success: false,
+        error: errorMsg,
+        totalIterations: 0,
+        totalToolCalls: toolCallCount,
+        durationMs: Date.now() - startTime,
+      });
       return {
         success: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: errorMsg,
         toolCallCount,
         tokens: { input: totalInputTokens, output: totalOutputTokens },
       };

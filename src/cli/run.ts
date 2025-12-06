@@ -12,6 +12,7 @@ import { createWorkerRuntime, type WorkerRuntimeOptions, type Attachment, type R
 import { parseWorkerString, type WorkerDefinition } from "../worker/index.js";
 import { createCLIApprovalCallback } from "./approval.js";
 import { getEffectiveConfig, findProjectRoot, resolveSandboxConfig } from "./project.js";
+import { createTraceFormatter } from "./trace.js";
 import type { ApprovalMode } from "../approval/index.js";
 import type { SandboxConfig } from "../sandbox/index.js";
 
@@ -25,6 +26,7 @@ interface CLIOptions {
   file?: string;
   project?: string;
   verbose?: boolean;
+  trace?: boolean;
   attach?: string[];
 }
 
@@ -330,6 +332,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .option("-A, --attach <file>", "Attach file explicitly (can be used multiple times)", collectAttachments, [])
     .option("-p, --project <path>", "Project root directory (auto-detected if not specified)")
     .option("-v, --verbose", "Verbose output")
+    .option("-t, --trace", "Trace mode: show all messages, tool calls, and responses")
     .action(async (dirArg: string, inputArgs: string[], options: CLIOptions) => {
       try {
         await executeWorker(dirArg, inputArgs, options);
@@ -460,6 +463,9 @@ async function executeWorker(
     }
   }
 
+  // Create trace formatter if trace mode is enabled
+  const onEvent = options.trace ? createTraceFormatter() : undefined;
+
   // Create runtime options - use detected project root
   // Model is already resolved: CLI --model > env var > project config
   const runtimeOptions: WorkerRuntimeOptions = {
@@ -469,6 +475,7 @@ async function executeWorker(
     approvalCallback,
     projectRoot,
     sandboxConfig,
+    onEvent,
   };
 
   // Create and initialize runtime
@@ -495,11 +502,13 @@ async function executeWorker(
 
   const result = await runtime.run(runInput);
 
-  // Output result
+  // Output result (skip if trace mode already showed it)
   if (result.success) {
-    console.log(result.response);
+    if (!options.trace) {
+      console.log(result.response);
+    }
 
-    if (options.verbose) {
+    if (options.verbose && !options.trace) {
       console.log("\n" + "─".repeat(30));
       console.log(`Tool calls: ${result.toolCallCount}`);
       if (result.tokens) {
@@ -510,7 +519,9 @@ async function executeWorker(
       }
     }
   } else {
-    console.error(`Worker failed: ${result.error}`);
+    if (!options.trace) {
+      console.error(`Worker failed: ${result.error}`);
+    }
     process.exit(1);
   }
 }
