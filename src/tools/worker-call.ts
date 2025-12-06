@@ -627,8 +627,9 @@ export class WorkerCallToolset {
       }));
     }
 
-    // Add call_worker as fallback for dynamic cases
-    tools.push(createCallWorkerTool(options));
+    // Note: call_worker is NOT added here - named tools are the primary interface.
+    // The call_worker tool was a legacy fallback that confused LLMs by offering
+    // two ways to call the same worker.
 
     return new WorkerCallToolset(tools);
   }

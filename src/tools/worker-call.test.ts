@@ -32,20 +32,6 @@ describe("WorkerCallToolset", () => {
   });
 
   describe("needsApproval on tool (SDK native pattern)", () => {
-    it("call_worker tool has needsApproval=true", async () => {
-      const toolset = await WorkerCallToolset.create({
-        registry,
-        allowedWorkers: ["test"],
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-      });
-
-      const tools = toolset.getTools();
-      const callWorkerTool = tools.find(t => t.name === "call_worker");
-      expect(callWorkerTool?.needsApproval).toBe(true);
-    });
-
     it("named worker tools have needsApproval=true", async () => {
       const toolset = await WorkerCallToolset.create({
         registry,
@@ -62,7 +48,7 @@ describe("WorkerCallToolset", () => {
   });
 
   describe("getTools", () => {
-    it("returns named tools for each allowed worker plus call_worker fallback", async () => {
+    it("returns only named tools for allowed workers (no call_worker)", async () => {
       const toolset = await WorkerCallToolset.create({
         registry,
         allowedWorkers: ["greeter", "analyzer"],
@@ -73,9 +59,9 @@ describe("WorkerCallToolset", () => {
 
       const tools = toolset.getTools();
 
-      // Should have: greeter, analyzer, call_worker
-      expect(tools).toHaveLength(3);
-      expect(tools.map(t => t.name).sort()).toEqual(["analyzer", "call_worker", "greeter"]);
+      // Should have only named tools: greeter, analyzer (call_worker is not exposed)
+      expect(tools).toHaveLength(2);
+      expect(tools.map(t => t.name).sort()).toEqual(["analyzer", "greeter"]);
     });
 
     it("createSync only returns call_worker (legacy behavior)", () => {
