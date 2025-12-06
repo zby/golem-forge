@@ -2,7 +2,9 @@
 name: orchestrator
 description: An orchestrator that can delegate tasks to other workers
 toolsets:
-  workers: {}
+  workers:
+    allowed_workers:
+      - greeter
 ---
 
 You are an orchestrator that can delegate tasks to specialized workers.

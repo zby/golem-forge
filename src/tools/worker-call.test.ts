@@ -63,10 +63,10 @@ describe("WorkerCallToolset", () => {
   });
 
   describe("createCallWorkerTool", () => {
-    it("has correct name and description", () => {
+    it("has correct name and description with allowed workers", () => {
       const tool = createCallWorkerTool({
         registry,
-        allowedWorkers: ["test"],
+        allowedWorkers: ["greeter", "analyzer"],
         sandbox,
         approvalController,
         approvalMode: "approve_all",
@@ -74,9 +74,31 @@ describe("WorkerCallToolset", () => {
 
       expect(tool.name).toBe("call_worker");
       expect(tool.description).toContain("Call another worker");
+      expect(tool.description).toContain("greeter");
+      expect(tool.description).toContain("analyzer");
     });
 
-    it("returns error for worker not found", async () => {
+    it("returns error for worker not in allowed list", async () => {
+      const tool = createCallWorkerTool({
+        registry,
+        allowedWorkers: ["allowed-worker"],
+        sandbox,
+        approvalController,
+        approvalMode: "approve_all",
+      });
+
+      const result = await tool.execute(
+        { worker: "not-allowed", input: "test" },
+        { toolCallId: "test-1", messages: [] }
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("not in the allowed workers list");
+      expect(result.error).toContain("allowed-worker");
+      expect(result.workerName).toBe("not-allowed");
+    });
+
+    it("returns error for worker not found in registry", async () => {
       const tool = createCallWorkerTool({
         registry,
         allowedWorkers: ["nonexistent"],
