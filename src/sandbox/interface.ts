@@ -4,7 +4,7 @@
  * Core interfaces for the sandbox system.
  */
 
-import { Zone, FileStat, BackendConfig, BackendFileStat } from './types.js';
+import { Zone, ZoneAccessMode, FileStat, BackendConfig, BackendFileStat } from './types.js';
 
 /**
  * Main sandbox interface used by workers and tools.
@@ -82,6 +82,17 @@ export interface Sandbox {
    * Check if path is valid (belongs to a known zone).
    */
   isValidPath(path: string): boolean;
+
+  /**
+   * Get the access mode for a zone.
+   * @returns The access mode ('ro' or 'rw'), or undefined if zone doesn't exist
+   */
+  getZoneAccess(zoneName: string): ZoneAccessMode | undefined;
+
+  /**
+   * Get all available zone names.
+   */
+  getAvailableZones(): string[];
 }
 
 /**

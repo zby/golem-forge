@@ -2,7 +2,7 @@
  * CLI Backend
  *
  * Node.js filesystem implementation of SandboxBackend.
- * Supports both sandboxed and direct modes.
+ * Supports both sandboxed and direct modes, and custom zones.
  */
 
 import * as fs from 'fs/promises';
@@ -19,6 +19,7 @@ export class CLIBackend implements SandboxBackend {
   private root: string = '.sandbox';
   private cacheDir: string = '';
   private workspaceDir: string = '';
+  private customZones: Map<string, string> = new Map();
 
   async initialize(config: BackendConfig): Promise<void> {
     this.mode = config.mode;
@@ -37,9 +38,23 @@ export class CLIBackend implements SandboxBackend {
       this.workspaceDir = path.join(this.root, 'workspace');
     }
 
-    // Create directories
-    await fs.mkdir(this.cacheDir, { recursive: true });
-    await fs.mkdir(this.workspaceDir, { recursive: true });
+    // Handle custom zones
+    if (config.zones) {
+      for (const [name, zoneDef] of Object.entries(config.zones)) {
+        // In sandboxed mode, zone paths are relative to sandbox root
+        // In direct mode, zone paths are absolute or relative to cwd
+        const basePath = config.mode === 'sandboxed' ? this.root : process.cwd();
+        const zonePath = path.resolve(basePath, zoneDef.path);
+        this.customZones.set(name, zonePath);
+        await fs.mkdir(zonePath, { recursive: true });
+      }
+    }
+
+    // Create default directories if no custom zones
+    if (!config.zones || Object.keys(config.zones).length === 0) {
+      await fs.mkdir(this.cacheDir, { recursive: true });
+      await fs.mkdir(this.workspaceDir, { recursive: true });
+    }
   }
 
   async dispose(): Promise<void> {
@@ -132,12 +147,20 @@ export class CLIBackend implements SandboxBackend {
     await fs.mkdir(realPath, { recursive: true });
   }
 
-  mapVirtualToReal(virtualPath: string, zone: Zone): string {
+  mapVirtualToReal(virtualPath: string, zone: Zone | string): string {
     // Remove leading slash and zone prefix
     const normalized = virtualPath.startsWith('/') ? virtualPath.slice(1) : virtualPath;
     const segments = normalized.split('/');
+    const zoneName = segments[0];
     const relativePath = segments.slice(1).join('/'); // Remove zone segment
 
+    // Check custom zones first
+    const customZonePath = this.customZones.get(zoneName);
+    if (customZonePath) {
+      return path.join(customZonePath, relativePath);
+    }
+
+    // Fall back to default zones
     switch (zone) {
       case Zone.CACHE:
         return path.join(this.cacheDir, relativePath);

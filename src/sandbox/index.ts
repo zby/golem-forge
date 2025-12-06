@@ -12,6 +12,8 @@ export type {
   BackendFileStat,
   SandboxConfig,
   BackendConfig,
+  ZoneAccessMode,
+  ZoneConfig,
 } from './types.js';
 
 // Interfaces
@@ -26,10 +28,23 @@ export {
 } from './errors.js';
 
 // Zones
-export { getZoneFromPath, isValidZonePath } from './zones.js';
+export {
+  getZoneFromPath,
+  getZoneNameFromPath,
+  getAllValidZones,
+  isValidZonePath,
+  registerCustomZones,
+  clearCustomZones,
+} from './zones.js';
 
 // Implementation
-export { SandboxImpl, createSandbox, createTestSandbox } from './impl.js';
+export {
+  SandboxImpl,
+  RestrictedSandbox,
+  createSandbox,
+  createTestSandbox,
+  createRestrictedSandbox,
+} from './impl.js';
 
 // Backends
 export { MemoryBackend } from './backends/memory.js';

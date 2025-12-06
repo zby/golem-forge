@@ -27,28 +27,26 @@ You are a friendly assistant.
 name: file_writer
 description: Writes files to sandbox
 sandbox:
-  paths:
-    output:
-      root: ./output
+  zones:
+    - name: workspace
       mode: rw
-      suffixes:
-        - .txt
-        - .md
-      max_file_bytes: 100000
-      write_approval: true
+    - name: cache
+      mode: ro
 ---
 
-You write files to the output sandbox.
+You write files to the workspace sandbox.
 `;
 
       const result = parseWorkerString(content);
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.worker.sandbox?.paths?.output).toBeDefined();
-        expect(result.worker.sandbox?.paths?.output.mode).toBe("rw");
-        expect(result.worker.sandbox?.paths?.output.suffixes).toEqual([".txt", ".md"]);
-        expect(result.worker.sandbox?.paths?.output.write_approval).toBe(true);
+        expect(result.worker.sandbox?.zones).toBeDefined();
+        expect(result.worker.sandbox?.zones?.length).toBe(2);
+        expect(result.worker.sandbox?.zones?.[0].name).toBe("workspace");
+        expect(result.worker.sandbox?.zones?.[0].mode).toBe("rw");
+        expect(result.worker.sandbox?.zones?.[1].name).toBe("cache");
+        expect(result.worker.sandbox?.zones?.[1].mode).toBe("ro");
       }
     });
 
@@ -169,9 +167,8 @@ Instructions here.
       const content = `---
 name: bad_sandbox
 sandbox:
-  paths:
-    output:
-      root: ./output
+  zones:
+    - name: workspace
       mode: invalid_mode
 ---
 
@@ -186,14 +183,12 @@ Instructions.
       }
     });
 
-    it("rejects worker with negative max_file_bytes", () => {
+    it("rejects worker with invalid zone config", () => {
       const content = `---
-name: bad_bytes
+name: bad_zone
 sandbox:
-  paths:
-    output:
-      root: ./output
-      max_file_bytes: -100
+  zones:
+    - invalid: config
 ---
 
 Instructions.

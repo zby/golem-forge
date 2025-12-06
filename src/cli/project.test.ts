@@ -141,7 +141,7 @@ describe('findProjectRoot', () => {
       expect(result!.config).toBeUndefined();
       // Should log a warning
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Warning: Failed to parse config file')
+        expect.stringContaining('Warning: Failed to parse')
       );
     } finally {
       consoleWarnSpy.mockRestore();

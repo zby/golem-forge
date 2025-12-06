@@ -1,17 +1,33 @@
 /**
  * Sandbox Types
  *
- * Core type definitions for the simplified sandbox.
+ * Core type definitions for the sandbox.
  */
 
 /**
- * Zones divide the virtual filesystem into areas.
- * - cache: External downloads (PDFs, web pages)
- * - workspace: Working files (reports, outputs)
+ * Default zones for backwards compatibility.
+ * Custom zones can be defined in project config.
  */
 export enum Zone {
   CACHE = 'cache',
   WORKSPACE = 'workspace',
+}
+
+/**
+ * Zone access mode.
+ */
+export type ZoneAccessMode = 'ro' | 'rw';
+
+/**
+ * Zone configuration for custom zones.
+ */
+export interface ZoneConfig {
+  /** Zone name */
+  name: string;
+  /** Absolute path to the zone directory */
+  path: string;
+  /** Access mode: ro (read-only) or rw (read-write) */
+  mode: ZoneAccessMode;
 }
 
 /**
@@ -68,6 +84,12 @@ export interface SandboxConfig {
    * e.g., './reports'
    */
   workspace?: string;
+
+  /**
+   * Custom zone configurations.
+   * Keys are zone names, values are zone configs.
+   */
+  zones?: Record<string, { path: string; mode: ZoneAccessMode }>;
 }
 
 /**
@@ -77,7 +99,9 @@ export interface BackendConfig {
   mode: 'sandboxed' | 'direct';
   // Sandboxed mode
   root?: string;
-  // Direct mode
+  // Direct mode (legacy)
   cache?: string;
   workspace?: string;
+  // Custom zones
+  zones?: Record<string, { path: string; mode: ZoneAccessMode }>;
 }

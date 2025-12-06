@@ -2,23 +2,34 @@
  * Project Detection
  *
  * Find project root and load configuration.
+ * Supports both legacy JSON format and new YAML format.
  */
 
 import * as fs from "fs/promises";
 import * as path from "path";
+import {
+  findProjectConfig as findYamlProjectConfig,
+  type ProjectConfig as YamlProjectConfig,
+  resolveSandboxConfig,
+  mergeWithCLIOptions,
+} from "../config/index.js";
 
 /**
- * Project configuration from .golem-forge.json or similar.
+ * Project configuration - supports both legacy JSON and new YAML format.
  */
 export interface ProjectConfig {
   /** Default model to use */
   model?: string;
-  /** Default trust level */
+  /** Default trust level (legacy) */
   trustLevel?: "untrusted" | "session" | "workspace" | "full";
   /** Worker search paths relative to project root */
   workerPaths?: string[];
   /** Default approval mode */
   approvalMode?: "interactive" | "approve_all" | "auto_deny";
+  /** Sandbox configuration (from YAML config) */
+  sandbox?: YamlProjectConfig["sandbox"];
+  /** Delegation configuration (from YAML config) */
+  delegation?: YamlProjectConfig["delegation"];
 }
 
 /**
@@ -35,11 +46,14 @@ export interface ProjectInfo {
 
 /**
  * Markers that indicate a project root, in order of priority.
+ * YAML config files are checked first (new format), then JSON (legacy).
  */
 const PROJECT_MARKERS = [
-  { file: ".golem-forge.json", type: "config" },
+  { file: "golem-forge.config.yaml", type: "yaml-config" },
+  { file: "golem-forge.config.yml", type: "yaml-config" },
+  { file: ".golem-forge.json", type: "json-config" },
   { file: ".llm-do", type: "marker" },
-  { file: "golem-forge.config.json", type: "config" },
+  { file: "golem-forge.config.json", type: "json-config" },
   { file: "package.json", type: "npm" },
   { file: ".git", type: "git" },
 ];
@@ -67,15 +81,31 @@ export async function findProjectRoot(startDir?: string): Promise<ProjectInfo | 
           detectedBy: marker.file,
         };
 
-        // Load config if it's a config file
-        if (marker.type === "config") {
+        // Load config based on type
+        if (marker.type === "yaml-config") {
+          try {
+            const yamlResult = await findYamlProjectConfig(currentDir);
+            if (yamlResult) {
+              info.config = {
+                model: yamlResult.config.model,
+                approvalMode: yamlResult.config.approval?.mode,
+                workerPaths: yamlResult.config.workerPaths,
+                sandbox: yamlResult.config.sandbox,
+                delegation: yamlResult.config.delegation,
+              };
+            }
+          } catch (err) {
+            console.warn(
+              `Warning: Failed to parse YAML config file ${markerPath}: ${err instanceof Error ? err.message : String(err)}`
+            );
+          }
+        } else if (marker.type === "json-config") {
           try {
             const content = await fs.readFile(markerPath, "utf-8");
             info.config = JSON.parse(content) as ProjectConfig;
           } catch (err) {
-            // Config file exists but couldn't be parsed, warn and continue with defaults
             console.warn(
-              `Warning: Failed to parse config file ${markerPath}: ${err instanceof Error ? err.message : String(err)}`
+              `Warning: Failed to parse JSON config file ${markerPath}: ${err instanceof Error ? err.message : String(err)}`
             );
           }
         }
@@ -135,3 +165,6 @@ export function getEffectiveConfig(
 export function resolveWorkerPaths(projectRoot: string, workerPaths: string[]): string[] {
   return workerPaths.map((p) => path.resolve(projectRoot, p));
 }
+
+// Re-export the sandbox config resolver for use by CLI
+export { resolveSandboxConfig, mergeWithCLIOptions };

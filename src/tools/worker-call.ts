@@ -9,9 +9,10 @@ import type { ToolExecutionOptions } from "ai";
 import type { NamedTool } from "./filesystem.js";
 import type { ApprovalCallback, ApprovalMode } from "../approval/index.js";
 import { ApprovalController } from "../approval/index.js";
-import type { Sandbox } from "../sandbox/index.js";
+import type { Sandbox, ZoneAccessMode } from "../sandbox/index.js";
+import { createRestrictedSandbox } from "../sandbox/index.js";
 import { WorkerRegistry } from "../worker/registry.js";
-import type { WorkerDefinition } from "../worker/schema.js";
+import type { WorkerDefinition, WorkerSandboxConfig } from "../worker/schema.js";
 
 /**
  * Schema for call_worker tool input (generic fallback).
@@ -107,6 +108,64 @@ export interface CallWorkerResult {
  * Maximum delegation depth to prevent infinite recursion.
  */
 const DEFAULT_MAX_DELEGATION_DEPTH = 5;
+
+/**
+ * Create a restricted sandbox for a child worker.
+ *
+ * Validates the child's sandbox requirements against the parent's access
+ * and returns a sandbox that only allows what the child declared.
+ *
+ * @param parentSandbox - The parent worker's sandbox
+ * @param childSandboxConfig - The child worker's sandbox declaration
+ * @param childWorkerName - Name of the child worker (for error messages)
+ * @returns A restricted sandbox or null (pure function)
+ */
+function createChildSandbox(
+  parentSandbox: Sandbox | undefined,
+  childSandboxConfig: WorkerSandboxConfig | undefined,
+  childWorkerName: string
+): Sandbox | null {
+  // No declaration = pure function (no sandbox)
+  if (!childSandboxConfig?.zones?.length) {
+    return null;
+  }
+
+  // Child declared zones but parent has no sandbox - error
+  if (!parentSandbox) {
+    throw new Error(
+      `Worker '${childWorkerName}' declares sandbox requirements but parent has no sandbox`
+    );
+  }
+
+  // Build allowed zones map, validating against parent's access
+  const allowedZones = new Map<string, ZoneAccessMode>();
+
+  for (const zoneReq of childSandboxConfig.zones) {
+    const zoneName = zoneReq.name;
+    const requestedMode = zoneReq.mode ?? 'rw';
+    const parentAccess = parentSandbox.getZoneAccess(zoneName);
+
+    // Check that parent has access to this zone
+    if (!parentAccess) {
+      throw new Error(
+        `Worker '${childWorkerName}' requests zone '${zoneName}' but parent doesn't have it. ` +
+        `Available zones: ${parentSandbox.getAvailableZones().join(', ') || 'none'}`
+      );
+    }
+
+    // Check that child's requested mode doesn't exceed parent's access
+    if (requestedMode === 'rw' && parentAccess === 'ro') {
+      throw new Error(
+        `Worker '${childWorkerName}' requests 'rw' access to zone '${zoneName}' ` +
+        `but parent only has 'ro' access`
+      );
+    }
+
+    allowedZones.set(zoneName, requestedMode);
+  }
+
+  return createRestrictedSandbox(parentSandbox, allowedZones);
+}
 
 /**
  * Default model for delegation context when caller model is not specified.
@@ -248,6 +307,24 @@ async function executeWorkerDelegation(
       instructions: finalInstructions,
     };
 
+    // Create restricted sandbox for child worker
+    // This enforces the child worker's sandbox declaration
+    let childSandbox: Sandbox | null | undefined;
+    try {
+      childSandbox = createChildSandbox(
+        sandbox,
+        childWorker.sandbox,
+        childWorker.name
+      );
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        workerName,
+        toolCallCount: 0,
+      };
+    }
+
     // Create child runtime
     // Import WorkerRuntime dynamically to avoid circular dependency
     const { WorkerRuntime } = await import("../runtime/worker.js");
@@ -264,7 +341,8 @@ async function executeWorkerDelegation(
       approvalCallback: approvalCallback,
       projectRoot: projectRoot,
       sharedApprovalController: approvalController,
-      sharedSandbox: sandbox,
+      // Pass the restricted sandbox (or undefined for pure functions)
+      sharedSandbox: childSandbox ?? undefined,
       delegationContext: childDelegationContext,
       registry: registry,
     });

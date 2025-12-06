@@ -2,15 +2,87 @@
 
 ## Overview
 
-The sandbox provides a simple filesystem abstraction for AI workers.
+The sandbox provides a secure, zone-based filesystem abstraction for AI workers.
 
 **Phase 1 (current):** Direct filesystem access with real directories
 **Phase 2 (future):** Git integration for persistent storage and collaboration
 
 **Core model:**
-- Local sandbox with two zones (cache + workspace)
-- Phase 1: Real directories, user manages persistence
-- Phase 2: Git as source of truth, staging for preview before push
+- Local sandbox with configurable zones (default: cache + workspace)
+- Two-level configuration: project defines available zones, workers declare what they need
+- Secure by default: no sandbox declaration = pure function (no file access)
+- Automatic restriction: child workers only get what they declare, never more
+
+## Two-Level Sandbox Configuration
+
+### Level 1: Project Configuration
+
+Project-level config (`golem-forge.config.yaml`) defines **available zones**:
+
+```yaml
+# golem-forge.config.yaml
+sandbox:
+  mode: sandboxed          # or 'direct'
+  root: .sandbox           # relative to project root
+  zones:
+    cache:
+      path: ./cache
+      mode: rw
+    workspace:
+      path: ./workspace
+      mode: rw
+    data:
+      path: ./data
+      mode: ro             # read-only by default
+```
+
+### Level 2: Worker Declaration
+
+Each worker declares its **own sandbox requirements** in its `.worker` file:
+
+```yaml
+# formatter.worker
+---
+name: formatter
+description: Formats data files
+sandbox:
+  zones:
+    - name: data
+      mode: rw
+---
+```
+
+### Runtime Enforcement
+
+When a parent worker calls a child worker:
+
+```
+Parent has: { data: rw, workspace: rw, cache: rw }
+Child declares: { data: rw }
+    ↓
+Child gets: { data: rw }  (only what it declared)
+```
+
+```
+Parent has: { data: ro }
+Child declares: { data: rw }
+    ↓
+Error: Child requests 'rw' on 'data' but parent only has 'ro'
+```
+
+```
+Parent has: { data: rw, workspace: rw }
+Child declares: nothing
+    ↓
+Child gets: null (no sandbox - pure function)
+```
+
+### Key Principles
+
+- **Secure by default** - No sandbox declaration = no sandbox access
+- **Self-describing workers** - Each worker declares what it needs
+- **Automatic restriction** - Child only gets what it declares, never more
+- **Parent is the ceiling** - Child cannot exceed parent's access
 
 ## Architecture
 
@@ -47,12 +119,42 @@ The sandbox provides a simple filesystem abstraction for AI workers.
 
 ## Zones
 
+Default zones (used when no project config exists):
+
 | Zone | Purpose | Examples |
 |------|---------|----------|
 | `/cache/` | External downloads | PDFs, web pages, fetched content |
 | `/workspace/` | Working files | Reports pulled from git, drafts, outputs |
 
-Both zones are ephemeral. Git is used for persistence and collaboration.
+Custom zones can be defined in project configuration. Both zones are ephemeral. Git is used for persistence and collaboration.
+
+## RestrictedSandbox
+
+When workers delegate to child workers, access is restricted using a `RestrictedSandbox` wrapper:
+
+```typescript
+// Parent has full access to workspace, cache, data
+const parentSandbox = await createSandbox({
+  mode: 'sandboxed',
+  root: '.sandbox',
+  zones: {
+    workspace: { path: './workspace', mode: 'rw' },
+    cache: { path: './cache', mode: 'rw' },
+    data: { path: './data', mode: 'rw' },
+  }
+});
+
+// Child worker declares it only needs workspace (ro)
+// Runtime creates a restricted sandbox:
+const childSandbox = createRestrictedSandbox(parentSandbox, new Map([
+  ['workspace', 'ro']
+]));
+
+// Child can read workspace, but NOT cache or data
+await childSandbox.read('/workspace/file.txt');  // OK
+await childSandbox.read('/cache/file.txt');       // ERROR: Zone not available
+await childSandbox.write('/workspace/file.txt', 'x');  // ERROR: Zone is read-only
+```
 
 ## CLI Backend Modes
 
@@ -61,7 +163,7 @@ Both zones are ephemeral. Git is used for persistence and collaboration.
 Virtual paths map to a `.sandbox/` directory:
 
 ```typescript
-const sandbox = createSandbox({
+const sandbox = await createSandbox({
   mode: 'sandboxed',
   root: '.sandbox'
 });
@@ -75,7 +177,7 @@ const sandbox = createSandbox({
 Virtual paths map to real directories for easier integration:
 
 ```typescript
-const sandbox = createSandbox({
+const sandbox = await createSandbox({
   mode: 'direct',
   cache: './downloads',
   workspace: './reports',
@@ -85,18 +187,24 @@ const sandbox = createSandbox({
 // /workspace/report.md → ./reports/report.md
 ```
 
-### Single Directory Mode
+### Custom Zones Mode
 
-Everything in one directory:
+Define custom zones with specific paths and access modes:
 
 ```typescript
-const sandbox = createSandbox({
-  mode: 'direct',
-  workspace: '.',
+const sandbox = await createSandbox({
+  mode: 'sandboxed',
+  root: '.sandbox',
+  zones: {
+    input: { path: './input', mode: 'ro' },
+    output: { path: './output', mode: 'rw' },
+    temp: { path: './temp', mode: 'rw' },
+  },
 });
 
-// /workspace/report.md → ./report.md
-// /cache/ operations would fail or use a subdirectory
+// /input/data.json   → .sandbox/input/data.json (read-only)
+// /output/result.txt → .sandbox/output/result.txt (read-write)
+// /temp/scratch.txt  → .sandbox/temp/scratch.txt (read-write)
 ```
 
 ## Interface
@@ -105,6 +213,7 @@ const sandbox = createSandbox({
 
 ```typescript
 interface Sandbox {
+  // File operations
   read(path: string): Promise<string>;
   readBinary(path: string): Promise<Uint8Array>;
   write(path: string, content: string): Promise<void>;
@@ -112,9 +221,16 @@ interface Sandbox {
   delete(path: string): Promise<void>;
   exists(path: string): Promise<boolean>;
   list(path: string): Promise<string[]>;
+  stat(path: string): Promise<FileStat>;
 
-  // Resolve virtual path to real path (useful for external tools)
+  // Path operations
   resolve(path: string): string;
+  getZone(path: string): Zone;
+  isValidPath(path: string): boolean;
+
+  // Zone access (for restriction enforcement)
+  getZoneAccess(zoneName: string): 'ro' | 'rw' | undefined;
+  getAvailableZones(): string[];
 }
 ```
 
@@ -367,9 +483,14 @@ class GitError extends SandboxError {
 ## Summary
 
 ### Phase 1 (current)
-- **2 zones**: `/cache/` (downloads), `/workspace/` (working files)
+- **Default zones**: `/cache/` (downloads), `/workspace/` (working files)
+- **Custom zones**: Define project-specific zones in `golem-forge.config.yaml`
+- **Two-level config**: Project defines available zones, workers declare what they need
+- **Restricted sandbox**: Child workers only get access to zones they declare
+- **Secure by default**: No sandbox declaration = pure function (no file access)
 - **Direct mode**: Map zones to real directories for easy integration
-- **File ops**: read, write, delete, list, exists, resolve
+- **File ops**: read, write, delete, list, exists, stat, resolve
+- **Zone ops**: getZoneAccess, getAvailableZones for restriction enforcement
 - **Vercel AI SDK**: Tools for file operations
 
 ### Phase 2 (future)

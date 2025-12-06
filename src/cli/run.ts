@@ -11,8 +11,9 @@ import * as path from "path";
 import { createWorkerRuntime, type WorkerRuntimeOptions, type Attachment, type RunInput } from "../runtime/index.js";
 import { parseWorkerString, type WorkerDefinition } from "../worker/index.js";
 import { createCLIApprovalCallback } from "./approval.js";
-import { getEffectiveConfig, findProjectRoot } from "./project.js";
+import { getEffectiveConfig, findProjectRoot, resolveSandboxConfig } from "./project.js";
 import type { ApprovalMode } from "../approval/index.js";
+import type { SandboxConfig } from "../sandbox/index.js";
 
 /**
  * CLI options from command line.
@@ -317,6 +318,33 @@ async function executeWorker(
     ? createCLIApprovalCallback()
     : undefined;
 
+  // Build sandbox configuration from project config
+  let sandboxConfig: SandboxConfig | undefined;
+  if (effectiveConfig.sandbox) {
+    // Resolve sandbox config to absolute paths
+    const resolved = resolveSandboxConfig(projectRoot, effectiveConfig.sandbox);
+
+    // Build zones record for SandboxConfig
+    const zones: Record<string, { path: string; mode: 'ro' | 'rw' }> = {};
+    for (const [name, zone] of resolved.zones) {
+      zones[name] = {
+        path: zone.absolutePath,
+        mode: zone.mode,
+      };
+    }
+
+    sandboxConfig = {
+      mode: resolved.mode,
+      root: resolved.root,
+      zones,
+    };
+
+    if (options.verbose) {
+      console.log(`Sandbox root: ${resolved.root}`);
+      console.log(`Sandbox zones: ${Array.from(resolved.zones.keys()).join(', ')}`);
+    }
+  }
+
   // Create runtime options - use detected project root
   // Model resolution is handled by WorkerRuntime.resolveModel() with proper priority
   const runtimeOptions: WorkerRuntimeOptions = {
@@ -326,6 +354,7 @@ async function executeWorker(
     approvalMode: effectiveConfig.approvalMode as ApprovalMode,
     approvalCallback,
     projectRoot,
+    sandboxConfig,
   };
 
   // Create and initialize runtime

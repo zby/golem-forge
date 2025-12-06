@@ -12,27 +12,28 @@
 import { z } from "zod";
 
 /**
- * Sandbox path configuration
+ * Worker zone requirement - what this worker needs access to.
  */
-export const SandboxPathSchema = z.object({
-  root: z.string(),
-  mode: z.enum(["ro", "rw"]).default("ro"),
-  /** If undefined, all suffixes allowed. If [], no files match. */
-  suffixes: z.array(z.string()).optional(),
-  max_file_bytes: z.number().positive().optional(),
-  write_approval: z.boolean().optional(),
+export const WorkerZoneRequirementSchema = z.object({
+  /** Name of the zone (must exist in project config) */
+  name: z.string(),
+  /** Access mode: ro (read-only) or rw (read-write). Default: rw */
+  mode: z.enum(["ro", "rw"]).optional(),
 });
 
-export type SandboxPath = z.infer<typeof SandboxPathSchema>;
+export type WorkerZoneRequirement = z.infer<typeof WorkerZoneRequirementSchema>;
 
 /**
- * Sandbox configuration
+ * Worker sandbox requirements - what zones this worker needs.
+ *
+ * Workers self-declare their sandbox needs. No sandbox declaration = pure function.
  */
-export const SandboxConfigSchema = z.object({
-  paths: z.record(z.string(), SandboxPathSchema).optional(),
+export const WorkerSandboxConfigSchema = z.object({
+  /** List of zones this worker needs access to */
+  zones: z.array(WorkerZoneRequirementSchema).optional(),
 });
 
-export type SandboxConfig = z.infer<typeof SandboxConfigSchema>;
+export type WorkerSandboxConfig = z.infer<typeof WorkerSandboxConfigSchema>;
 
 /**
  * Attachment policy
@@ -77,7 +78,7 @@ export const WorkerFrontmatterSchema = z.object({
   /** If undefined, any model is compatible. Supports wildcards like "anthropic:*". */
   compatible_models: z.array(z.string()).optional(),
   output_schema_ref: z.string().optional(),
-  sandbox: SandboxConfigSchema.optional(),
+  sandbox: WorkerSandboxConfigSchema.optional(),
   toolsets: ToolsetsConfigSchema.optional(),
   attachment_policy: AttachmentPolicySchema.optional(),
   server_side_tools: z.array(ServerSideToolConfigSchema).default([]),

@@ -25,6 +25,7 @@ import {
   createSandbox,
   createTestSandbox,
   type Sandbox,
+  type SandboxConfig,
 } from "../sandbox/index.js";
 import type { Attachment } from "../ai/types.js";
 
@@ -78,6 +79,8 @@ export interface WorkerRuntimeOptions {
   delegationContext?: DelegationContext;
   /** Worker registry for delegation lookups */
   registry?: WorkerRegistry;
+  /** Custom sandbox configuration (from project config) */
+  sandboxConfig?: SandboxConfig;
 }
 
 /**
@@ -343,7 +346,11 @@ export class WorkerRuntime {
       this.sandbox = this.options.sharedSandbox;
     } else if (this.options.useTestSandbox) {
       this.sandbox = await createTestSandbox();
+    } else if (this.options.sandboxConfig) {
+      // Use custom sandbox configuration from project config
+      this.sandbox = await createSandbox(this.options.sandboxConfig);
     } else if (this.options.projectRoot) {
+      // Default sandbox configuration (backwards compatible)
       this.sandbox = await createSandbox({
         mode: 'sandboxed',
         root: `${this.options.projectRoot}/.sandbox`,

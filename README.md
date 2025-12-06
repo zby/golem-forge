@@ -76,11 +76,11 @@ my-project/
 **With helpers** - main delegates to focused workers:
 ```
 my-project/
-├── main.worker           # Orchestrator
-├── project.yaml          # Shared config (model, sandbox)
+├── main.worker               # Orchestrator
+├── golem-forge.config.yaml   # Project config (model, sandbox zones)
 └── workers/
-    ├── analyzer.worker   # Focused worker
-    └── formatter.worker  # Another focused worker
+    ├── analyzer.worker       # Focused worker
+    └── formatter.worker      # Another focused worker
 ```
 
 **With hardened operations** - extract reliable logic to TypeScript:
@@ -139,13 +139,70 @@ Functions become LLM-callable tools. Reference them in your worker's toolsets co
 
 ## Key Features
 
-- **Sandboxed file access** - Workers only access declared directories with permission controls
+- **Sandboxed file access** - Workers only access declared zones with permission controls
 - **Worker delegation** - Workers call other workers, with allowlists
 - **Custom tools** - TypeScript functions in `tools.ts` become LLM-callable tools
 - **Template support** - Compose prompts from reusable templates
 - **Tool approvals** - Gate dangerous operations for human review
 - **Attachment policies** - Control file inputs (size, count, types)
-- **Config inheritance** - `project.yaml` provides defaults, workers override
+- **Config inheritance** - `golem-forge.config.yaml` provides defaults, workers override
+
+## Project Configuration
+
+Create a `golem-forge.config.yaml` in your project root to configure sandbox zones and other settings:
+
+```yaml
+# golem-forge.config.yaml
+
+# Default model for all workers
+model: anthropic:claude-haiku-4-5
+
+# Sandbox configuration
+sandbox:
+  mode: sandboxed           # or 'direct'
+  root: .sandbox            # relative to project root
+  zones:
+    cache:
+      path: ./cache
+      mode: rw
+    workspace:
+      path: ./workspace
+      mode: rw
+    data:
+      path: ./data
+      mode: ro              # read-only
+
+# Approval settings
+approval:
+  mode: interactive         # or 'approve_all', 'auto_deny'
+
+# Delegation limits
+delegation:
+  maxDepth: 5
+```
+
+Workers declare which zones they need access to:
+
+```yaml
+# workers/analyzer.worker
+---
+name: analyzer
+description: Analyzes data files
+sandbox:
+  zones:
+    - name: data
+      mode: ro              # only needs to read
+    - name: workspace
+      mode: rw              # writes results
+---
+
+You analyze data from the /data/ zone and write results to /workspace/.
+```
+
+**Key principles:**
+- Workers only get access to zones they explicitly declare
+- Child workers cannot exceed parent's access level
+- No sandbox declaration = pure function (no file access)
 
 ## Examples
 
