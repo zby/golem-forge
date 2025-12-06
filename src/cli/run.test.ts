@@ -32,9 +32,18 @@ vi.mock("./project.js", () => {
     workerPaths: ["workers"],
   });
   const mockFindProjectRoot = vi.fn().mockResolvedValue(null);
+  const mockResolveSandboxConfig = vi.fn().mockImplementation((projectRoot, config) => ({
+    mode: config?.mode ?? "sandboxed",
+    root: projectRoot,
+    zones: new Map(Object.entries(config?.zones ?? {}).map(([name, zone]) => [
+      name,
+      { name, absolutePath: `${projectRoot}/${(zone as { path: string }).path}`, relativePath: (zone as { path: string }).path, mode: (zone as { mode: string }).mode },
+    ])),
+  }));
   return {
     getEffectiveConfig: mockGetEffectiveConfig,
     findProjectRoot: mockFindProjectRoot,
+    resolveSandboxConfig: mockResolveSandboxConfig,
     __mockGetEffectiveConfig: mockGetEffectiveConfig,
     __mockFindProjectRoot: mockFindProjectRoot,
   };
@@ -307,7 +316,7 @@ Test instructions
       }
     });
 
-    it("should allow running sandbox-only workers without input", async () => {
+    it("should allow running sandbox-only workers without input (worker-defined zones)", async () => {
       // Create a worker with sandbox zones
       const sandboxWorker = `---
 name: sandbox-processor
@@ -319,6 +328,46 @@ sandbox:
 Process files in the workspace zone.
 `;
       await fs.writeFile(path.join(workerDir, "index.worker"), sandboxWorker);
+
+      // Save original isTTY
+      const originalIsTTY = process.stdin.isTTY;
+      Object.defineProperty(process.stdin, "isTTY", { value: true, writable: true });
+
+      try {
+        await runCLI(["node", "cli", workerDir]);
+
+        // Should use the sandbox-only default message
+        expect(mockRun).toHaveBeenCalledWith(
+          "Please proceed with your task using the sandbox contents."
+        );
+      } finally {
+        Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, writable: true });
+      }
+    });
+
+    it("should allow running sandbox-only workers without input (project-config zones)", async () => {
+      // Worker without sandbox zones
+      const plainWorker = `---
+name: plain-worker
+---
+Process files.
+`;
+      await fs.writeFile(path.join(workerDir, "index.worker"), plainWorker);
+
+      // Mock project config with sandbox zones
+      vi.mocked(getEffectiveConfig).mockReturnValueOnce({
+        model: "anthropic:claude-haiku-4-5",
+        trustLevel: "session",
+        approvalMode: "interactive",
+        workerPaths: ["workers"],
+        sandbox: {
+          mode: "sandboxed",
+          root: "sandbox",
+          zones: {
+            workspace: { path: "./workspace", mode: "rw" },
+          },
+        },
+      });
 
       // Save original isTTY
       const originalIsTTY = process.stdin.isTTY;

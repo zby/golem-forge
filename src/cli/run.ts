@@ -411,8 +411,8 @@ async function executeWorker(
 
   // Require either text input, attachments, or sandbox zones
   // Sandbox-only workers can run without explicit input since they operate on sandbox contents
-  if (!textInput && (!attachments || attachments.length === 0) && !hasSandboxZones) {
-    throw new Error("No input provided. Use text arguments, --input, --file, file attachments, or pipe to stdin.");
+  if (!textInput && !attachments?.length && !hasSandboxZones) {
+    throw new Error("No input provided. Use text arguments, --input, --file, file attachments, pipe to stdin, or define sandbox zones.");
   }
 
   if (options.verbose) {
@@ -422,7 +422,7 @@ async function executeWorker(
     if (attachments && attachments.length > 0) {
       console.log(`Attachments: ${attachments.map(a => a.name).join(", ")}`);
     }
-    if (!textInput && (!attachments || attachments.length === 0) && hasSandboxZones) {
+    if (hasSandboxZones && !textInput && !attachments?.length) {
       console.log("Sandbox-only mode: worker will operate on sandbox contents");
     }
     console.log("");
@@ -485,8 +485,8 @@ async function executeWorker(
     }
   }
   const runInput: RunInput = attachments
-    ? { content: effectiveTextInput!, attachments }
-    : effectiveTextInput!;
+    ? { content: effectiveTextInput ?? "", attachments }
+    : effectiveTextInput ?? "";
 
   // Run worker
   if (options.verbose) {

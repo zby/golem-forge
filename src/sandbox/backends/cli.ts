@@ -25,35 +25,44 @@ export class CLIBackend implements SandboxBackend {
     this.mode = config.mode;
 
     if (config.mode === 'direct') {
-      // Direct mode: use specified directories
-      if (!config.workspace) {
-        throw new Error('Direct mode requires workspace directory');
+      // Direct mode: use specified directories or custom zones
+      if (config.zones && Object.keys(config.zones).length > 0) {
+        // Custom zones provided - use them
+        for (const [name, zoneDef] of Object.entries(config.zones)) {
+          const zonePath = path.resolve(process.cwd(), zoneDef.path);
+          this.customZones.set(name, zonePath);
+          await fs.mkdir(zonePath, { recursive: true });
+        }
+      } else {
+        // No custom zones - require workspace
+        if (!config.workspace) {
+          throw new Error('Direct mode requires workspace directory or custom zones');
+        }
+        this.workspaceDir = path.resolve(config.workspace);
+        this.cacheDir = config.cache ? path.resolve(config.cache) : path.join(this.workspaceDir, '.cache');
+        await fs.mkdir(this.cacheDir, { recursive: true });
+        await fs.mkdir(this.workspaceDir, { recursive: true });
       }
-      this.workspaceDir = path.resolve(config.workspace);
-      this.cacheDir = config.cache ? path.resolve(config.cache) : path.join(this.workspaceDir, '.cache');
     } else {
       // Sandboxed mode: all in root directory
       this.root = path.resolve(config.root || 'sandbox');
       this.cacheDir = path.join(this.root, 'cache');
       this.workspaceDir = path.join(this.root, 'workspace');
-    }
 
-    // Handle custom zones
-    if (config.zones) {
-      for (const [name, zoneDef] of Object.entries(config.zones)) {
-        // In sandboxed mode, zone paths are relative to sandbox root
-        // In direct mode, zone paths are absolute or relative to cwd
-        const basePath = config.mode === 'sandboxed' ? this.root : process.cwd();
-        const zonePath = path.resolve(basePath, zoneDef.path);
-        this.customZones.set(name, zonePath);
-        await fs.mkdir(zonePath, { recursive: true });
+      // Handle custom zones in sandboxed mode
+      if (config.zones) {
+        for (const [name, zoneDef] of Object.entries(config.zones)) {
+          const zonePath = path.resolve(this.root, zoneDef.path);
+          this.customZones.set(name, zonePath);
+          await fs.mkdir(zonePath, { recursive: true });
+        }
       }
-    }
 
-    // Create default directories if no custom zones
-    if (!config.zones || Object.keys(config.zones).length === 0) {
-      await fs.mkdir(this.cacheDir, { recursive: true });
-      await fs.mkdir(this.workspaceDir, { recursive: true });
+      // Create default directories if no custom zones
+      if (!config.zones || Object.keys(config.zones).length === 0) {
+        await fs.mkdir(this.cacheDir, { recursive: true });
+        await fs.mkdir(this.workspaceDir, { recursive: true });
+      }
     }
   }
 

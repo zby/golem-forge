@@ -142,7 +142,7 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
 /**
  * Filter out undefined values from an object to avoid overwriting with undefined during spread.
  */
-function filterUndefined<T extends Record<string, unknown>>(obj: T | undefined): Partial<T> {
+function filterUndefined<T extends object>(obj: T | undefined): Partial<T> {
   if (!obj) return {};
   const result: Partial<T> = {};
   for (const [key, value] of Object.entries(obj)) {
