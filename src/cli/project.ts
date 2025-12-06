@@ -140,6 +140,20 @@ export async function loadProjectConfig(configPath: string): Promise<ProjectConf
 }
 
 /**
+ * Filter out undefined values from an object to avoid overwriting with undefined during spread.
+ */
+function filterUndefined<T extends Record<string, unknown>>(obj: T | undefined): Partial<T> {
+  if (!obj) return {};
+  const result: Partial<T> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      (result as Record<string, unknown>)[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
  * Get effective configuration by merging project config with defaults.
  *
  * Priority order for model:
@@ -161,19 +175,13 @@ export function getEffectiveConfig(
     workerPaths: ["workers", ".workers"],
   };
 
-  // Filter out undefined values from overrides to avoid overwriting with undefined
-  const filteredOverrides: Partial<ProjectConfig> = {};
-  if (overrides) {
-    for (const [key, value] of Object.entries(overrides)) {
-      if (value !== undefined) {
-        (filteredOverrides as Record<string, unknown>)[key] = value;
-      }
-    }
-  }
+  // Filter out undefined values to avoid overwriting defaults with undefined
+  const filteredProjectConfig = filterUndefined(projectConfig);
+  const filteredOverrides = filterUndefined(overrides);
 
   return {
     ...defaults,
-    ...projectConfig,
+    ...filteredProjectConfig,
     ...filteredOverrides,
   };
 }
