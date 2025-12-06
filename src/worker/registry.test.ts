@@ -39,7 +39,6 @@ describe("WorkerRegistry", () => {
   const simpleWorker = `---
 name: simple-worker
 description: A simple test worker
-model: anthropic:claude-haiku-4-5
 ---
 You are a helpful assistant.
 `;
@@ -104,27 +103,27 @@ Do something else.
     });
 
     it("skips hidden directories", async () => {
-      await createWorkerFile("visible-worker", simpleWorker);
-      await createWorkerFile("hidden-worker", anotherWorker, ".hidden");
+      await createWorkerFile("visible-worker", simpleWorker.replace("simple-worker", "visible-worker"));
+      await createWorkerFile("hidden-worker", anotherWorker.replace("another-worker", "hidden-worker"), ".hidden");
 
       const registry = new WorkerRegistry({ searchPaths: [tempDir] });
       await registry.scanDirectory(tempDir);
 
       const workers = await registry.list();
       expect(workers).toHaveLength(1);
-      expect(workers[0].definition.name).toBe("simple-worker");
+      expect(workers[0].definition.name).toBe("visible-worker");
     });
 
     it("skips node_modules", async () => {
-      await createWorkerFile("app-worker", simpleWorker);
-      await createWorkerFile("dep-worker", anotherWorker, "node_modules");
+      await createWorkerFile("app-worker", simpleWorker.replace("simple-worker", "app-worker"));
+      await createWorkerFile("dep-worker", anotherWorker.replace("another-worker", "dep-worker"), "node_modules");
 
       const registry = new WorkerRegistry({ searchPaths: [tempDir] });
       await registry.scanDirectory(tempDir);
 
       const workers = await registry.list();
       expect(workers).toHaveLength(1);
-      expect(workers[0].definition.name).toBe("simple-worker");
+      expect(workers[0].definition.name).toBe("app-worker");
     });
 
     it("handles non-existent directories gracefully", async () => {
@@ -315,8 +314,7 @@ No name field!
       // Add a new worker file
       await createWorkerFile("new-worker", anotherWorker);
 
-      // Without refresh, won't find new worker (already scanned)
-      registry.clearScanned();
+      // refresh() clears scanned set and rescans
       await registry.refresh();
 
       const workers = await registry.list();

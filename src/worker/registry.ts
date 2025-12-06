@@ -116,30 +116,32 @@ export class WorkerRegistry {
       if (!stat.isDirectory()) {
         return;
       }
-    } catch {
-      // Directory doesn't exist, skip silently
-      return;
+    } catch (err) {
+      // Only skip if directory doesn't exist; fail on other errors
+      // TODO: Remove this strictness if it gets annoying in practice
+      if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+        return;
+      }
+      throw err;
     }
 
     this.scanned.add(absolute);
 
-    try {
-      const entries = await fs.readdir(absolute, { withFileTypes: true });
+    // NOTE: No try-catch here - fail on unexpected errors (we already confirmed directory exists)
+    // TODO: Add error handling if this strictness gets annoying in practice
+    const entries = await fs.readdir(absolute, { withFileTypes: true });
 
-      for (const entry of entries) {
-        const entryPath = path.join(absolute, entry.name);
+    for (const entry of entries) {
+      const entryPath = path.join(absolute, entry.name);
 
-        if (entry.isDirectory()) {
-          // Skip hidden directories and node_modules
-          if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
-            await this.scanDirectory(entryPath);
-          }
-        } else if (entry.isFile() && entry.name.endsWith(".worker")) {
-          await this.loadWorker(entryPath);
+      if (entry.isDirectory()) {
+        // Skip hidden directories and node_modules
+        if (!entry.name.startsWith(".") && entry.name !== "node_modules") {
+          await this.scanDirectory(entryPath);
         }
+      } else if (entry.isFile() && entry.name.endsWith(".worker")) {
+        await this.loadWorker(entryPath);
       }
-    } catch {
-      // Permission errors or other issues, skip silently
     }
   }
 
@@ -173,7 +175,13 @@ export class WorkerRegistry {
         // Update cache
         this.cache.set(absolute, cachedWorker);
 
-        // Update name index
+        // Update name index, checking for collisions
+        const existingPath = this.nameIndex.get(result.worker.name);
+        if (existingPath && existingPath !== absolute) {
+          throw new Error(
+            `Worker name collision: '${result.worker.name}' defined in both ${existingPath} and ${absolute}`
+          );
+        }
         this.nameIndex.set(result.worker.name, absolute);
 
         return result;
@@ -298,6 +306,9 @@ export class WorkerRegistry {
 
   /**
    * List all known workers.
+   *
+   * Returns cached data - files deleted after scanning may still appear.
+   * Call refresh() first if you need guaranteed fresh data.
    */
   async list(): Promise<CachedWorker[]> {
     await this.scanAll();
@@ -306,6 +317,9 @@ export class WorkerRegistry {
 
   /**
    * List worker names.
+   *
+   * Returns cached data - files deleted after scanning may still appear.
+   * Call refresh() first if you need guaranteed fresh data.
    */
   async listNames(): Promise<string[]> {
     await this.scanAll();
@@ -320,13 +334,6 @@ export class WorkerRegistry {
     this.nameIndex.clear();
     this.scanned.clear();
     await this.scanAll();
-  }
-
-  /**
-   * Clear only the scanned directories set to allow rescanning.
-   */
-  clearScanned(): void {
-    this.scanned.clear();
   }
 
   /**
