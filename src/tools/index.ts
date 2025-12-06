@@ -20,6 +20,7 @@ export {
   WorkerCallToolset,
   createCallWorkerTool,
   createNamedWorkerTool,
+  checkToolNameConflict,
   type CallWorkerInput,
   type NamedWorkerInput,
   type CallWorkerResult,

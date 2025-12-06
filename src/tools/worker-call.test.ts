@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   WorkerCallToolset,
   createCallWorkerTool,
   createNamedWorkerTool,
+  checkToolNameConflict,
   type DelegationContext,
   type WorkerCallToolsetOptions,
 } from "./worker-call.js";
@@ -354,5 +355,127 @@ I am the child worker.`
     if (result.found) {
       expect(result.worker.definition.name).toBe("parent");
     }
+  });
+});
+
+describe("checkToolNameConflict", () => {
+  it("returns true for reserved tool names", () => {
+    expect(checkToolNameConflict("read_file")).toBe(true);
+    expect(checkToolNameConflict("write_file")).toBe(true);
+    expect(checkToolNameConflict("list_files")).toBe(true);
+    expect(checkToolNameConflict("call_worker")).toBe(true);
+    expect(checkToolNameConflict("bash")).toBe(true);
+  });
+
+  it("returns false for non-reserved names", () => {
+    expect(checkToolNameConflict("greeter")).toBe(false);
+    expect(checkToolNameConflict("analyzer")).toBe(false);
+    expect(checkToolNameConflict("my_custom_worker")).toBe(false);
+  });
+});
+
+describe("WorkerCallToolset.create edge cases", () => {
+  let sandbox: Sandbox;
+  let registry: WorkerRegistry;
+  let approvalController: ApprovalController;
+  let tempDir: string;
+
+  beforeEach(async () => {
+    sandbox = await createTestSandbox();
+    approvalController = new ApprovalController({
+      mode: "approve_all",
+    });
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "worker-call-edge-test-"));
+    registry = new WorkerRegistry({ searchPaths: [tempDir] });
+  });
+
+  it("logs warning for tool name conflicts with reserved names", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await WorkerCallToolset.create({
+      registry,
+      allowedWorkers: ["read_file"], // conflicts with reserved name
+      sandbox,
+      approvalController,
+      approvalMode: "approve_all",
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("conflicts with reserved tool name")
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("logs warning when worker not found in registry at init time", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await WorkerCallToolset.create({
+      registry,
+      allowedWorkers: ["nonexistent_worker"],
+      sandbox,
+      approvalController,
+      approvalMode: "approve_all",
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("not found in registry at init time")
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("still creates tool even when worker not found (lazy creation support)", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const toolset = await WorkerCallToolset.create({
+      registry,
+      allowedWorkers: ["lazy_worker"],
+      sandbox,
+      approvalController,
+      approvalMode: "approve_all",
+    });
+
+    const tools = toolset.getTools();
+    const lazyWorkerTool = tools.find(t => t.name === "lazy_worker");
+    expect(lazyWorkerTool).toBeDefined();
+    expect(lazyWorkerTool?.needsApproval).toBe(true);
+  });
+
+  it("uses worker description from registry when available", async () => {
+    // Create a worker file with a description
+    await fs.writeFile(
+      path.join(tempDir, "described.worker"),
+      `---
+name: described
+description: A worker with a custom description
+---
+I am a described worker.`
+    );
+
+    const toolset = await WorkerCallToolset.create({
+      registry,
+      allowedWorkers: ["described"],
+      sandbox,
+      approvalController,
+      approvalMode: "approve_all",
+    });
+
+    const tools = toolset.getTools();
+    const describedTool = tools.find(t => t.name === "described");
+    expect(describedTool?.description).toBe("A worker with a custom description");
+  });
+
+  it("handles duplicate worker names in allowedWorkers", async () => {
+    const toolset = await WorkerCallToolset.create({
+      registry,
+      allowedWorkers: ["greeter", "greeter", "analyzer"],
+      sandbox,
+      approvalController,
+      approvalMode: "approve_all",
+    });
+
+    const tools = toolset.getTools();
+    // Should have: greeter (twice), analyzer, call_worker = 4 tools
+    // This documents current behavior - duplicates are allowed
+    expect(tools.filter(t => t.name === "greeter")).toHaveLength(2);
   });
 });

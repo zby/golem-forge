@@ -109,6 +109,197 @@ export interface CallWorkerResult {
 const DEFAULT_MAX_DELEGATION_DEPTH = 5;
 
 /**
+ * Default model for delegation context when caller model is not specified.
+ */
+const DEFAULT_CALLER_MODEL = "anthropic:claude-haiku-4-5";
+
+/**
+ * Reserved tool names that workers cannot use to avoid conflicts.
+ */
+const RESERVED_TOOL_NAMES = new Set([
+  // Filesystem tools
+  "read_file",
+  "write_file",
+  "list_files",
+  "create_directory",
+  // Worker tools
+  "call_worker",
+  "worker_create",
+  // Common system tools
+  "execute",
+  "shell",
+  "bash",
+]);
+
+/**
+ * Check if a worker name conflicts with reserved tool names.
+ */
+export function checkToolNameConflict(workerName: string): boolean {
+  return RESERVED_TOOL_NAMES.has(workerName);
+}
+
+/**
+ * Options for executing a worker delegation.
+ */
+interface ExecuteDelegationOptions {
+  workerName: string;
+  input: string;
+  instructions?: string;
+  attachments?: string[];
+  registry: WorkerRegistry;
+  sandbox?: Sandbox;
+  approvalController: ApprovalController;
+  approvalCallback?: ApprovalCallback;
+  approvalMode: ApprovalMode;
+  delegationContext?: DelegationContext;
+  projectRoot?: string;
+  maxDelegationDepth: number;
+}
+
+/**
+ * Shared logic for executing worker delegation.
+ *
+ * Used by both createCallWorkerTool and createNamedWorkerTool to ensure
+ * consistent behavior across both delegation patterns.
+ */
+async function executeWorkerDelegation(
+  options: ExecuteDelegationOptions
+): Promise<CallWorkerResult> {
+  const {
+    workerName,
+    input,
+    instructions,
+    attachments,
+    registry,
+    sandbox,
+    approvalController,
+    approvalCallback,
+    approvalMode,
+    delegationContext,
+    projectRoot,
+    maxDelegationDepth,
+  } = options;
+
+  // Check delegation depth
+  const currentPath = delegationContext?.delegationPath || [];
+  if (currentPath.length >= maxDelegationDepth) {
+    return {
+      success: false,
+      error: `Maximum delegation depth (${maxDelegationDepth}) exceeded. Current path: ${currentPath.join(" -> ")}`,
+      workerName,
+      toolCallCount: 0,
+    };
+  }
+
+  // Check for circular delegation
+  if (currentPath.includes(workerName)) {
+    return {
+      success: false,
+      error: `Circular delegation detected: ${[...currentPath, workerName].join(" -> ")}`,
+      workerName,
+      toolCallCount: 0,
+    };
+  }
+
+  try {
+    // Look up the worker by name
+    const lookupResult = await registry.get(workerName);
+
+    if (!lookupResult.found) {
+      return {
+        success: false,
+        error: lookupResult.error,
+        workerName,
+        toolCallCount: 0,
+      };
+    }
+
+    const childWorker = lookupResult.worker.definition;
+
+    // Validate model compatibility if we have a caller model
+    const callerModel = delegationContext?.callerModel;
+    if (callerModel && childWorker.compatible_models !== undefined) {
+      const isCompatible = checkModelCompatibility(
+        callerModel,
+        childWorker.compatible_models
+      );
+      if (!isCompatible) {
+        return {
+          success: false,
+          error: `Model '${callerModel}' is not compatible with worker '${childWorker.name}'. Compatible models: ${childWorker.compatible_models.join(", ")}`,
+          workerName,
+          toolCallCount: 0,
+        };
+      }
+    }
+
+    // Read attachments from sandbox if specified
+    const attachmentData = await readAttachments(sandbox, attachments);
+
+    // Build instructions: append dynamic instructions if provided
+    let finalInstructions = childWorker.instructions;
+    if (instructions) {
+      finalInstructions = `${childWorker.instructions}\n\n## Additional Instructions\n\n${instructions}`;
+    }
+
+    // Create modified worker definition with updated instructions
+    const modifiedWorker: WorkerDefinition = {
+      ...childWorker,
+      instructions: finalInstructions,
+    };
+
+    // Create child runtime
+    // Import WorkerRuntime dynamically to avoid circular dependency
+    const { WorkerRuntime } = await import("../runtime/worker.js");
+
+    const childDelegationContext: DelegationContext = {
+      delegationPath: [...currentPath, childWorker.name],
+      callerModel: callerModel || DEFAULT_CALLER_MODEL,
+    };
+
+    const childRuntime = new WorkerRuntime({
+      worker: modifiedWorker,
+      callerModel: callerModel,
+      approvalMode: approvalMode,
+      approvalCallback: approvalCallback,
+      projectRoot: projectRoot,
+      sharedApprovalController: approvalController,
+      sharedSandbox: sandbox,
+      delegationContext: childDelegationContext,
+      registry: registry,
+    });
+
+    await childRuntime.initialize();
+
+    // Build input with attachments
+    const runInput =
+      attachmentData.length > 0
+        ? { content: input, attachments: attachmentData }
+        : input;
+
+    // Execute the child worker
+    const result = await childRuntime.run(runInput);
+
+    return {
+      success: result.success,
+      response: result.response,
+      error: result.error,
+      workerName: childWorker.name,
+      toolCallCount: result.toolCallCount,
+      tokens: result.tokens,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      error: `Worker execution failed: ${message}`,
+      workerName,
+      toolCallCount: 0,
+    };
+  }
+}
+
+/**
  * Create the call_worker tool.
  *
  * This tool enables workers to delegate to other workers.
@@ -155,125 +346,20 @@ export function createCallWorkerTool(
         };
       }
 
-      // Check delegation depth
-      const currentPath = delegationContext?.delegationPath || [];
-      if (currentPath.length >= maxDelegationDepth) {
-        return {
-          success: false,
-          error: `Maximum delegation depth (${maxDelegationDepth}) exceeded. Current path: ${currentPath.join(" -> ")}`,
-          workerName,
-          toolCallCount: 0,
-        };
-      }
-
-      // Check for circular delegation
-      if (currentPath.includes(workerName)) {
-        return {
-          success: false,
-          error: `Circular delegation detected: ${[...currentPath, workerName].join(" -> ")}`,
-          workerName,
-          toolCallCount: 0,
-        };
-      }
-
-      try {
-        // Look up the worker by name
-        const lookupResult = await registry.get(workerName);
-
-        if (!lookupResult.found) {
-          return {
-            success: false,
-            error: lookupResult.error,
-            workerName,
-            toolCallCount: 0,
-          };
-        }
-
-        const childWorker = lookupResult.worker.definition;
-
-        // Validate model compatibility if we have a caller model
-        const callerModel = delegationContext?.callerModel;
-        if (callerModel && childWorker.compatible_models !== undefined) {
-          const isCompatible = checkModelCompatibility(
-            callerModel,
-            childWorker.compatible_models
-          );
-          if (!isCompatible) {
-            return {
-              success: false,
-              error: `Model '${callerModel}' is not compatible with worker '${childWorker.name}'. Compatible models: ${childWorker.compatible_models.join(", ")}`,
-              workerName,
-              toolCallCount: 0,
-            };
-          }
-        }
-
-        // Read attachments from sandbox if specified
-        const attachmentData = await readAttachments(sandbox, attachments);
-
-        // Build instructions: append dynamic instructions if provided
-        let finalInstructions = childWorker.instructions;
-        if (instructions) {
-          finalInstructions = `${childWorker.instructions}\n\n## Additional Instructions\n\n${instructions}`;
-        }
-
-        // Create modified worker definition with updated instructions
-        const modifiedWorker: WorkerDefinition = {
-          ...childWorker,
-          instructions: finalInstructions,
-        };
-
-        // Create child runtime options
-        // Import WorkerRuntime dynamically to avoid circular dependency
-        const { WorkerRuntime } = await import("../runtime/worker.js");
-
-        const childDelegationContext: DelegationContext = {
-          delegationPath: [...currentPath, childWorker.name],
-          callerModel: callerModel || "anthropic:claude-haiku-4-5",
-        };
-
-        const childRuntime = new WorkerRuntime({
-          worker: modifiedWorker,
-          callerModel: callerModel,
-          approvalMode: approvalMode,
-          approvalCallback: approvalCallback,
-          projectRoot: projectRoot,
-          // Pass shared resources
-          sharedApprovalController: approvalController,
-          sharedSandbox: sandbox,
-          delegationContext: childDelegationContext,
-          registry: registry,
-        });
-
-        await childRuntime.initialize();
-
-        // Build input with attachments
-        const runInput =
-          attachmentData.length > 0
-            ? { content: input, attachments: attachmentData }
-            : input;
-
-        // Execute the child worker
-        const result = await childRuntime.run(runInput);
-
-        return {
-          success: result.success,
-          response: result.response,
-          error: result.error,
-          workerName: childWorker.name,
-          toolCallCount: result.toolCallCount,
-          tokens: result.tokens,
-        };
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : String(error);
-        return {
-          success: false,
-          error: `Worker execution failed: ${message}`,
-          workerName,
-          toolCallCount: 0,
-        };
-      }
+      return executeWorkerDelegation({
+        workerName,
+        input,
+        instructions,
+        attachments,
+        registry,
+        sandbox,
+        approvalController,
+        approvalCallback,
+        approvalMode,
+        delegationContext,
+        projectRoot,
+        maxDelegationDepth,
+      });
     },
   };
 }
@@ -325,123 +411,20 @@ export function createNamedWorkerTool(
     ): Promise<CallWorkerResult> => {
       const { input, instructions, attachments } = args;
 
-      // Check delegation depth
-      const currentPath = delegationContext?.delegationPath || [];
-      if (currentPath.length >= maxDelegationDepth) {
-        return {
-          success: false,
-          error: `Maximum delegation depth (${maxDelegationDepth}) exceeded. Current path: ${currentPath.join(" -> ")}`,
-          workerName,
-          toolCallCount: 0,
-        };
-      }
-
-      // Check for circular delegation
-      if (currentPath.includes(workerName)) {
-        return {
-          success: false,
-          error: `Circular delegation detected: ${[...currentPath, workerName].join(" -> ")}`,
-          workerName,
-          toolCallCount: 0,
-        };
-      }
-
-      try {
-        // Look up the worker by name
-        const lookupResult = await registry.get(workerName);
-
-        if (!lookupResult.found) {
-          return {
-            success: false,
-            error: lookupResult.error,
-            workerName,
-            toolCallCount: 0,
-          };
-        }
-
-        const childWorker = lookupResult.worker.definition;
-
-        // Validate model compatibility if we have a caller model
-        const callerModel = delegationContext?.callerModel;
-        if (callerModel && childWorker.compatible_models !== undefined) {
-          const isCompatible = checkModelCompatibility(
-            callerModel,
-            childWorker.compatible_models
-          );
-          if (!isCompatible) {
-            return {
-              success: false,
-              error: `Model '${callerModel}' is not compatible with worker '${childWorker.name}'. Compatible models: ${childWorker.compatible_models.join(", ")}`,
-              workerName,
-              toolCallCount: 0,
-            };
-          }
-        }
-
-        // Read attachments from sandbox if specified
-        const attachmentData = await readAttachments(sandbox, attachments);
-
-        // Build instructions: append dynamic instructions if provided
-        let finalInstructions = childWorker.instructions;
-        if (instructions) {
-          finalInstructions = `${childWorker.instructions}\n\n## Additional Instructions\n\n${instructions}`;
-        }
-
-        // Create modified worker definition with updated instructions
-        const modifiedWorker: WorkerDefinition = {
-          ...childWorker,
-          instructions: finalInstructions,
-        };
-
-        // Create child runtime
-        const { WorkerRuntime } = await import("../runtime/worker.js");
-
-        const childDelegationContext: DelegationContext = {
-          delegationPath: [...currentPath, childWorker.name],
-          callerModel: callerModel || "anthropic:claude-haiku-4-5",
-        };
-
-        const childRuntime = new WorkerRuntime({
-          worker: modifiedWorker,
-          callerModel: callerModel,
-          approvalMode: approvalMode,
-          approvalCallback: approvalCallback,
-          projectRoot: projectRoot,
-          sharedApprovalController: approvalController,
-          sharedSandbox: sandbox,
-          delegationContext: childDelegationContext,
-          registry: registry,
-        });
-
-        await childRuntime.initialize();
-
-        // Build input with attachments
-        const runInput =
-          attachmentData.length > 0
-            ? { content: input, attachments: attachmentData }
-            : input;
-
-        // Execute the child worker
-        const result = await childRuntime.run(runInput);
-
-        return {
-          success: result.success,
-          response: result.response,
-          error: result.error,
-          workerName: childWorker.name,
-          toolCallCount: result.toolCallCount,
-          tokens: result.tokens,
-        };
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : String(error);
-        return {
-          success: false,
-          error: `Worker execution failed: ${message}`,
-          workerName,
-          toolCallCount: 0,
-        };
-      }
+      return executeWorkerDelegation({
+        workerName,
+        input,
+        instructions,
+        attachments,
+        registry,
+        sandbox,
+        approvalController,
+        approvalCallback,
+        approvalMode,
+        delegationContext,
+        projectRoot,
+        maxDelegationDepth,
+      });
     },
   };
 }
@@ -569,16 +552,33 @@ export class WorkerCallToolset {
 
     // Create named tool for each allowed worker
     for (const workerName of options.allowedWorkers) {
+      // Check for tool name conflicts with reserved names
+      if (checkToolNameConflict(workerName)) {
+        console.warn(
+          `[WorkerCallToolset] Worker name '${workerName}' conflicts with reserved tool name. ` +
+          `This may cause unexpected behavior. Consider renaming the worker.`
+        );
+      }
+
       // Try to look up worker to get its description
       let workerDescription: string | undefined;
       try {
         const lookupResult = await options.registry.get(workerName);
         if (lookupResult.found) {
           workerDescription = lookupResult.worker.definition.description;
+        } else {
+          // Worker not found - log warning but continue (allows lazy worker creation)
+          console.warn(
+            `[WorkerCallToolset] Worker '${workerName}' not found in registry at init time. ` +
+            `Tool will be created but may fail at call time if worker doesn't exist.`
+          );
         }
-      } catch {
-        // Worker not found at init time - will error at call time
-        // This allows for lazy worker creation
+      } catch (error) {
+        // Registry lookup error - log and continue
+        console.warn(
+          `[WorkerCallToolset] Error looking up worker '${workerName}': ${error}. ` +
+          `Tool will be created but may fail at call time.`
+        );
       }
 
       tools.push(createNamedWorkerTool({
