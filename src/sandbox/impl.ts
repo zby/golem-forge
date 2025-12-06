@@ -323,7 +323,7 @@ export function createRestrictedSandbox(
  * });
  *
  * @example
- * // Sandboxed mode - all in .sandbox directory
+ * // Sandboxed mode - all in sandbox/ directory
  * const sandbox = await createSandbox({
  *   mode: 'sandboxed',
  *   root: 'sandbox',

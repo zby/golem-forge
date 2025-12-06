@@ -194,7 +194,7 @@ export function resolveSandboxConfig(
   // Default config if none provided
   const config = sandboxConfig ?? {
     mode: "sandboxed" as const,
-    root: ".sandbox",
+    root: "sandbox",
     zones: {
       cache: { path: "./cache", mode: "rw" as const },
       workspace: { path: "./workspace", mode: "rw" as const },
@@ -242,7 +242,7 @@ export function getDefaultProjectConfig(): ProjectConfig {
   return {
     sandbox: {
       mode: "sandboxed",
-      root: ".sandbox",
+      root: "sandbox",
       zones: {
         cache: { path: "./cache", mode: "rw" },
         workspace: { path: "./workspace", mode: "rw" },
