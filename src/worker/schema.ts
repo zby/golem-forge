@@ -12,6 +12,30 @@
 import { z } from "zod";
 
 /**
+ * Approval decision type for zone operations.
+ * - 'preApproved': No user prompt needed
+ * - 'ask': Prompt user for approval (default)
+ * - 'blocked': Operation blocked entirely
+ */
+export const ApprovalDecisionTypeSchema = z.enum(["preApproved", "ask", "blocked"]);
+
+/**
+ * Per-zone approval configuration.
+ * Separate from mode (capability) - this controls consent/UX.
+ *
+ * TODO: Consider adding shorthand `preApproved: boolean` that expands to
+ * `{ write: 'preApproved', delete: 'preApproved' }` for simpler configs.
+ */
+export const ZoneApprovalConfigSchema = z.object({
+  /** Approval for write operations. Default: 'ask' */
+  write: ApprovalDecisionTypeSchema.optional(),
+  /** Approval for delete operations. Default: 'ask' */
+  delete: ApprovalDecisionTypeSchema.optional(),
+});
+
+export type ZoneApprovalConfig = z.infer<typeof ZoneApprovalConfigSchema>;
+
+/**
  * Worker zone requirement - what this worker needs access to.
  */
 export const WorkerZoneRequirementSchema = z.object({
@@ -19,6 +43,8 @@ export const WorkerZoneRequirementSchema = z.object({
   name: z.string(),
   /** Access mode: ro (read-only) or rw (read-write). Default: rw */
   mode: z.enum(["ro", "rw"]).optional(),
+  /** Approval config - consent layer (optional, defaults to 'ask' for write ops) */
+  approval: ZoneApprovalConfigSchema.optional(),
 });
 
 export type WorkerZoneRequirement = z.infer<typeof WorkerZoneRequirementSchema>;

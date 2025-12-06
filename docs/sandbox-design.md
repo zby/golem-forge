@@ -52,6 +52,44 @@ sandbox:
 ---
 ```
 
+### Level 3: Zone Approval Configuration
+
+Zones can also specify **approval requirements** for write/delete operations. This is separate from `mode` (capability) and controls whether user approval is needed:
+
+```yaml
+# document-processor.worker
+---
+name: document_processor
+description: Processes documents with draft and final outputs
+sandbox:
+  zones:
+    - name: input
+      mode: ro
+      # no approval needed - zone is read-only anyway
+    - name: drafts
+      mode: rw
+      approval:
+        write: preApproved    # No prompt for writes
+        delete: preApproved   # No prompt for deletes
+    - name: final
+      mode: rw
+      approval:
+        write: ask            # Prompt before each write
+        delete: blocked       # Prevent all deletes
+---
+```
+
+Approval decision types:
+- `preApproved` - Operation proceeds without user prompt
+- `ask` - User is prompted for approval (default if not specified)
+- `blocked` - Operation is blocked entirely
+
+**Why separate from `mode`?**
+- `mode` is about **capability** - what the sandbox physically allows
+- `approval` is about **consent** - what operations need user review
+
+A zone can be `rw` (writes possible) but still require approval for each write. This provides defense-in-depth: even if the sandbox allows an operation, the user can still review it.
+
 ### Runtime Enforcement
 
 When a parent worker calls a child worker:
@@ -535,13 +573,17 @@ LLM: write_file("/input/new.txt", "content")
 ### Phase 1 (current)
 - **Default zones**: `/cache/` (downloads), `/workspace/` (working files)
 - **Custom zones**: Define project-specific zones in `golem-forge.config.yaml`
-- **Two-level config**: Project defines available zones, workers declare what they need
+- **Three-level config**:
+  1. Project defines available zones and paths
+  2. Workers declare which zones they need and access mode
+  3. Workers can configure per-zone approval (preApproved/ask/blocked)
 - **Restricted sandbox**: Child workers only get access to zones they declare
 - **Secure by default**: No sandbox declaration = pure function (no file access)
+- **Zone approval**: Per-zone control over which operations need user consent
 - **Direct mode**: Map zones to real directories for easy integration
 - **File ops**: read, write, delete, list, exists, stat, resolve
 - **Zone ops**: getZoneAccess, getAvailableZones for restriction enforcement
-- **Vercel AI SDK**: Tools for file operations
+- **Vercel AI SDK**: Tools for file operations with zone-aware approval
 
 ### Phase 2 (future)
 - **Git ops**: `pull`, `stage`, `push`, `discard`

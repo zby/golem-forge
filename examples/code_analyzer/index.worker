@@ -7,8 +7,12 @@ sandbox:
   zones:
     - name: codebase
       mode: ro
+      # No approval config needed - zone is read-only
     - name: reports
       mode: rw
+      approval:
+        write: preApproved   # Reports can be written without prompts
+        delete: ask          # But deleting reports needs confirmation
 ---
 
 You are a code analysis assistant that explores and analyzes codebases.

@@ -305,6 +305,137 @@ describe('createFilesystemTools', () => {
   });
 });
 
+describe('Zone-aware approval', () => {
+  let sandbox: Sandbox;
+
+  beforeEach(async () => {
+    sandbox = await createTestSandbox();
+  });
+
+  describe('zoneApprovalConfig', () => {
+    it('uses function-based approval when zoneApprovalConfig is provided', () => {
+      const toolset = new FilesystemToolset({
+        sandbox,
+        zoneApprovalConfig: {
+          workspace: { write: 'preApproved', delete: 'ask' },
+        },
+      });
+
+      const tools = toolset.getTools();
+      const writeTool = tools.find(t => t.name === 'write_file');
+      const deleteTool = tools.find(t => t.name === 'delete_file');
+
+      // needsApproval should be a function, not a boolean
+      expect(typeof writeTool?.needsApproval).toBe('function');
+      expect(typeof deleteTool?.needsApproval).toBe('function');
+    });
+
+    it('preApproved zone returns false (no approval needed) for writes', async () => {
+      const toolset = new FilesystemToolset({
+        sandbox,
+        zoneApprovalConfig: {
+          workspace: { write: 'preApproved' },
+        },
+      });
+
+      const tools = toolset.getTools();
+      const writeTool = tools.find(t => t.name === 'write_file');
+
+      // Call the needsApproval function with a path in the preApproved zone
+      const needsApproval = writeTool?.needsApproval as (input: { path: string }) => boolean;
+      expect(needsApproval({ path: '/workspace/file.txt' })).toBe(false);
+    });
+
+    it('ask zone returns true (needs approval) for writes', async () => {
+      const toolset = new FilesystemToolset({
+        sandbox,
+        zoneApprovalConfig: {
+          workspace: { write: 'ask' },
+        },
+      });
+
+      const tools = toolset.getTools();
+      const writeTool = tools.find(t => t.name === 'write_file');
+
+      const needsApproval = writeTool?.needsApproval as (input: { path: string }) => boolean;
+      expect(needsApproval({ path: '/workspace/file.txt' })).toBe(true);
+    });
+
+    it('blocked zone returns true (needs approval - will be blocked at execution)', async () => {
+      const toolset = new FilesystemToolset({
+        sandbox,
+        zoneApprovalConfig: {
+          workspace: { write: 'blocked' },
+        },
+      });
+
+      const tools = toolset.getTools();
+      const writeTool = tools.find(t => t.name === 'write_file');
+
+      const needsApproval = writeTool?.needsApproval as (input: { path: string }) => boolean;
+      expect(needsApproval({ path: '/workspace/file.txt' })).toBe(true);
+    });
+
+    it('unknown zone returns true (needs approval - secure default)', async () => {
+      const toolset = new FilesystemToolset({
+        sandbox,
+        zoneApprovalConfig: {
+          scratch: { write: 'preApproved' }, // only scratch is configured
+        },
+      });
+
+      const tools = toolset.getTools();
+      const writeTool = tools.find(t => t.name === 'write_file');
+
+      const needsApproval = writeTool?.needsApproval as (input: { path: string }) => boolean;
+      // workspace is not in config, so should require approval
+      expect(needsApproval({ path: '/workspace/file.txt' })).toBe(true);
+    });
+
+    it('different zones can have different approval settings', async () => {
+      const toolset = new FilesystemToolset({
+        sandbox,
+        zoneApprovalConfig: {
+          workspace: { write: 'preApproved', delete: 'ask' },
+          cache: { write: 'ask', delete: 'preApproved' },
+        },
+      });
+
+      const tools = toolset.getTools();
+      const writeTool = tools.find(t => t.name === 'write_file');
+      const deleteTool = tools.find(t => t.name === 'delete_file');
+
+      const writeNeedsApproval = writeTool?.needsApproval as (input: { path: string }) => boolean;
+      const deleteNeedsApproval = deleteTool?.needsApproval as (input: { path: string }) => boolean;
+
+      // workspace: write preApproved, delete ask
+      expect(writeNeedsApproval({ path: '/workspace/file.txt' })).toBe(false);
+      expect(deleteNeedsApproval({ path: '/workspace/file.txt' })).toBe(true);
+
+      // cache: write ask, delete preApproved
+      expect(writeNeedsApproval({ path: '/cache/file.txt' })).toBe(true);
+      expect(deleteNeedsApproval({ path: '/cache/file.txt' })).toBe(false);
+    });
+
+    it('read operations still use static approval (not zone-aware)', () => {
+      const toolset = new FilesystemToolset({
+        sandbox,
+        zoneApprovalConfig: {
+          workspace: { write: 'preApproved' },
+        },
+      });
+
+      const tools = toolset.getTools();
+      const readTool = tools.find(t => t.name === 'read_file');
+      const listTool = tools.find(t => t.name === 'list_files');
+
+      // Read operations should still be static (falsy = no approval needed)
+      expect(readTool?.needsApproval).toBeFalsy();
+      expect(listTool?.needsApproval).toBeFalsy();
+    });
+  });
+});
+
 describe('Discoverable filesystem interface', () => {
   it('list_files("/") should return available zones as directories', async () => {
     // Create a sandbox with custom zones

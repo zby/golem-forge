@@ -14,6 +14,8 @@ export type {
   BackendConfig,
   ZoneAccessMode,
   ZoneConfig,
+  ZoneApprovalConfig,
+  ApprovalDecisionType,
 } from './types.js';
 
 // Interfaces

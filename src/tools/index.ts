@@ -14,6 +14,7 @@ export {
   type FilesystemToolResult,
   type FilesystemToolsetOptions,
   type NamedTool,
+  type ZoneApprovalMap,
 } from "./filesystem.js";
 
 export {

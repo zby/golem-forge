@@ -70,9 +70,9 @@ createWriteFileTool(sandbox)          // needsApproval: true
 createCallWorkerTool(options)         // needsApproval: true
 ```
 
-### ApprovalConfig (Declarative)
+### ApprovalConfig (Declarative, Per-Tool)
 
-For toolsets that want declarative configuration:
+For toolsets that want declarative configuration at the tool level:
 
 ```typescript
 const config: ApprovalConfig = {
@@ -85,6 +85,53 @@ const toolset = new FilesystemToolset({ sandbox, approvalConfig: config });
 ```
 
 The `FilesystemToolset` converts `preApproved: true` → `needsApproval: false` and vice versa.
+
+### Zone-Aware Approval (Declarative, Per-Zone)
+
+For more granular control, approval can be configured per-zone. This allows different directories to have different approval requirements:
+
+```yaml
+# In worker file
+sandbox:
+  zones:
+    - name: scratch
+      mode: rw
+      approval:
+        write: preApproved    # No prompt for writes to /scratch/*
+        delete: preApproved   # No prompt for deletes from /scratch/*
+    - name: output
+      mode: rw
+      approval:
+        write: ask            # Prompt before each write to /output/*
+        delete: blocked       # Block all deletes from /output/*
+```
+
+Approval decision types:
+- `preApproved` - No user prompt needed
+- `ask` - Prompt user for approval (default if not specified)
+- `blocked` - Operation blocked entirely
+
+This creates a dynamic `needsApproval` function that checks the target path:
+
+```typescript
+const toolset = new FilesystemToolset({
+  sandbox,
+  zoneApprovalConfig: {
+    scratch: { write: 'preApproved', delete: 'preApproved' },
+    output: { write: 'ask', delete: 'blocked' },
+  },
+});
+
+// The write_file tool now has needsApproval as a function:
+// - write_file({ path: '/scratch/temp.txt' }) → no approval needed
+// - write_file({ path: '/output/report.md' }) → prompts user
+```
+
+**Design rationale**: Zone approval is separate from zone `mode` (ro/rw) because:
+- `mode` is about **capability** - what the sandbox allows
+- `approval` is about **consent** - what the user must approve
+
+A zone can be `rw` (writes are possible) but still require approval for each write.
 
 ### ApprovalController
 
@@ -169,9 +216,12 @@ This is different from denial - blocked operations are policy violations, not us
 | Concept | Implementation |
 |---------|----------------|
 | Tool approval requirement | `tool.needsApproval: boolean \| function` |
-| Declarative config | `ApprovalConfig` with `preApproved`, `blocked` |
+| Per-tool config | `ApprovalConfig` with `preApproved`, `blocked` |
+| Per-zone config | `ZoneApprovalConfig` with `write`, `delete` per zone |
 | User interaction | `ApprovalController` with modes + callback |
 | Session cache | `ApprovalMemory` with deep equality matching |
 | Policy violations | `BlockedError` thrown before execution |
 
 The key insight is that the SDK's native pattern (`needsApproval` on tools) is sufficient. We don't need wrapper classes or toolset interfaces - just tools that know their own approval requirements and a controller that enforces them.
+
+Zone-aware approval extends this by making `needsApproval` a function that inspects the tool arguments, allowing fine-grained control based on where files are being written.

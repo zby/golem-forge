@@ -11,8 +11,21 @@ import {
   Sandbox,
   NotFoundError,
   isSandboxError,
+  getZoneNameFromPath,
+  type ApprovalDecisionType,
 } from '../sandbox/index.js';
 import { type ApprovalConfig } from '../approval/index.js';
+
+/**
+ * Zone approval configuration map.
+ * Maps zone names to their approval settings.
+ */
+export interface ZoneApprovalMap {
+  [zoneName: string]: {
+    write?: ApprovalDecisionType;
+    delete?: ApprovalDecisionType;
+  };
+}
 
 /**
  * Result returned by filesystem tools.
@@ -37,11 +50,17 @@ export type NamedTool = Tool<any, any> & {
 };
 
 /**
+ * Function type for dynamic approval decisions.
+ * Receives the tool input and returns whether approval is needed.
+ */
+type NeedsApprovalFn<T> = (input: T, options: ToolExecutionOptions) => boolean | Promise<boolean>;
+
+/**
  * Options for creating a filesystem tool.
  */
-interface ToolOptions {
-  /** Whether the tool needs approval before execution */
-  needsApproval?: boolean;
+interface ToolOptions<T = { path: string }> {
+  /** Whether the tool needs approval before execution (static or dynamic) */
+  needsApproval?: boolean | NeedsApprovalFn<T>;
 }
 
 const readFileSchema = z.object({
@@ -325,12 +344,28 @@ function handleError(error: unknown, path?: string): FilesystemToolResult {
 export interface FilesystemToolsetOptions {
   sandbox: Sandbox;
   /**
-   * Approval configuration for filesystem tools.
+   * Approval configuration for filesystem tools (static, per-tool).
    * If not provided, uses secure defaults:
    * - read_file, list_files, file_exists, file_info: preApproved
    * - write_file, delete_file: needs approval
+   *
+   * @deprecated Use zoneApprovalConfig for zone-aware approval instead.
    */
   approvalConfig?: ApprovalConfig;
+  /**
+   * Zone-aware approval configuration.
+   * Maps zone names to their approval settings for write/delete operations.
+   * Takes precedence over approvalConfig when provided.
+   *
+   * @example
+   * ```typescript
+   * {
+   *   scratch: { write: 'preApproved', delete: 'preApproved' },
+   *   output: { write: 'ask', delete: 'blocked' },
+   * }
+   * ```
+   */
+  zoneApprovalConfig?: ZoneApprovalMap;
 }
 
 /**
@@ -359,6 +394,50 @@ function configToNeedsApproval(config: ApprovalConfig, toolName: string): boolea
 }
 
 /**
+ * Create a zone-aware approval function for write or delete operations.
+ *
+ * The function checks the zone from the path argument and returns whether
+ * approval is needed based on the zone's approval config.
+ *
+ * @param zoneConfig - Map of zone names to their approval settings
+ * @param operation - 'write' or 'delete'
+ * @returns A function that takes tool input and returns whether approval is needed
+ */
+function createZoneAwareApproval(
+  zoneConfig: ZoneApprovalMap,
+  operation: 'write' | 'delete'
+): NeedsApprovalFn<{ path: string }> {
+  return (input: { path: string }) => {
+    try {
+      const zoneName = getZoneNameFromPath(input.path);
+      const zoneApproval = zoneConfig[zoneName];
+
+      if (!zoneApproval) {
+        // Unknown zone - require approval (secure default)
+        return true;
+      }
+
+      const decision = zoneApproval[operation];
+
+      switch (decision) {
+        case 'preApproved':
+          return false;  // No approval needed
+        case 'blocked':
+          // Blocked operations still go through approval flow
+          // The approval controller or sandbox will reject them
+          return true;
+        case 'ask':
+        default:
+          return true;  // Needs approval
+      }
+    } catch {
+      // Invalid path or zone - require approval
+      return true;
+    }
+  };
+}
+
+/**
  * Toolset that provides all filesystem tools.
  * Uses AI SDK's native needsApproval for tool approval.
  */
@@ -367,6 +446,7 @@ export class FilesystemToolset {
 
   constructor(sandboxOrOptions: Sandbox | FilesystemToolsetOptions) {
     let sandbox: Sandbox;
+    let zoneApprovalConfig: ZoneApprovalMap | undefined;
     let approvalConfig: ApprovalConfig;
 
     // Support both old (Sandbox) and new (options) constructor signatures
@@ -375,20 +455,32 @@ export class FilesystemToolset {
       sandbox = sandboxOrOptions;
       approvalConfig = DEFAULT_FILESYSTEM_APPROVAL_CONFIG;
     } else {
-      // It's options - merge with defaults
+      // It's options
       sandbox = sandboxOrOptions.sandbox;
+      zoneApprovalConfig = sandboxOrOptions.zoneApprovalConfig;
       approvalConfig = {
         ...DEFAULT_FILESYSTEM_APPROVAL_CONFIG,
         ...sandboxOrOptions.approvalConfig,
       };
     }
 
+    // Determine approval for write/delete operations
+    // Zone-aware config takes precedence when provided
+    const writeApproval = zoneApprovalConfig
+      ? createZoneAwareApproval(zoneApprovalConfig, 'write')
+      : configToNeedsApproval(approvalConfig, 'write_file');
+
+    const deleteApproval = zoneApprovalConfig
+      ? createZoneAwareApproval(zoneApprovalConfig, 'delete')
+      : configToNeedsApproval(approvalConfig, 'delete_file');
+
     // Create tools with needsApproval set based on config
+    // Read operations always use static config (no zone-based approval for reads)
     this.tools = [
       createReadFileTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'read_file') }),
-      createWriteFileTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'write_file') }),
+      createWriteFileTool(sandbox, { needsApproval: writeApproval }),
       createListFilesTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'list_files') }),
-      createDeleteFileTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'delete_file') }),
+      createDeleteFileTool(sandbox, { needsApproval: deleteApproval }),
       createFileExistsTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'file_exists') }),
       createFileInfoTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'file_info') }),
     ];

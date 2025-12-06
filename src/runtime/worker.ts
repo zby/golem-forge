@@ -19,6 +19,7 @@ import {
   FilesystemToolset,
   WorkerCallToolset,
   type DelegationContext,
+  type ZoneApprovalMap,
 } from "../tools/index.js";
 import { WorkerRegistry } from "../worker/registry.js";
 import {
@@ -332,9 +333,28 @@ export class WorkerRuntime {
           if (!this.sandbox) {
             throw new Error("Filesystem toolset requires a sandbox. Set projectRoot or useTestSandbox.");
           }
+
+          // Build zone approval config from worker's sandbox zones
+          const zoneApprovalConfig: ZoneApprovalMap = {};
+          const zones = this.worker.sandbox?.zones;
+          if (zones) {
+            for (const zone of zones) {
+              if (zone.approval) {
+                zoneApprovalConfig[zone.name] = {
+                  write: zone.approval.write,
+                  delete: zone.approval.delete,
+                };
+              }
+              // If no approval config, zone uses defaults (ask for approval)
+            }
+          }
+
           // FilesystemToolset creates tools with needsApproval set based on config
           const fsToolset = new FilesystemToolset({
             sandbox: this.sandbox,
+            zoneApprovalConfig: Object.keys(zoneApprovalConfig).length > 0
+              ? zoneApprovalConfig
+              : undefined,
           });
           // Register each tool by its name property
           for (const tool of fsToolset.getTools()) {

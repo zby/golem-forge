@@ -10,8 +10,12 @@ sandbox:
   zones:
     - name: input
       mode: ro
+      # Read-only input - no approval needed
     - name: plans
       mode: rw
+      approval:
+        write: preApproved   # Auto-approve plan generation
+        delete: blocked      # Never delete generated plans
 ---
 
 You are an orchestrator that converts whiteboard photos into structured project plans.

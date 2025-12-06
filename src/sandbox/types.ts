@@ -19,6 +19,28 @@ export enum Zone {
 export type ZoneAccessMode = 'ro' | 'rw';
 
 /**
+ * Approval decision for an operation.
+ * - 'preApproved': No user prompt needed
+ * - 'ask': Prompt user for approval (default)
+ * - 'blocked': Operation blocked entirely
+ */
+export type ApprovalDecisionType = 'preApproved' | 'ask' | 'blocked';
+
+/**
+ * Per-zone approval configuration.
+ * Separate from mode (capability) - this controls consent/UX.
+ *
+ * TODO: Consider adding shorthand `preApproved: boolean` that expands to
+ * `{ write: 'preApproved', delete: 'preApproved' }` for simpler configs.
+ */
+export interface ZoneApprovalConfig {
+  /** Approval for write operations. Default: 'ask' */
+  write?: ApprovalDecisionType;
+  /** Approval for delete operations. Default: 'ask' */
+  delete?: ApprovalDecisionType;
+}
+
+/**
  * Zone configuration for custom zones.
  */
 export interface ZoneConfig {
@@ -26,8 +48,10 @@ export interface ZoneConfig {
   name: string;
   /** Absolute path to the zone directory */
   path: string;
-  /** Access mode: ro (read-only) or rw (read-write) */
+  /** Access mode: ro (read-only) or rw (read-write) - capability layer */
   mode: ZoneAccessMode;
+  /** Approval config - consent layer (optional, defaults to 'ask' for write ops) */
+  approval?: ZoneApprovalConfig;
 }
 
 /**
