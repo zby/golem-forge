@@ -10,7 +10,7 @@ Build a multi-runtime LLM worker system with TypeScript, starting with CLI and t
 
 ## Related Documents
 
-- **[User Stories](./user-stories.md)** - Index to all user stories
+- **User Stories**
   - [Common Stories](./user_stories/common.md) - Shared across deployments
   - [CLI Stories](./user_stories/cli.md) - Command-line workflows
   - [Browser Stories](./user_stories/browser.md) - Extension workflows
