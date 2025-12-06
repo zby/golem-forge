@@ -1,2 +1,6 @@
 # Runtime sandbox data
 sandbox/
+
+# Output files (keep directory structure with .gitkeep)
+output/*
+!output/.gitkeep
