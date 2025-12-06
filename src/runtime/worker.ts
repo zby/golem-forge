@@ -5,6 +5,7 @@
  * Manages the LLM conversation loop with tool calls.
  */
 
+import * as path from "path";
 import { generateText, type ModelMessage, type Tool, type LanguageModel } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
@@ -18,8 +19,11 @@ import {
 import {
   FilesystemToolset,
   WorkerCallToolset,
+  createCustomToolset,
+  CustomToolsetConfigSchema,
   type DelegationContext,
   type ZoneApprovalMap,
+  type CustomToolsetConfig,
 } from "../tools/index.js";
 import { WorkerRegistry } from "../worker/registry.js";
 import {
@@ -63,6 +67,8 @@ export interface WorkerRuntimeOptions {
   approvalCallback?: ApprovalCallback;
   /** Project root for CLI sandbox */
   projectRoot?: string;
+  /** Path to the worker file (for resolving relative module paths) */
+  workerFilePath?: string;
   /** Use test sandbox instead of CLI sandbox */
   useTestSandbox?: boolean;
   /** Maximum tool call iterations */
@@ -389,6 +395,44 @@ export class WorkerRuntime {
             model: this.options.model,
           });
           for (const tool of workerToolset.getTools()) {
+            this.tools[tool.name] = tool;
+          }
+          break;
+        }
+
+        case "custom": {
+          // Custom tools from a tools.ts module
+          const parseResult = CustomToolsetConfigSchema.safeParse(toolsetConfig);
+          if (!parseResult.success) {
+            throw new Error(
+              `Invalid custom toolset config: ${parseResult.error.message}`
+            );
+          }
+
+          const customConfig: CustomToolsetConfig = parseResult.data;
+
+          // Resolve module path relative to worker file or project root
+          let modulePath = customConfig.module;
+          if (!path.isAbsolute(modulePath)) {
+            const baseDir = this.options.workerFilePath
+              ? path.dirname(this.options.workerFilePath)
+              : this.options.projectRoot;
+
+            if (!baseDir) {
+              throw new Error(
+                "Custom toolset requires workerFilePath or projectRoot to resolve relative module paths."
+              );
+            }
+
+            modulePath = path.resolve(baseDir, modulePath);
+          }
+
+          const customToolset = await createCustomToolset({
+            modulePath,
+            config: customConfig,
+          });
+
+          for (const tool of customToolset.getTools()) {
             this.tools[tool.name] = tool;
           }
           break;

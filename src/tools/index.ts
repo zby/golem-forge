@@ -55,3 +55,18 @@ export {
   type ShellToolsetOptions,
   type MatchResult,
 } from "./shell.js";
+
+export {
+  CustomToolset,
+  createCustomToolset,
+  loadCustomTools,
+  wrapWithDefaultApproval,
+  createToolFromFunction,
+  isNamedTool,
+  isZodSchema,
+  extractFunctionDescription,
+  CustomToolsetConfigSchema,
+  type CustomToolsetConfig,
+  type CustomApprovalConfig,
+  type CustomToolsetOptions,
+} from "./custom.js";
