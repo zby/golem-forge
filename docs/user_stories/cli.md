@@ -30,16 +30,29 @@ The CLI is the primary development environment for Golem Forge. It provides:
 
 **Acceptance Criteria:**
 - [ ] `golem run <worker> [input]` executes worker
-- [ ] Input can be text argument, file, or stdin
+- [ ] Files auto-detected as attachments based on extension (.pdf, .png, etc.)
+- [ ] Text input passed as prompt content
 - [ ] Output displayed in terminal
 - [ ] Exit code indicates success/failure
 - [ ] Can specify model with `--model` flag
 
 **Example:**
 ```bash
+# File argument auto-detected as attachment
 golem run analyzer report.pdf
+
+# Text input
+golem run greeter "Hello world"
+
+# Stdin
 golem run summarizer < document.md
 echo "Hello" | golem run greeter
+
+# Multiple files with text
+golem run analyzer report.pdf chart.png "Summarize these"
+
+# Explicit attachment (also supported)
+golem run analyzer --attach report.pdf "Analyze this"
 ```
 
 ---

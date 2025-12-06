@@ -509,4 +509,125 @@ Instructions
       }
     });
   });
+
+  describe("auto-detection of file attachments", () => {
+    let originalIsTTY: boolean | undefined;
+
+    beforeEach(() => {
+      // Mock stdin.isTTY to prevent waiting on stdin in tests
+      originalIsTTY = process.stdin.isTTY;
+      Object.defineProperty(process.stdin, "isTTY", { value: true, writable: true });
+    });
+
+    afterEach(() => {
+      Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, writable: true });
+    });
+
+    it("should auto-detect PDF files as attachments", async () => {
+      const pdfPath = path.join(workerDir, "report.pdf");
+      await fs.writeFile(pdfPath, "fake pdf content");
+
+      await runCLI(["node", "cli", workerDir, "report.pdf"]);
+
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: "Please process the attached file(s).",
+          attachments: [
+            expect.objectContaining({
+              name: "report.pdf",
+              mimeType: "application/pdf",
+            }),
+          ],
+        })
+      );
+    });
+
+    it("should auto-detect image files as attachments", async () => {
+      const imgPath = path.join(workerDir, "photo.png");
+      await fs.writeFile(imgPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+      await runCLI(["node", "cli", workerDir, "photo.png"]);
+
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: [
+            expect.objectContaining({
+              name: "photo.png",
+              mimeType: "image/png",
+            }),
+          ],
+        })
+      );
+    });
+
+    it("should combine auto-detected files with text input", async () => {
+      const pdfPath = path.join(workerDir, "doc.pdf");
+      await fs.writeFile(pdfPath, "fake pdf");
+
+      await runCLI(["node", "cli", workerDir, "doc.pdf", "Summarize this"]);
+
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: "Summarize this",
+          attachments: [expect.objectContaining({ name: "doc.pdf" })],
+        })
+      );
+    });
+
+    it("should handle multiple auto-detected files", async () => {
+      await fs.writeFile(path.join(workerDir, "a.pdf"), "pdf a");
+      await fs.writeFile(path.join(workerDir, "b.png"), Buffer.from([0x89]));
+
+      await runCLI(["node", "cli", workerDir, "a.pdf", "b.png", "analyze these"]);
+
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: "analyze these",
+          attachments: [
+            expect.objectContaining({ name: "a.pdf" }),
+            expect.objectContaining({ name: "b.png" }),
+          ],
+        })
+      );
+    });
+
+    it("should combine explicit --attach with auto-detected files", async () => {
+      await fs.writeFile(path.join(workerDir, "auto.pdf"), "auto");
+      await fs.writeFile(path.join(workerDir, "explicit.png"), Buffer.from([0x89]));
+
+      await runCLI([
+        "node", "cli", workerDir,
+        "--attach", "explicit.png",
+        "auto.pdf", "describe"
+      ]);
+
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: "describe",
+          attachments: [
+            expect.objectContaining({ name: "explicit.png" }),
+            expect.objectContaining({ name: "auto.pdf" }),
+          ],
+        })
+      );
+    });
+
+    it("should treat non-existent files with attachment extensions as text", async () => {
+      // nonexistent.pdf doesn't exist, so it should be treated as text
+      await runCLI(["node", "cli", workerDir, "--input", "test", "nonexistent.pdf"]);
+
+      // The "nonexistent.pdf" becomes part of text input since file doesn't exist
+      expect(mockRun).toHaveBeenCalledWith("test");
+    });
+
+    it("should not auto-detect .txt or .md files as attachments", async () => {
+      await fs.writeFile(path.join(workerDir, "notes.txt"), "some notes");
+      await fs.writeFile(path.join(workerDir, "readme.md"), "# README");
+
+      await runCLI(["node", "cli", workerDir, "notes.txt", "readme.md"]);
+
+      // These should be treated as text, not attachments
+      expect(mockRun).toHaveBeenCalledWith("notes.txt readme.md");
+    });
+  });
 });

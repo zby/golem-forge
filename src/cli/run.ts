@@ -30,8 +30,9 @@ interface CLIOptions {
 
 /**
  * Read input from various sources.
+ * Returns undefined if no text input is provided (e.g., only file attachments).
  */
-async function readInput(options: CLIOptions, inputArgs: string[]): Promise<string> {
+async function readInput(options: CLIOptions, textArgs: string[]): Promise<string | undefined> {
   // Input from --input flag
   if (options.input) {
     return options.input;
@@ -42,9 +43,9 @@ async function readInput(options: CLIOptions, inputArgs: string[]): Promise<stri
     return fs.readFile(options.file, "utf-8");
   }
 
-  // Input from positional arguments
-  if (inputArgs.length > 0) {
-    return inputArgs.join(" ");
+  // Input from positional arguments (after file detection)
+  if (textArgs.length > 0) {
+    return textArgs.join(" ");
   }
 
   // Read from stdin if available
@@ -53,10 +54,14 @@ async function readInput(options: CLIOptions, inputArgs: string[]): Promise<stri
     for await (const chunk of process.stdin) {
       chunks.push(chunk);
     }
-    return Buffer.concat(chunks).toString("utf-8").trim();
+    const stdinContent = Buffer.concat(chunks).toString("utf-8").trim();
+    if (stdinContent) {
+      return stdinContent;
+    }
   }
 
-  throw new Error("No input provided. Use --input, --file, positional args, or pipe to stdin.");
+  // No text input - this is OK if there are file attachments
+  return undefined;
 }
 
 /**
@@ -95,8 +100,96 @@ const MIME_TYPES: Record<string, string> = {
   ".json": "application/json",
 };
 
+/**
+ * Extensions that are auto-detected as attachments when passed as positional args.
+ * These are file types that LLMs can process as attachments.
+ *
+ * Common support (Anthropic, OpenAI): jpeg, png, gif, webp, pdf
+ * Extended support (Azure OpenAI): bmp, tiff, heif
+ *
+ * @see https://platform.claude.com/docs/en/build-with-claude/vision
+ * @see https://platform.openai.com/docs/guides/vision
+ */
+const AUTO_ATTACH_EXTENSIONS = new Set([
+  // Common image formats (all major providers)
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".webp",
+  // Documents
+  ".pdf",
+  // Extended image formats (Azure OpenAI, some providers)
+  ".bmp",
+  ".tif",
+  ".tiff",
+  ".heic",
+  ".heif",
+]);
+
 /** Maximum attachment file size (20 MB) */
 const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
+
+/**
+ * Check if an argument looks like an auto-attachable file.
+ */
+function isAutoAttachExtension(arg: string): boolean {
+  const ext = path.extname(arg).toLowerCase();
+  return AUTO_ATTACH_EXTENSIONS.has(ext);
+}
+
+/**
+ * Check if a path exists as a file.
+ */
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Separate positional args into files (attachments) and text input.
+ * Files with auto-attach extensions that exist on disk become attachments.
+ * Everything else is treated as text input.
+ */
+async function separateFilesAndText(
+  inputArgs: string[],
+  workerDir: string
+): Promise<{ files: string[]; textArgs: string[] }> {
+  const files: string[] = [];
+  const textArgs: string[] = [];
+
+  for (const arg of inputArgs) {
+    if (isAutoAttachExtension(arg)) {
+      // Check if file exists (try workerDir first, then cwd)
+      const candidates = path.isAbsolute(arg)
+        ? [arg]
+        : [path.resolve(workerDir, arg), path.resolve(arg)];
+
+      let found = false;
+      for (const candidate of candidates) {
+        if (await fileExists(candidate)) {
+          files.push(arg);
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        // File with attachment extension but doesn't exist - treat as text
+        // (will likely error, but let the user see it)
+        textArgs.push(arg);
+      }
+    } else {
+      textArgs.push(arg);
+    }
+  }
+
+  return { files, textArgs };
+}
 
 /**
  * Load attachments from file paths.
@@ -229,12 +322,12 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .description("Run LLM workers with tool support and approval")
     .version("0.1.0")
     .argument("[dir]", "Worker directory containing index.worker", ".")
-    .argument("[input...]", "Input text for the worker")
+    .argument("[input...]", "Input text or files (images/PDFs auto-detected as attachments)")
     .option("-m, --model <model>", "Model to use (e.g., anthropic:claude-haiku-4-5)")
     .option("-a, --approval <mode>", "Approval mode: interactive, approve_all, auto_deny", parseApprovalMode, "interactive")
     .option("-i, --input <text>", "Input text (alternative to positional args)")
     .option("-f, --file <path>", "Read input from file")
-    .option("-A, --attach <file>", "Attach image file (can be used multiple times)", collectAttachments, [])
+    .option("-A, --attach <file>", "Attach file explicitly (can be used multiple times)", collectAttachments, [])
     .option("-p, --project <path>", "Project root directory (auto-detected if not specified)")
     .option("-v, --verbose", "Verbose output")
     .action(async (dirArg: string, inputArgs: string[], options: CLIOptions) => {
@@ -293,20 +386,33 @@ async function executeWorker(
     console.log(`Worker: ${workerDefinition.name}`);
   }
 
-  // Read input
-  const textInput = await readInput(options, inputArgs);
+  // Separate positional args into auto-detected files and text
+  const { files: autoDetectedFiles, textArgs } = await separateFilesAndText(inputArgs, workerDir);
 
-  // Load attachments if provided
-  const attachments = options.attach && options.attach.length > 0
-    ? await loadAttachments(options.attach, workerDir)
+  // Combine auto-detected files with explicit --attach files
+  const allAttachmentPaths = [...(options.attach || []), ...autoDetectedFiles];
+
+  // Load attachments if any
+  const attachments = allAttachmentPaths.length > 0
+    ? await loadAttachments(allAttachmentPaths, workerDir)
     : undefined;
 
   if (attachments) {
     enforceAttachmentPolicy(attachments, workerDefinition);
   }
 
+  // Read text input
+  const textInput = await readInput(options, textArgs);
+
+  // Require either text input or attachments
+  if (!textInput && (!attachments || attachments.length === 0)) {
+    throw new Error("No input provided. Use text arguments, --input, --file, file attachments, or pipe to stdin.");
+  }
+
   if (options.verbose) {
-    console.log(`Input: ${textInput.slice(0, 100)}${textInput.length > 100 ? "..." : ""}`);
+    if (textInput) {
+      console.log(`Input: ${textInput.slice(0, 100)}${textInput.length > 100 ? "..." : ""}`);
+    }
     if (attachments && attachments.length > 0) {
       console.log(`Attachments: ${attachments.map(a => a.name).join(", ")}`);
     }
@@ -361,9 +467,11 @@ async function executeWorker(
   const runtime = await createWorkerRuntime(runtimeOptions);
 
   // Prepare run input
+  // When only attachments are provided, use a default prompt
+  const effectiveTextInput = textInput || "Please process the attached file(s).";
   const runInput: RunInput = attachments
-    ? { content: textInput, attachments }
-    : textInput;
+    ? { content: effectiveTextInput, attachments }
+    : effectiveTextInput;
 
   // Run worker
   if (options.verbose) {
