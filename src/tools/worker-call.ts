@@ -14,7 +14,7 @@ import { WorkerRegistry } from "../worker/registry.js";
 import type { WorkerDefinition } from "../worker/schema.js";
 
 /**
- * Schema for call_worker tool input.
+ * Schema for call_worker tool input (generic fallback).
  */
 export const CallWorkerInputSchema = z.object({
   /** Worker name (must be in the allowed_workers list) */
@@ -36,6 +36,26 @@ export const CallWorkerInputSchema = z.object({
 });
 
 export type CallWorkerInput = z.infer<typeof CallWorkerInputSchema>;
+
+/**
+ * Schema for named worker tool input (worker name is the tool name).
+ */
+export const NamedWorkerInputSchema = z.object({
+  /** Input text for the worker */
+  input: z.string().describe("Input text to send to the worker"),
+  /** Optional additional instructions to extend worker's base instructions */
+  instructions: z
+    .string()
+    .optional()
+    .describe("Optional additional instructions for this call"),
+  /** Sandbox file paths to read and attach (e.g., ["/workspace/doc.pdf"]) */
+  attachments: z
+    .array(z.string())
+    .optional()
+    .describe("Sandbox paths to attach as files"),
+});
+
+export type NamedWorkerInput = z.infer<typeof NamedWorkerInputSchema>;
 
 /**
  * Context for worker delegation - tracks the call chain.
@@ -259,6 +279,174 @@ export function createCallWorkerTool(
 }
 
 /**
+ * Options for creating a named worker tool.
+ */
+export interface NamedWorkerToolOptions extends Omit<WorkerCallToolsetOptions, 'allowedWorkers'> {
+  /** The specific worker name this tool represents */
+  workerName: string;
+  /** Description for the tool (from worker frontmatter) */
+  workerDescription?: string;
+}
+
+/**
+ * Create a named worker tool.
+ *
+ * Unlike call_worker, this tool is named after the worker itself.
+ * The tool name IS the worker name, making it a first-class tool.
+ *
+ * @example
+ * // Instead of: call_worker({ worker: "greeter", input: "Hello" })
+ * // The LLM calls: greeter({ input: "Hello" })
+ */
+export function createNamedWorkerTool(
+  options: NamedWorkerToolOptions
+): NamedTool {
+  const {
+    workerName,
+    workerDescription,
+    registry,
+    sandbox,
+    approvalController,
+    approvalCallback,
+    approvalMode,
+    delegationContext,
+    projectRoot,
+    maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
+  } = options;
+
+  return {
+    name: workerName,
+    description: workerDescription || `Delegate task to the ${workerName} worker`,
+    inputSchema: NamedWorkerInputSchema,
+    needsApproval: true, // Worker calls always require approval
+    execute: async (
+      args: NamedWorkerInput,
+      _options: ToolExecutionOptions
+    ): Promise<CallWorkerResult> => {
+      const { input, instructions, attachments } = args;
+
+      // Check delegation depth
+      const currentPath = delegationContext?.delegationPath || [];
+      if (currentPath.length >= maxDelegationDepth) {
+        return {
+          success: false,
+          error: `Maximum delegation depth (${maxDelegationDepth}) exceeded. Current path: ${currentPath.join(" -> ")}`,
+          workerName,
+          toolCallCount: 0,
+        };
+      }
+
+      // Check for circular delegation
+      if (currentPath.includes(workerName)) {
+        return {
+          success: false,
+          error: `Circular delegation detected: ${[...currentPath, workerName].join(" -> ")}`,
+          workerName,
+          toolCallCount: 0,
+        };
+      }
+
+      try {
+        // Look up the worker by name
+        const lookupResult = await registry.get(workerName);
+
+        if (!lookupResult.found) {
+          return {
+            success: false,
+            error: lookupResult.error,
+            workerName,
+            toolCallCount: 0,
+          };
+        }
+
+        const childWorker = lookupResult.worker.definition;
+
+        // Validate model compatibility if we have a caller model
+        const callerModel = delegationContext?.callerModel;
+        if (callerModel && childWorker.compatible_models !== undefined) {
+          const isCompatible = checkModelCompatibility(
+            callerModel,
+            childWorker.compatible_models
+          );
+          if (!isCompatible) {
+            return {
+              success: false,
+              error: `Model '${callerModel}' is not compatible with worker '${childWorker.name}'. Compatible models: ${childWorker.compatible_models.join(", ")}`,
+              workerName,
+              toolCallCount: 0,
+            };
+          }
+        }
+
+        // Read attachments from sandbox if specified
+        const attachmentData = await readAttachments(sandbox, attachments);
+
+        // Build instructions: append dynamic instructions if provided
+        let finalInstructions = childWorker.instructions;
+        if (instructions) {
+          finalInstructions = `${childWorker.instructions}\n\n## Additional Instructions\n\n${instructions}`;
+        }
+
+        // Create modified worker definition with updated instructions
+        const modifiedWorker: WorkerDefinition = {
+          ...childWorker,
+          instructions: finalInstructions,
+        };
+
+        // Create child runtime
+        const { WorkerRuntime } = await import("../runtime/worker.js");
+
+        const childDelegationContext: DelegationContext = {
+          delegationPath: [...currentPath, childWorker.name],
+          callerModel: callerModel || "anthropic:claude-haiku-4-5",
+        };
+
+        const childRuntime = new WorkerRuntime({
+          worker: modifiedWorker,
+          callerModel: callerModel,
+          approvalMode: approvalMode,
+          approvalCallback: approvalCallback,
+          projectRoot: projectRoot,
+          sharedApprovalController: approvalController,
+          sharedSandbox: sandbox,
+          delegationContext: childDelegationContext,
+          registry: registry,
+        });
+
+        await childRuntime.initialize();
+
+        // Build input with attachments
+        const runInput =
+          attachmentData.length > 0
+            ? { content: input, attachments: attachmentData }
+            : input;
+
+        // Execute the child worker
+        const result = await childRuntime.run(runInput);
+
+        return {
+          success: result.success,
+          response: result.response,
+          error: result.error,
+          workerName: childWorker.name,
+          toolCallCount: result.toolCallCount,
+          tokens: result.tokens,
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        return {
+          success: false,
+          error: `Worker execution failed: ${message}`,
+          workerName,
+          toolCallCount: 0,
+        };
+      }
+    },
+  };
+}
+
+/**
  * Check if a model matches any pattern in compatible_models.
  */
 function checkModelCompatibility(
@@ -346,14 +534,73 @@ function getMediaType(path: string): string {
 /**
  * Toolset for worker delegation.
  *
- * Provides the call_worker tool with needsApproval: true.
+ * Creates named tools for each allowed worker (e.g., `greeter`, `analyzer`)
+ * plus keeps `call_worker` as a fallback for dynamic cases.
+ *
  * Worker calls ALWAYS require approval since they execute arbitrary worker code.
  */
 export class WorkerCallToolset {
   private tools: NamedTool[];
 
-  constructor(options: WorkerCallToolsetOptions) {
-    this.tools = [createCallWorkerTool(options)];
+  /**
+   * Private constructor - use static `create` factory instead.
+   */
+  private constructor(tools: NamedTool[]) {
+    this.tools = tools;
+  }
+
+  /**
+   * Create a WorkerCallToolset with named tools for each allowed worker.
+   *
+   * This async factory method looks up each worker in the registry to get
+   * its description, then creates a named tool for it. The `call_worker`
+   * tool is also included as a fallback for dynamic worker discovery.
+   *
+   * @example
+   * // Creates tools: greeter, analyzer, call_worker
+   * const toolset = await WorkerCallToolset.create({
+   *   registry,
+   *   allowedWorkers: ["greeter", "analyzer"],
+   *   ...
+   * });
+   */
+  static async create(options: WorkerCallToolsetOptions): Promise<WorkerCallToolset> {
+    const tools: NamedTool[] = [];
+
+    // Create named tool for each allowed worker
+    for (const workerName of options.allowedWorkers) {
+      // Try to look up worker to get its description
+      let workerDescription: string | undefined;
+      try {
+        const lookupResult = await options.registry.get(workerName);
+        if (lookupResult.found) {
+          workerDescription = lookupResult.worker.definition.description;
+        }
+      } catch {
+        // Worker not found at init time - will error at call time
+        // This allows for lazy worker creation
+      }
+
+      tools.push(createNamedWorkerTool({
+        ...options,
+        workerName,
+        workerDescription,
+      }));
+    }
+
+    // Add call_worker as fallback for dynamic cases
+    tools.push(createCallWorkerTool(options));
+
+    return new WorkerCallToolset(tools);
+  }
+
+  /**
+   * Create a WorkerCallToolset synchronously (legacy, only includes call_worker).
+   *
+   * @deprecated Use `WorkerCallToolset.create()` instead for named worker tools.
+   */
+  static createSync(options: WorkerCallToolsetOptions): WorkerCallToolset {
+    return new WorkerCallToolset([createCallWorkerTool(options)]);
   }
 
   /**

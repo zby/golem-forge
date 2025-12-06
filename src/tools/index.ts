@@ -19,8 +19,11 @@ export {
 export {
   WorkerCallToolset,
   createCallWorkerTool,
+  createNamedWorkerTool,
   type CallWorkerInput,
+  type NamedWorkerInput,
   type CallWorkerResult,
   type DelegationContext,
   type WorkerCallToolsetOptions,
+  type NamedWorkerToolOptions,
 } from "./worker-call.js";

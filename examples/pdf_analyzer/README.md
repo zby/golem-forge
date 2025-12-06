@@ -14,18 +14,18 @@ A multi-worker document analysis system demonstrating:
 │                                                              │
 │  1. List PDFs in input/                                      │
 │  2. Classify document type                                   │
-│  3. Call analyzer with:                                      │
+│  3. Call pdf_analyzer with:                                  │
 │     - PDF file as attachment                                 │
 │     - Type-specific instructions                             │
 │  4. Save returned analysis to output/{name}/analysis.md     │
 │                                                              │
 │  [Has sandbox: input/ (ro), output/ (rw)]                   │
 └─────────────────────┬───────────────────────────────────────┘
-                      │ call_worker(
-                      │   worker: "analyzer.worker",
+                      │ pdf_analyzer({
+                      │   input: "Analyze this document",
                       │   attachments: ["input/doc.pdf"],
                       │   instructions: "Focus on..."
-                      │ )
+                      │ })
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                     pdf_analyzer                             │

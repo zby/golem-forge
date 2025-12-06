@@ -34,7 +34,7 @@ A **project** is a directory with a `main.worker` entry point. Workers are focus
 | Program | Project directory |
 | `main()` | `main.worker` |
 | Function | `.worker` file |
-| Function call | `worker_call` tool |
+| Function call | Worker as tool (e.g., `greeter`, `analyzer`) |
 | Arguments | Input payload |
 | Return value | Structured output |
 
@@ -123,7 +123,7 @@ npx golem-forge init my-project
 
 ## Workers
 
-Workers are `.worker` files: YAML front matter (config) + body (instructions). They call other workers via the `worker_call` tool - like function calls.
+Workers are `.worker` files: YAML front matter (config) + body (instructions). They call other workers directly as tools - each allowed worker becomes a callable tool (e.g., `greeter`, `analyzer`), making worker delegation feel like function calls.
 
 Add custom tools by creating `tools.ts` in your project root:
 

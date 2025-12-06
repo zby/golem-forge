@@ -392,7 +392,8 @@ export class WorkerRuntime {
             registry.addSearchPath(this.options.projectRoot);
           }
 
-          const workerToolset = new WorkerCallToolset({
+          // Use async factory to create named tools for each worker
+          const workerToolset = await WorkerCallToolset.create({
             registry,
             allowedWorkers,
             sandbox: this.sandbox,

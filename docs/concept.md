@@ -11,7 +11,7 @@ Just like programs compose focused functions, LLM workflows compose focused work
 | Program | Project directory |
 | `main()` | `main.worker` |
 | Function | `.worker` file |
-| Function call | `worker_call` tool |
+| Function call | Worker as tool (e.g., `greeter(input: "...")`) |
 
 A **project** is a directory with a `main.worker` entry point. A **worker** is a prompt template + configuration + tools, packaged as an executable unit that the LLM interprets.
 
@@ -92,7 +92,7 @@ Single-file workers are intentionally limited to enable **truly portable LLM exe
 
 **The solution**: Workers with isolated contexts, connected through three mechanisms:
 
-1. **Worker delegation** (`worker_call`) — Decompose workflows into focused sub-calls. Each worker handles one unit of work with its own instructions, model, and tools. No bloated catch-all prompts.
+1. **Worker delegation** — Each allowed worker becomes a directly callable tool (e.g., `analyzer(input: "...")`, `formatter(input: "...")`). Decompose workflows into focused sub-calls. Each worker handles one unit of work with its own instructions, model, and tools. No bloated catch-all prompts.
 
 2. **Autonomous worker creation** (`worker_create`) — Workers propose specialized sub-workers when needed. This is same-language metaprogramming: the LLM that executes workers also writes them. Created definitions are saved to disk for review.
 
@@ -116,12 +116,13 @@ Workers read/write files through explicitly configured sandboxes. Security by co
 - Suffix filters control which file types can be read/written
 
 ### 2. Worker-to-Worker Delegation
-The `worker_call` tool with enforcement layers:
-- Allowlists restrict which workers can be called
+Each allowed worker becomes a directly callable tool with enforcement layers:
+- Allowlists restrict which workers can be called (each becomes a named tool)
 - Attachment validation (count, size, extensions) happens before execution
 - Model inheritance: worker definition → caller's model → CLI model → error
 - Tool access NOT inherited—each worker declares its own
 - Results can be structured (validated JSON) or freeform text
+- Fallback `call_worker` tool available for dynamic worker discovery
 
 ### 3. Tool Approval System
 Configurable control over which operations require human approval:

@@ -30,7 +30,8 @@ Key expectations that frequently trip up automation agents. See `README.md` for 
 
 ## Worker Design
 
-- Keep each worker focused on a single unit of work; use `worker_call` for sub-tasks
+- Keep each worker focused on a single unit of work; use worker delegation for sub-tasks
+- Each allowed worker becomes a directly callable tool (e.g., `greeter(input: "...")`)
 - Declare sandboxes explicitly with the minimal access needed
 - Document available tools in `instructions` so models know how to call them
 
