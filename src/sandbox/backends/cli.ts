@@ -16,7 +16,7 @@ import { NotFoundError } from '../errors.js';
  */
 export class CLIBackend implements SandboxBackend {
   private mode: 'sandboxed' | 'direct' = 'sandboxed';
-  private root: string = '.sandbox';
+  private root: string = 'sandbox';
   private cacheDir: string = '';
   private workspaceDir: string = '';
   private customZones: Map<string, string> = new Map();
@@ -33,7 +33,7 @@ export class CLIBackend implements SandboxBackend {
       this.cacheDir = config.cache ? path.resolve(config.cache) : path.join(this.workspaceDir, '.cache');
     } else {
       // Sandboxed mode: all in root directory
-      this.root = path.resolve(config.root || '.sandbox');
+      this.root = path.resolve(config.root || 'sandbox');
       this.cacheDir = path.join(this.root, 'cache');
       this.workspaceDir = path.join(this.root, 'workspace');
     }

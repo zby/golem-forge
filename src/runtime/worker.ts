@@ -353,7 +353,7 @@ export class WorkerRuntime {
       // Default sandbox configuration (backwards compatible)
       this.sandbox = await createSandbox({
         mode: 'sandboxed',
-        root: `${this.options.projectRoot}/.sandbox`,
+        root: `${this.options.projectRoot}/sandbox`,
       });
     }
 

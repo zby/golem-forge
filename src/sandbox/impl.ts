@@ -326,14 +326,14 @@ export function createRestrictedSandbox(
  * // Sandboxed mode - all in .sandbox directory
  * const sandbox = await createSandbox({
  *   mode: 'sandboxed',
- *   root: '.sandbox',
+ *   root: 'sandbox',
  * });
  *
  * @example
  * // Custom zones
  * const sandbox = await createSandbox({
  *   mode: 'sandboxed',
- *   root: '.sandbox',
+ *   root: 'sandbox',
  *   zones: {
  *     data: { path: './data', mode: 'ro' },
  *     output: { path: './output', mode: 'rw' },

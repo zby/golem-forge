@@ -123,6 +123,22 @@ interface GitToolset {
     paths: string[];           // Paths to pull
     destZone?: string;         // Default: workspace
   }) => Promise<PullResult>;
+
+  // Three-way merge (for conflict resolution)
+  git_merge: (opts: {
+    path: string;              // File path (for context)
+    base?: string;             // Common ancestor content
+    ours: string;              // Sandbox version
+    theirs: string;            // Incoming version
+  }) => Promise<MergeResult>;
+
+  // List branches (optional, for discovery)
+  git_branches: (opts: {
+    target: GitTarget;
+  }) => Promise<{
+    branches: string[];
+    current?: string;          // Current branch (for local repos)
+  }>;
 }
 ```
 
@@ -138,6 +154,58 @@ type GitTarget =
 // { type: 'github', repo: 'user/reports', branch: 'main' }
 // { type: 'local', path: '.', branch: 'feature-x' }
 // { type: 'local', path: '/path/to/other/repo' }
+```
+
+### Branching
+
+Branches are specified via the `branch` field in `GitTarget`. The git tools support:
+
+**Pushing to existing branch:**
+```typescript
+git_push({
+  commitId: 'abc123',
+  target: { type: 'local', path: '.', branch: 'main' }
+})
+```
+
+**Creating new branch on push:**
+```typescript
+git_push({
+  commitId: 'abc123',
+  target: { type: 'local', path: '.', branch: 'feature-report-update' }
+})
+// Creates branch if it doesn't exist (with user approval noting "new branch")
+```
+
+**Pulling from specific branch:**
+```typescript
+git_pull({
+  source: { type: 'local', path: '.', branch: 'templates' },
+  paths: ['templates/']
+})
+```
+
+**Listing branches:**
+```typescript
+git_branches({ target: { type: 'local', path: '.' } })
+// → { branches: ['main', 'develop', 'feature-x'], current: 'main' }
+```
+
+**Workflow: Avoid conflicts with feature branches**
+
+Instead of pushing to `main` and risking conflicts:
+```
+Worker creates unique branch → pushes there → no conflicts possible
+User reviews and merges via PR (GitHub) or manual merge (local)
+```
+
+Worker frontmatter can suggest default branch naming:
+```yaml
+git:
+  default_target:
+    type: local
+    path: .
+    branch: "worker-{timestamp}"  # Template, expanded at runtime
 ```
 
 ### Staged Commits
@@ -163,6 +231,26 @@ interface GitStatus {
     path: string;
     status: 'new' | 'modified' | 'deleted';
   }>;
+}
+
+interface PullResult {
+  pulled: string[];            // All paths written to sandbox
+  conflicts: string[];         // Paths with conflict markers (subset of pulled)
+}
+
+interface MergeResult {
+  status: 'clean' | 'conflict';
+  content: string;             // Merged content (with markers if conflict)
+}
+
+interface PushResult {
+  status: 'success' | 'conflict';
+  commitSha?: string;          // On success
+  conflict?: {
+    reason: 'non-fast-forward' | 'other';
+    message: string;           // Human-readable explanation
+    targetHead?: string;       // Current target SHA (for non-fast-forward)
+  };
 }
 ```
 
@@ -353,8 +441,94 @@ git:
 | `git_push` | **Yes** | Persists changes outside sandbox |
 | `git_discard` | No | Discards prepared changes |
 | `git_pull` | No* | Pulls into sandbox only |
+| `git_merge` | No | Pure computation, result stays in sandbox |
+| `git_branches` | No | Read-only, lists branches |
 
 *`git_pull` might need approval if pulling sensitive files, configurable.
+
+## Conflict Resolution
+
+### Design Principles
+
+1. **Worker resolves conflicts** - Worker LLM has context about the task and can make informed merge decisions
+2. **User approves at push** - Final review happens when changes leave the sandbox
+3. **Standard git markers** - Use familiar `<<<<<<<` / `=======` / `>>>>>>>` format
+
+### Conflict Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Worker                                                         │
+│                                                                 │
+│  git_pull({ paths: ['report.md'] })                             │
+│  → Conflict detected                                            │
+│  → File written with markers:                                   │
+│                                                                 │
+│    <<<<<<< ours (sandbox)                                       │
+│    Revenue increased by 15% in Q4.                              │
+│    =======                                                      │
+│    Revenue grew 12% compared to Q3.                             │
+│    >>>>>>> theirs (incoming)                                    │
+│                                                                 │
+│  → Returns: { pulled: ['report.md'], conflicts: ['report.md'] } │
+│                                                                 │
+│  Worker reads file, sees markers, resolves via write_file       │
+│  Worker calls git_stage, git_push                               │
+│                                                                 │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               │ User reviews at push
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  CLI Approval                                                   │
+│                                                                 │
+│  git_push to local:. (branch: main)                             │
+│  Commit: "Update quarterly report"                              │
+│                                                                 │
+│  --- a/report.md                                                │
+│  +++ b/report.md                                                │
+│  -Revenue grew 12% compared to Q3.                              │
+│  +Revenue increased by 15% in Q4, building on 12% Q3 growth.    │
+│                                                                 │
+│  [a]pprove  [r]eject  [d]iff  [?]help                          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why Worker Resolves
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| Worker resolves | Has task context, simpler | - |
+| Out-of-band LLM | Controlled prompts | No task context, extra complexity |
+| User manual | Full control | Tedious for simple merges |
+
+The worker already understands what it's trying to accomplish. It can make informed merge decisions. The user still has final say at `git_push` approval.
+
+### Push Conflicts
+
+Push conflicts occur when the target has new commits since the worker started:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Worker                                                         │
+│                                                                 │
+│  git_push({ target: { type: 'local', path: '.' } })             │
+│  → { status: 'conflict', conflict: {                            │
+│        reason: 'non-fast-forward',                              │
+│        message: 'Target has new commits since your base'        │
+│      }}                                                         │
+│                                                                 │
+│  Worker pulls from target to get latest:                        │
+│  git_pull({ source: { type: 'local', path: '.' } })             │
+│  → Writes conflict markers if files diverged                    │
+│                                                                 │
+│  Worker resolves conflicts, re-stages, retries push             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+The worker handles push conflicts the same way as pull conflicts - by resolving the markers and retrying.
 
 ### Trust Levels
 
@@ -417,16 +591,19 @@ Filesystem that logs all changes, syncs to git automatically.
 
 ## Open Questions
 
-1. **Conflict handling**: What if pulled file conflicts with sandbox file?
-   - Option A: Fail pull, require explicit overwrite
-   - Option B: Create `.conflict` file for manual resolution
-   - Option C: Let LLM resolve (dangerous?)
+1. ~~**Conflict handling**~~: Resolved - see "Conflict Resolution" section above.
+   - `git_pull` writes files with conflict markers when conflicts occur
+   - Worker resolves conflicts (has task context)
+   - User reviews at `git_push` approval
+   - `git_merge` available for algorithmic three-way merge
 
 2. **Large files**: Should we support LFS?
    - Probably not in Phase 1, add based on user feedback
 
-3. **Branch creation**: Should `git_push` auto-create branches?
-   - Yes, with approval prompt mentioning new branch
+3. ~~**Branch creation**~~: Resolved - see "Branching" section above.
+   - Yes, `git_push` auto-creates branches with approval prompt noting "new branch"
+   - Optional `git_branches` tool for listing available branches
+   - Worker frontmatter can specify branch naming templates
 
 4. **Credentials**: How to handle GitHub auth?
    - CLI: `gh` CLI or GITHUB_TOKEN env var
@@ -438,9 +615,10 @@ Filesystem that logs all changes, syncs to git automatically.
 
 ```
 src/git/
-├── types.ts           # GitTarget, StagedCommit, etc.
+├── types.ts           # GitTarget, StagedCommit, MergeResult, etc.
 ├── backend.ts         # GitBackend interface
-├── cli-backend.ts     # CLI implementation (simple-git + Octokit)
+├── cli-backend.ts     # CLI implementation (isomorphic-git + Octokit)
+├── merge.ts           # Three-way merge using diff3/isomorphic-git
 └── tools.ts           # Git tool definitions
 
 src/cli/
@@ -449,9 +627,16 @@ src/cli/
 
 ### Dependencies
 
-- `simple-git`: Local git operations
+- `isomorphic-git`: Pure JS git implementation (works in browser, enables in-memory operations)
+- `diff3`: Three-way merge algorithm
 - `@octokit/rest`: GitHub API (optional, for remote push)
 - `diff`: For generating unified diffs
+
+**Why `isomorphic-git` over `simple-git`?**
+- Works in browser (Phase 3 extension)
+- Can operate on in-memory filesystems (Phase 2)
+- No shell dependencies
+- Built-in merge support
 
 ### Tests
 

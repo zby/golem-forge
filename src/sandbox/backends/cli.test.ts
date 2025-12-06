@@ -27,12 +27,12 @@ describe('CLIBackend', () => {
       backend = new CLIBackend();
       await backend.initialize({
         mode: 'sandboxed',
-        root: path.join(tempDir, '.sandbox'),
+        root: path.join(tempDir, 'sandbox'),
       });
     });
 
     it('creates sandbox directory structure', async () => {
-      const sandboxDir = path.join(tempDir, '.sandbox');
+      const sandboxDir = path.join(tempDir, 'sandbox');
 
       expect(await fs.access(sandboxDir).then(() => true).catch(() => false)).toBe(true);
       expect(await fs.access(path.join(sandboxDir, 'cache')).then(() => true).catch(() => false)).toBe(true);
@@ -43,14 +43,14 @@ describe('CLIBackend', () => {
       const virtualPath = '/cache/downloads/doc.pdf';
       const realPath = backend.mapVirtualToReal(virtualPath, Zone.CACHE);
 
-      expect(realPath).toBe(path.join(tempDir, '.sandbox', 'cache', 'downloads', 'doc.pdf'));
+      expect(realPath).toBe(path.join(tempDir, 'sandbox', 'cache', 'downloads', 'doc.pdf'));
     });
 
     it('maps workspace paths correctly', () => {
       const virtualPath = '/workspace/reports/analysis.md';
       const realPath = backend.mapVirtualToReal(virtualPath, Zone.WORKSPACE);
 
-      expect(realPath).toBe(path.join(tempDir, '.sandbox', 'workspace', 'reports', 'analysis.md'));
+      expect(realPath).toBe(path.join(tempDir, 'sandbox', 'workspace', 'reports', 'analysis.md'));
     });
   });
 
@@ -125,12 +125,12 @@ describe('CLIBackend', () => {
       backend = new CLIBackend();
       await backend.initialize({
         mode: 'sandboxed',
-        root: path.join(tempDir, '.sandbox'),
+        root: path.join(tempDir, 'sandbox'),
       });
     });
 
     it('writes and reads files', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'test.txt');
+      const filePath = path.join(tempDir, 'sandbox', 'workspace', 'test.txt');
 
       await backend.writeFile(filePath, 'hello world');
       const content = await backend.readFile(filePath);
@@ -139,7 +139,7 @@ describe('CLIBackend', () => {
     });
 
     it('writes and reads binary files', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'cache', 'test.bin');
+      const filePath = path.join(tempDir, 'sandbox', 'cache', 'test.bin');
       const data = new Uint8Array([0x89, 0x50, 0x4E, 0x47]);
 
       await backend.writeFileBinary(filePath, data);
@@ -149,13 +149,13 @@ describe('CLIBackend', () => {
     });
 
     it('throws NotFoundError for missing files', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'nonexistent.txt');
+      const filePath = path.join(tempDir, 'sandbox', 'workspace', 'nonexistent.txt');
 
       await expect(backend.readFile(filePath)).rejects.toThrow(NotFoundError);
     });
 
     it('checks file existence', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'exists.txt');
+      const filePath = path.join(tempDir, 'sandbox', 'workspace', 'exists.txt');
 
       expect(await backend.exists(filePath)).toBe(false);
 
@@ -164,7 +164,7 @@ describe('CLIBackend', () => {
     });
 
     it('deletes files', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'todelete.txt');
+      const filePath = path.join(tempDir, 'sandbox', 'workspace', 'todelete.txt');
 
       await backend.writeFile(filePath, 'content');
       expect(await backend.exists(filePath)).toBe(true);
@@ -174,7 +174,7 @@ describe('CLIBackend', () => {
     });
 
     it('lists directory contents', async () => {
-      const dirPath = path.join(tempDir, '.sandbox', 'workspace');
+      const dirPath = path.join(tempDir, 'sandbox', 'workspace');
 
       await backend.writeFile(path.join(dirPath, 'a.txt'), 'a');
       await backend.writeFile(path.join(dirPath, 'b.txt'), 'b');
@@ -185,7 +185,7 @@ describe('CLIBackend', () => {
     });
 
     it('returns file stats', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'stats.txt');
+      const filePath = path.join(tempDir, 'sandbox', 'workspace', 'stats.txt');
 
       await backend.writeFile(filePath, 'hello');
       const stats = await backend.stat(filePath);
@@ -197,7 +197,7 @@ describe('CLIBackend', () => {
     });
 
     it('creates nested directories', async () => {
-      const nestedDir = path.join(tempDir, '.sandbox', 'workspace', 'a', 'b', 'c');
+      const nestedDir = path.join(tempDir, 'sandbox', 'workspace', 'a', 'b', 'c');
 
       await backend.mkdir(nestedDir);
       expect(await backend.exists(nestedDir)).toBe(true);
@@ -207,7 +207,7 @@ describe('CLIBackend', () => {
     });
 
     it('auto-creates parent directories on write', async () => {
-      const filePath = path.join(tempDir, '.sandbox', 'workspace', 'deep', 'nested', 'file.txt');
+      const filePath = path.join(tempDir, 'sandbox', 'workspace', 'deep', 'nested', 'file.txt');
 
       await backend.writeFile(filePath, 'deep content');
       const content = await backend.readFile(filePath);
@@ -231,7 +231,7 @@ describe('createSandbox', () => {
   it('creates a sandboxed mode sandbox', async () => {
     const sandbox = await createSandbox({
       mode: 'sandboxed',
-      root: path.join(tempDir, '.sandbox'),
+      root: path.join(tempDir, 'sandbox'),
     });
 
     await sandbox.write('/workspace/test.txt', 'hello');
@@ -239,7 +239,7 @@ describe('createSandbox', () => {
     expect(content).toBe('hello');
 
     // Verify file exists in the real location
-    const realPath = path.join(tempDir, '.sandbox', 'workspace', 'test.txt');
+    const realPath = path.join(tempDir, 'sandbox', 'workspace', 'test.txt');
     const realContent = await fs.readFile(realPath, 'utf-8');
     expect(realContent).toBe('hello');
   });
@@ -277,7 +277,7 @@ describe('createSandbox', () => {
   it('works with nested paths', async () => {
     const sandbox = await createSandbox({
       mode: 'sandboxed',
-      root: path.join(tempDir, '.sandbox'),
+      root: path.join(tempDir, 'sandbox'),
     });
 
     await sandbox.write('/workspace/a/b/c/deep.txt', 'deep');

@@ -24,3 +24,5 @@ coverage/
 # Environment
 .env
 .env.local
+
+# Runtime sandbox data - add 'sandbox/' to per-example .gitignore files

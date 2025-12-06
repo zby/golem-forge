@@ -31,10 +31,10 @@ export type ZoneDefinition = z.infer<typeof ZoneDefinitionSchema>;
  * Schema for sandbox configuration in project config.
  */
 export const SandboxProjectConfigSchema = z.object({
-  /** Mode: sandboxed (all in .sandbox) or direct (custom paths) */
+  /** Mode: sandboxed (all in sandbox/) or direct (custom paths) */
   mode: z.enum(["sandboxed", "direct"]).default("sandboxed"),
   /** Root directory for sandboxed mode */
-  root: z.string().default(".sandbox"),
+  root: z.string().default("sandbox"),
   /** Zone definitions */
   zones: z.record(z.string(), ZoneDefinitionSchema).default({}),
 });

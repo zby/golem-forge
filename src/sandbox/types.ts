@@ -69,7 +69,7 @@ export interface SandboxConfig {
 
   /**
    * Sandboxed mode: Root directory for all sandbox files.
-   * Defaults to '.sandbox'
+   * Defaults to 'sandbox'
    */
   root?: string;
 
