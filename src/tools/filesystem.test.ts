@@ -44,6 +44,49 @@ describe('Filesystem Tools', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
     });
+
+    it('rejects files with known binary extensions', async () => {
+      const tool = createReadFileTool(sandbox);
+
+      // Test various binary extensions
+      const binaryExtensions = ['.pdf', '.png', '.jpg', '.zip', '.exe', '.mp3'];
+
+      for (const ext of binaryExtensions) {
+        const result = await tool.execute({ path: `/workspace/file${ext}` });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain('Cannot read binary file');
+        expect(result.hint).toContain('binary');
+        expect(result.hint).toContain(ext);
+      }
+    });
+
+    it('rejects files with binary content (null bytes)', async () => {
+      const tool = createReadFileTool(sandbox);
+
+      // Write a file with binary content (contains null bytes)
+      const binaryContent = 'hello\x00world\x00binary';
+      await sandbox.write('/workspace/binary.dat', binaryContent);
+
+      const result = await tool.execute({ path: '/workspace/binary.dat' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('appears to be binary');
+      expect(result.hint).toContain('binary data');
+    });
+
+    it('accepts text files with unusual but valid content', async () => {
+      const tool = createReadFileTool(sandbox);
+
+      // Write a file with unicode and special characters (but valid text)
+      const textContent = 'Hello 世界! Ümlauts and émojis 🎉\nTabs\there\nNewlines\n\n';
+      await sandbox.write('/workspace/unicode.txt', textContent);
+
+      const result = await tool.execute({ path: '/workspace/unicode.txt' });
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe(textContent);
+    });
   });
 
   describe('write_file', () => {

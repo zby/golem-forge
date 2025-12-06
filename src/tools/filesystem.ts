@@ -50,17 +50,82 @@ const readFileSchema = z.object({
 type ReadFileInput = z.infer<typeof readFileSchema>;
 
 /**
+ * Known binary file extensions that should not be read as text.
+ */
+const BINARY_EXTENSIONS = new Set([
+  // Documents
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.odt', '.ods', '.odp',
+  // Images
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg', '.tiff', '.tif', '.heic', '.heif',
+  // Audio/Video
+  '.mp3', '.mp4', '.wav', '.avi', '.mov', '.mkv', '.flac', '.ogg', '.webm',
+  // Archives
+  '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar', '.xz',
+  // Executables/Libraries
+  '.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.a',
+  // Other binary
+  '.wasm', '.pyc', '.class', '.sqlite', '.db',
+]);
+
+/**
+ * Check if content appears to be binary (contains null bytes or invalid UTF-8).
+ */
+function isBinaryContent(content: string): boolean {
+  // Check for null bytes - a strong indicator of binary content
+  if (content.includes('\x00')) {
+    return true;
+  }
+  // Check for high concentration of non-printable characters (except common whitespace)
+  const nonPrintable = content.match(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]/g);
+  if (nonPrintable && nonPrintable.length > content.length * 0.1) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Get file extension from path (lowercase).
+ */
+function getExtension(filePath: string): string {
+  const lastDot = filePath.lastIndexOf('.');
+  if (lastDot === -1 || lastDot === filePath.length - 1) return '';
+  return filePath.slice(lastDot).toLowerCase();
+}
+
+/**
  * Create a read_file tool.
  */
 export function createReadFileTool(sandbox: Sandbox, options?: ToolOptions): NamedTool {
   return {
     name: 'read_file',
-    description: 'Read the contents of a file from the sandbox filesystem',
+    description: 'Read the contents of a text file from the sandbox filesystem. Cannot read binary files (images, PDFs, etc.).',
     inputSchema: readFileSchema,
     needsApproval: options?.needsApproval,
     execute: async ({ path }: ReadFileInput, _options: ToolExecutionOptions) => {
       try {
+        // Check extension first (fast path)
+        const ext = getExtension(path);
+        if (BINARY_EXTENSIONS.has(ext)) {
+          return {
+            success: false,
+            error: `Cannot read binary file: ${path}`,
+            hint: `Files with extension '${ext}' are binary and cannot be read as text. Use file_info to get metadata, or pass the file as an attachment to a worker that can process it.`,
+            path,
+          };
+        }
+
         const content = await sandbox.read(path);
+
+        // Check content for binary data (catches files with wrong/no extension)
+        if (isBinaryContent(content)) {
+          return {
+            success: false,
+            error: `File appears to be binary: ${path}`,
+            hint: 'This file contains binary data and cannot be read as text. Use file_info to get metadata, or pass the file as an attachment to a worker that can process it.',
+            path,
+          };
+        }
+
         return {
           success: true,
           content,
