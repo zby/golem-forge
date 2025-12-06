@@ -18,6 +18,7 @@ import * as shlex from 'shlex';
 import type { ToolExecutionOptions } from 'ai';
 import { BlockedError, type ApprovalConfig } from '../approval/index.js';
 import type { NamedTool } from './filesystem.js';
+import type { ApprovalDecisionType } from '../sandbox/types.js';
 
 // ============================================================================
 // Types
@@ -34,16 +35,25 @@ export interface ShellResult {
 }
 
 /**
+ * Approval decision schema - matches filesystem approval types.
+ */
+const ApprovalDecisionSchema = z.enum(['preApproved', 'ask', 'blocked']);
+
+/**
  * Pattern-based rule for shell command approval.
  *
  * Rules are matched in order. First match wins.
- * Presence in rules = command is allowed (whitelist model).
+ *
+ * Approval types (consistent with filesystem zones):
+ * - 'preApproved': Command runs without user prompt
+ * - 'ask': User is prompted for approval (default)
+ * - 'blocked': Command is blocked entirely
  */
 export const ShellRuleSchema = z.object({
-  /** Command prefix to match (e.g., 'git status') */
+  /** Command prefix to match (e.g., 'git status', 'git ') */
   pattern: z.string(),
-  /** Whether this command requires user approval */
-  approvalRequired: z.boolean().default(true),
+  /** Approval decision for matching commands. Default: 'ask' */
+  approval: ApprovalDecisionSchema.default('ask'),
 });
 export type ShellRule = z.infer<typeof ShellRuleSchema>;
 
@@ -55,8 +65,8 @@ export type ShellRule = z.infer<typeof ShellRuleSchema>;
  * - Absence of default = unmatched commands are BLOCKED
  */
 export const ShellDefaultSchema = z.object({
-  /** Whether unmatched commands require approval */
-  approvalRequired: z.boolean().default(true),
+  /** Approval decision for unmatched commands. Default: 'ask' */
+  approval: ApprovalDecisionSchema.default('ask'),
 });
 export type ShellDefault = z.infer<typeof ShellDefaultSchema>;
 
@@ -156,19 +166,21 @@ export function parseCommand(command: string): string[] {
  * Match result from shell rules.
  */
 export interface MatchResult {
-  allowed: boolean;
-  approvalRequired: boolean;
+  /** Approval decision: 'preApproved', 'ask', or 'blocked' */
+  approval: ApprovalDecisionType;
+  /** Whether this came from a rule match (vs default or no-match) */
+  matchedRule: boolean;
 }
 
 /**
  * Match command against shell rules (whitelist model).
  *
  * Whitelist semantics:
- * - Rule in config → command is allowed (with rule's approvalRequired)
- * - No rule but default exists → allowed (with default's approvalRequired)
- * - No rule and no default → BLOCKED
+ * - Rule in config → use rule's approval setting
+ * - No rule but default exists → use default's approval setting
+ * - No rule and no default → 'blocked'
  *
- * @returns Tuple of [allowed, approvalRequired]
+ * @returns MatchResult with approval decision
  */
 export function matchShellRules(
   command: string,
@@ -180,8 +192,8 @@ export function matchShellRules(
     // Simple prefix match
     if (command.startsWith(rule.pattern) || command === rule.pattern) {
       return {
-        allowed: true,
-        approvalRequired: rule.approvalRequired,
+        approval: rule.approval,
+        matchedRule: true,
       };
     }
   }
@@ -189,15 +201,15 @@ export function matchShellRules(
   // No rule matched - check for default
   if (defaultConfig !== undefined) {
     return {
-      allowed: true,
-      approvalRequired: defaultConfig.approvalRequired,
+      approval: defaultConfig.approval,
+      matchedRule: false,
     };
   }
 
   // No rule and no default → blocked (whitelist model)
   return {
-    allowed: false,
-    approvalRequired: true,
+    approval: 'blocked',
+    matchedRule: false,
   };
 }
 
@@ -357,6 +369,7 @@ export interface ShellToolOptions {
  * Create a shell tool with whitelist-based approval.
  *
  * The tool uses needsApproval as a function that checks rules at runtime.
+ * Approval types match filesystem tools: 'preApproved', 'ask', 'blocked'.
  */
 export function createShellTool(options: ShellToolOptions = {}): NamedTool {
   const { config = { rules: [] }, workingDir, env } = options;
@@ -388,19 +401,21 @@ export function createShellTool(options: ShellToolOptions = {}): NamedTool {
       // Match against rules
       const result = matchShellRules(command, parsedConfig.rules, parsedConfig.default);
 
-      if (!result.allowed) {
-        // Will be blocked in execute - throw BlockedError there
-        // For now, require approval so we can block it properly
-        return true;
+      switch (result.approval) {
+        case 'preApproved':
+          return false;  // No approval needed
+        case 'ask':
+          return true;   // Needs approval
+        case 'blocked':
+          // Will be blocked in execute - require approval so we can block it properly
+          return true;
       }
-
-      return result.approvalRequired;
     },
 
     execute: async (input: ShellToolInput, _options: ToolExecutionOptions): Promise<ShellResult> => {
       const { command, timeout } = input;
 
-      // Check if command is in whitelist first
+      // Check if command is allowed first
       try {
         const args = parseCommand(command);
         if (args.length === 0) {
@@ -414,12 +429,12 @@ export function createShellTool(options: ShellToolOptions = {}): NamedTool {
 
         const result = matchShellRules(command, parsedConfig.rules, parsedConfig.default);
 
-        if (!result.allowed) {
+        if (result.approval === 'blocked') {
           // Throw BlockedError for the approval system
-          throw new BlockedError(
-            'shell',
-            `Command not in whitelist (no matching rule and no default): ${command}`
-          );
+          const reason = result.matchedRule
+            ? `Command blocked by rule: ${command}`
+            : `Command not in whitelist (no matching rule and no default): ${command}`;
+          throw new BlockedError('shell', reason);
         }
       } catch (e) {
         if (e instanceof BlockedError) {

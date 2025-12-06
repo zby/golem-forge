@@ -90,53 +90,64 @@ describe('parseCommand', () => {
 
 describe('matchShellRules', () => {
   it('should match exact command', () => {
-    const rules: ShellRule[] = [{ pattern: 'git status', approvalRequired: false }];
+    const rules: ShellRule[] = [{ pattern: 'git status', approval: 'preApproved' }];
 
     const result = matchShellRules('git status', rules);
-    expect(result.allowed).toBe(true);
-    expect(result.approvalRequired).toBe(false);
+    expect(result.approval).toBe('preApproved');
+    expect(result.matchedRule).toBe(true);
   });
 
   it('should match command prefix', () => {
-    const rules: ShellRule[] = [{ pattern: 'git ', approvalRequired: false }];
+    const rules: ShellRule[] = [{ pattern: 'git ', approval: 'preApproved' }];
 
-    expect(matchShellRules('git status', rules).allowed).toBe(true);
-    expect(matchShellRules('git commit -m "msg"', rules).allowed).toBe(true);
-    expect(matchShellRules('gitx status', rules).allowed).toBe(false);
+    expect(matchShellRules('git status', rules).approval).toBe('preApproved');
+    expect(matchShellRules('git commit -m "msg"', rules).approval).toBe('preApproved');
+    // No match for 'gitx' - should be blocked (no default)
+    expect(matchShellRules('gitx status', rules).approval).toBe('blocked');
   });
 
   it('should use first matching rule', () => {
     const rules: ShellRule[] = [
-      { pattern: 'git status', approvalRequired: false },
-      { pattern: 'git ', approvalRequired: true },
+      { pattern: 'git status', approval: 'preApproved' },
+      { pattern: 'git ', approval: 'ask' },
     ];
 
     const result = matchShellRules('git status', rules);
-    expect(result.approvalRequired).toBe(false);
+    expect(result.approval).toBe('preApproved');
   });
 
   it('should use default when no rule matches', () => {
-    const rules: ShellRule[] = [{ pattern: 'git ', approvalRequired: false }];
-    const defaultConfig: ShellDefault = { approvalRequired: true };
+    const rules: ShellRule[] = [{ pattern: 'git ', approval: 'preApproved' }];
+    const defaultConfig: ShellDefault = { approval: 'ask' };
 
     const result = matchShellRules('ls -la', rules, defaultConfig);
-    expect(result.allowed).toBe(true);
-    expect(result.approvalRequired).toBe(true);
+    expect(result.approval).toBe('ask');
+    expect(result.matchedRule).toBe(false);
   });
 
   it('should block when no rule matches and no default', () => {
-    const rules: ShellRule[] = [{ pattern: 'git ', approvalRequired: false }];
+    const rules: ShellRule[] = [{ pattern: 'git ', approval: 'preApproved' }];
 
     const result = matchShellRules('ls -la', rules);
-    expect(result.allowed).toBe(false);
+    expect(result.approval).toBe('blocked');
   });
 
   it('should handle empty rules with default', () => {
-    const defaultConfig: ShellDefault = { approvalRequired: false };
+    const defaultConfig: ShellDefault = { approval: 'preApproved' };
 
     const result = matchShellRules('any command', [], defaultConfig);
-    expect(result.allowed).toBe(true);
-    expect(result.approvalRequired).toBe(false);
+    expect(result.approval).toBe('preApproved');
+    expect(result.matchedRule).toBe(false);
+  });
+
+  it('should support explicit blocked rules', () => {
+    const rules: ShellRule[] = [
+      { pattern: 'rm -rf', approval: 'blocked' },
+      { pattern: 'rm ', approval: 'ask' },
+    ];
+
+    expect(matchShellRules('rm -rf /', rules).approval).toBe('blocked');
+    expect(matchShellRules('rm file.txt', rules).approval).toBe('ask');
   });
 });
 
@@ -195,7 +206,7 @@ describe('createShellTool', () => {
 
   it('should execute commands through the tool', async () => {
     const tool = createShellTool({
-      config: { rules: [], default: { approvalRequired: false } },
+      config: { rules: [], default: { approval: 'preApproved' } },
     });
 
     const result = await tool.execute(
@@ -208,7 +219,7 @@ describe('createShellTool', () => {
 
   it('should throw BlockedError for commands not in whitelist', async () => {
     const tool = createShellTool({
-      config: { rules: [{ pattern: 'git ', approvalRequired: false }] },
+      config: { rules: [{ pattern: 'git ', approval: 'preApproved' }] },
     });
 
     await expect(
@@ -216,10 +227,23 @@ describe('createShellTool', () => {
     ).rejects.toThrow(BlockedError);
   });
 
+  it('should throw BlockedError for explicitly blocked commands', async () => {
+    const tool = createShellTool({
+      config: {
+        rules: [{ pattern: 'rm -rf', approval: 'blocked' }],
+        default: { approval: 'ask' },
+      },
+    });
+
+    await expect(
+      tool.execute({ command: 'rm -rf /', timeout: 30 }, {} as any)
+    ).rejects.toThrow(BlockedError);
+  });
+
   it('should allow whitelisted commands', async () => {
     const tool = createShellTool({
       config: {
-        rules: [{ pattern: 'echo ', approvalRequired: false }],
+        rules: [{ pattern: 'echo ', approval: 'preApproved' }],
       },
     });
 
@@ -231,10 +255,10 @@ describe('createShellTool', () => {
   });
 
   describe('needsApproval', () => {
-    it('should return false for pre-approved commands', () => {
+    it('should return false for preApproved commands', () => {
       const tool = createShellTool({
         config: {
-          rules: [{ pattern: 'git status', approvalRequired: false }],
+          rules: [{ pattern: 'git status', approval: 'preApproved' }],
         },
       });
 
@@ -242,10 +266,10 @@ describe('createShellTool', () => {
       expect(needsApproval({ command: 'git status', timeout: 30 })).toBe(false);
     });
 
-    it('should return true for commands requiring approval', () => {
+    it('should return true for ask commands', () => {
       const tool = createShellTool({
         config: {
-          rules: [{ pattern: 'git ', approvalRequired: true }],
+          rules: [{ pattern: 'git ', approval: 'ask' }],
         },
       });
 
@@ -253,15 +277,15 @@ describe('createShellTool', () => {
       expect(needsApproval({ command: 'git commit -m "test"', timeout: 30 })).toBe(true);
     });
 
-    it('should return true for unknown commands (will be blocked)', () => {
+    it('should return true for blocked commands (will be blocked in execute)', () => {
       const tool = createShellTool({
         config: {
-          rules: [{ pattern: 'git ', approvalRequired: false }],
+          rules: [{ pattern: 'git ', approval: 'preApproved' }],
         },
       });
 
       const needsApproval = tool.needsApproval as (input: any) => boolean;
-      // Unknown commands need approval so we can show the BlockedError
+      // Unknown commands are blocked, need approval so we can show the BlockedError
       expect(needsApproval({ command: 'rm -rf /', timeout: 30 })).toBe(true);
     });
 
@@ -269,7 +293,7 @@ describe('createShellTool', () => {
       const tool = createShellTool({
         config: {
           rules: [],
-          default: { approvalRequired: false },
+          default: { approval: 'preApproved' },
         },
       });
 
@@ -290,7 +314,7 @@ describe('ShellToolset', () => {
 
   it('should pass options to the tool', () => {
     const config: ShellConfig = {
-      rules: [{ pattern: 'echo ', approvalRequired: false }],
+      rules: [{ pattern: 'echo ', approval: 'preApproved' }],
     };
 
     const toolset = new ShellToolset({ config });
