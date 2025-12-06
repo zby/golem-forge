@@ -25,6 +25,7 @@ Key expectations that frequently trip up automation agents. See `README.md` for 
 - **YAGNI**: Don't implement features that aren't needed yet. If you identify a gap in the spec, create a note in `docs/notes/` instead of implementing it
 - Favor clear architecture over hacks; delete dead code when possible
 - If backcompat code is ever needed, mark it with `// BACKCOMPAT: <reason> - remove after <condition>` so it can be identified and removed later
+- **Fail early**: Throw errors on invalid input, typos in config, missing initialization, etc. Don't hide bugs by silently recovering - this is experimental code and explicit failures are easier to debug than subtle misbehavior
 
 ---
 

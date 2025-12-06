@@ -33,7 +33,7 @@ import {
   type SandboxConfig,
 } from "../sandbox/index.js";
 import type { Attachment } from "../ai/types.js";
-import type { RuntimeEventCallback } from "./events.js";
+import type { RuntimeEventCallback, RuntimeEventData } from "./events.js";
 
 /**
  * Result of a worker execution.
@@ -124,7 +124,8 @@ function parseModelId(modelId: string): { provider: string; model: string } {
  * AI SDK v6 uses 'input' property, but we normalize to 'args'.
  */
 function getToolArgs(toolCall: { args?: unknown; input?: unknown }): Record<string, unknown> {
-  // AI SDK v6 uses 'input', earlier versions used 'args'
+  // BACKCOMPAT: AI SDK v6 uses 'input', earlier versions used 'args'
+  // Remove 'args' fallback once AI SDK <6 support is dropped
   const rawArgs = toolCall.input ?? toolCall.args ?? {};
   return rawArgs as Record<string, unknown>;
 }
@@ -244,6 +245,7 @@ export class WorkerRuntime {
   private approvalController: ApprovalController;
   private sandbox?: Sandbox;
   private onEvent?: RuntimeEventCallback;
+  private initialized = false;
 
   constructor(options: WorkerRuntimeOptions) {
     this.worker = options.worker;
@@ -287,8 +289,7 @@ export class WorkerRuntime {
   /**
    * Emit a runtime event if a callback is registered.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private emit(event: any): void {
+  private emit(event: RuntimeEventData): void {
     if (this.onEvent) {
       this.onEvent({ ...event, timestamp: new Date() });
     }
@@ -324,6 +325,8 @@ export class WorkerRuntime {
     // Register tools based on worker config
     // Tools have needsApproval set directly, SDK handles approval flow
     await this.registerTools();
+
+    this.initialized = true;
   }
 
   /**
@@ -439,8 +442,10 @@ export class WorkerRuntime {
         }
 
         default:
-          // Silently skip unknown toolsets - they may be handled elsewhere
-          break;
+          throw new Error(
+            `Unknown toolset "${toolsetName}" in worker "${this.worker.name}". ` +
+            `Valid toolsets: filesystem, workers, custom`
+          );
       }
     }
   }
@@ -451,10 +456,18 @@ export class WorkerRuntime {
    * @param input - Text string or object with content and optional attachments
    */
   async run(input: RunInput): Promise<WorkerResult> {
+    if (!this.initialized) {
+      throw new Error(
+        "WorkerRuntime.run() called before initialize(). " +
+        "Use createWorkerRuntime() or call initialize() first."
+      );
+    }
+
     const maxIterations = this.options.maxIterations || 10;
     let toolCallCount = 0;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
+    let currentIteration = 0;
     const startTime = Date.now();
 
     // Emit execution start event
@@ -496,7 +509,8 @@ export class WorkerRuntime {
       const hasTools = Object.keys(this.tools).length > 0;
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
-        const iterationNum = iteration + 1;
+        currentIteration = iteration + 1;
+        const iterationNum = currentIteration;
 
         // Emit message_send event
         this.emit({
@@ -721,7 +735,7 @@ export class WorkerRuntime {
         type: "execution_error",
         success: false,
         error: errorMsg,
-        totalIterations: 0,
+        totalIterations: currentIteration,
         totalToolCalls: toolCallCount,
         durationMs: Date.now() - startTime,
       });
@@ -753,6 +767,17 @@ export class WorkerRuntime {
    */
   getApprovalController(): ApprovalController {
     return this.approvalController;
+  }
+
+  /**
+   * Clean up resources.
+   * Currently a no-op since sandbox files persist and in-memory backends
+   * are garbage collected. Hook for future resource cleanup needs.
+   */
+  async dispose(): Promise<void> {
+    // No-op for now - sandbox files persist intentionally
+    // and MemoryBackend is garbage collected.
+    // Future: close file handles, cancel pending operations, etc.
   }
 }
 

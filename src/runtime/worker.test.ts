@@ -128,6 +128,37 @@ describe("WorkerRuntime", () => {
 
       await expect(runtime.initialize()).rejects.toThrow("Filesystem toolset requires a sandbox");
     });
+
+    it("throws error for unknown toolset", async () => {
+      const workerWithUnknownToolset: WorkerDefinition = {
+        name: "unknown-toolset-worker",
+        instructions: "Test worker",
+        toolsets: {
+          unknownToolset: {},
+        },
+      };
+
+      const runtime = new WorkerRuntime({
+        worker: workerWithUnknownToolset,
+        useTestSandbox: true,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+      });
+
+      await expect(runtime.initialize()).rejects.toThrow('Unknown toolset "unknownToolset"');
+    });
+
+    it("throws error if run() called before initialize()", async () => {
+      const runtime = new WorkerRuntime({
+        worker: simpleWorker,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+      });
+
+      await expect(runtime.run("Hello!")).rejects.toThrow(
+        "WorkerRuntime.run() called before initialize()"
+      );
+    });
   });
 
   describe("run", () => {
@@ -144,6 +175,7 @@ describe("WorkerRuntime", () => {
         approvalMode: "approve_all",
         model: TEST_MODEL,
       });
+      await runtime.initialize();
 
       const result = await runtime.run("Hello!");
 
@@ -161,6 +193,7 @@ describe("WorkerRuntime", () => {
         approvalMode: "approve_all",
         model: TEST_MODEL,
       });
+      await runtime.initialize();
 
       const result = await runtime.run("Hello!");
 
@@ -176,6 +209,7 @@ describe("WorkerRuntime", () => {
         approvalMode: "approve_all",
         model: TEST_MODEL,
       });
+      await runtime.initialize();
 
       const result = await runtime.run("Hello!");
 

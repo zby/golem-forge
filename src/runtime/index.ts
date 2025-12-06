@@ -13,6 +13,7 @@ export {
 
 export type {
   RuntimeEvent,
+  RuntimeEventData,
   RuntimeEventCallback,
   ExecutionStartEvent,
   MessageSendEvent,

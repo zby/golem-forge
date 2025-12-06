@@ -166,6 +166,11 @@ export type RuntimeEvent =
   | ExecutionErrorEvent;
 
 /**
+ * Event data without timestamp (for internal use before emit adds timestamp).
+ */
+export type RuntimeEventData = Omit<RuntimeEvent, "timestamp">;
+
+/**
  * Callback function for receiving runtime events.
  */
 export type RuntimeEventCallback = (event: RuntimeEvent) => void;
