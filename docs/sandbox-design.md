@@ -480,6 +480,56 @@ class GitError extends SandboxError {
 }
 ```
 
+## LLM Interface Design
+
+### Principle: Hide Implementation Details
+
+The sandbox presents a **standard Unix-like filesystem** to the LLM, not an implementation-specific "zone" abstraction.
+
+**Why this matters:**
+
+```
+# Bad - Tool descriptions expose internal concepts:
+path: "Use /workspace or /cache prefixes"
+
+# Good - Standard filesystem semantics:
+path: "Absolute path (use list_files('/') to discover directories)"
+```
+
+### Discoverable Interface
+
+The LLM discovers available directories by exploring:
+
+```
+LLM: list_files("/")
+→ ["input", "output"]
+
+LLM: list_files("/input")
+→ ["data.pdf", "config.json"]
+
+LLM: write_file("/input/new.txt", "content")
+→ Error: /input is read-only
+```
+
+### Benefits
+
+1. **Self-documenting** - LLM discovers what's available
+2. **No special vocabulary** - zones are just directories
+3. **Standard error handling** - "read-only" is universally understood
+4. **Configuration-agnostic** - works with any zone setup
+
+### Implementation Requirements
+
+1. **`list_files("/")`** must return available zone names as directories
+2. **Tool descriptions** must not hardcode zone names
+3. **Error messages** must be clear and actionable ("read-only", "not found")
+
+### Anti-patterns
+
+- Hardcoding `/workspace` or `/cache` in tool descriptions
+- Exposing "zone" terminology to the LLM
+- Requiring LLM to know project configuration
+
 ## Summary
 
 ### Phase 1 (current)

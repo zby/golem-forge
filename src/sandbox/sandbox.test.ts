@@ -299,4 +299,31 @@ describe('Sandbox', () => {
       expect(cacheData.zone).toBe('cache');
     });
   });
+
+  describe('Custom Zones', () => {
+    it('only allows access to declared zones, not default workspace/cache', async () => {
+      // Create sandbox with custom zones (input, output) - NOT workspace/cache
+      const { createSandbox } = await import('./index.js');
+      const sandbox = await createSandbox({
+        mode: 'sandboxed',
+        root: '/tmp/test-sandbox',
+        zones: {
+          input: { path: './input', mode: 'ro' },
+          output: { path: './output', mode: 'rw' },
+        },
+      });
+
+      // Should be able to access declared zones
+      expect(sandbox.getAvailableZones()).toEqual(['input', 'output']);
+      expect(sandbox.getZoneAccess('input')).toBe('ro');
+      expect(sandbox.getZoneAccess('output')).toBe('rw');
+
+      // Should NOT have access to default zones when custom zones are declared
+      expect(sandbox.getZoneAccess('workspace')).toBeUndefined();
+      expect(sandbox.getZoneAccess('cache')).toBeUndefined();
+
+      // Attempting to access /workspace should throw an error
+      await expect(sandbox.list('/workspace')).rejects.toThrow();
+    });
+  });
 });

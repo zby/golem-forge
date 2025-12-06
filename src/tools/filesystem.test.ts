@@ -261,3 +261,52 @@ describe('createFilesystemTools', () => {
     expect(tools.length).toBe(6);
   });
 });
+
+describe('Discoverable filesystem interface', () => {
+  it('list_files("/") should return available zones as directories', async () => {
+    // Create a sandbox with custom zones
+    const { createSandbox } = await import('../sandbox/index.js');
+    const sandbox = await createSandbox({
+      mode: 'sandboxed',
+      root: '/tmp/test-custom-zones',
+      zones: {
+        input: { path: './input', mode: 'ro' },
+        output: { path: './output', mode: 'rw' },
+      },
+    });
+
+    // Verify sandbox has custom zones
+    expect(sandbox.getAvailableZones()).toEqual(['input', 'output']);
+
+    // Create list_files tool
+    const listTool = createListFilesTool(sandbox);
+
+    // LLM should be able to discover available directories by listing root
+    const result = await listTool.execute({ path: '/' });
+
+    expect(result.success).toBe(true);
+    expect(result.files).toContain('input');
+    expect(result.files).toContain('output');
+    // Should NOT see default zones that weren't configured
+    expect(result.files).not.toContain('workspace');
+    expect(result.files).not.toContain('cache');
+  });
+
+  it('tool descriptions should be generic, not hardcode zone names', async () => {
+    const sandbox = await createTestSandbox();
+    const toolset = new FilesystemToolset({ sandbox });
+    const tools = toolset.getTools();
+
+    const listTool = tools.find(t => t.name === 'list_files');
+    expect(listTool).toBeDefined();
+
+    // Access the Zod schema's path field description
+    const schema = listTool!.inputSchema as { shape: { path: { _def: { description: string } } } };
+    const pathDescription = schema.shape.path._def.description;
+
+    // Description should guide LLM to discover directories, not hardcode them
+    // This test will fail with current implementation - that's the point
+    expect(pathDescription).not.toContain('/workspace');
+    expect(pathDescription).not.toContain('/cache');
+  });
+});
