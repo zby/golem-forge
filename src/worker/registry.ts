@@ -275,6 +275,28 @@ export class WorkerRegistry {
   }
 
   /**
+   * Look up a worker relative to a caller's path.
+   *
+   * This enables worker delegation where a parent worker references
+   * a child worker using a relative path like "./helpers/analyzer.worker".
+   *
+   * @param nameOrPath - Worker name or relative path
+   * @param callerPath - Absolute path to the caller's .worker file
+   * @returns WorkerLookupResult
+   */
+  async getRelativeTo(nameOrPath: string, callerPath: string): Promise<WorkerLookupResult> {
+    // If it's a relative path (starts with ./ or ../), resolve relative to caller
+    if (nameOrPath.startsWith("./") || nameOrPath.startsWith("../")) {
+      const callerDir = path.dirname(callerPath);
+      const absolutePath = path.resolve(callerDir, nameOrPath);
+      return this.get(absolutePath);
+    }
+
+    // Otherwise, use standard lookup (by name or absolute path)
+    return this.get(nameOrPath);
+  }
+
+  /**
    * List all known workers.
    */
   async list(): Promise<CachedWorker[]> {

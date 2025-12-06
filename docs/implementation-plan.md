@@ -649,7 +649,7 @@ Can:
 - [x] Enforce sandbox permissions by trust level
 - [x] Interactive approval with memory
 - [x] Model resolution with compatible_models validation
-- [ ] Worker delegation (call_worker tool)
+- [x] Worker delegation (call_worker tool)
 
 Cannot:
 - [ ] Git status/commit/push workflows (Phase 5)

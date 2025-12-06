@@ -22,7 +22,10 @@ import {
   type ApprovalToolset,
   type ApprovedExecuteResult,
   FilesystemToolset,
+  WorkerCallToolset,
+  type DelegationContext,
 } from "../tools/index.js";
+import { WorkerRegistry } from "../worker/registry.js";
 import {
   createSandbox,
   createTestSandbox,
@@ -72,6 +75,14 @@ export interface WorkerRuntimeOptions {
   maxIterations?: number;
   /** Inject a model directly (for testing) */
   injectedModel?: LanguageModel;
+  /** Shared approval controller (for worker delegation) */
+  sharedApprovalController?: ApprovalController;
+  /** Shared sandbox (for worker delegation) */
+  sharedSandbox?: Sandbox;
+  /** Delegation context when called by another worker */
+  delegationContext?: DelegationContext;
+  /** Worker registry for delegation lookups */
+  registry?: WorkerRegistry;
 }
 
 /**
@@ -304,18 +315,22 @@ export class WorkerRuntime {
     const approvalMode = options.approvalMode || "interactive";
 
     // Validate that interactive mode has a callback
-    if (approvalMode === "interactive" && !options.approvalCallback) {
+    if (approvalMode === "interactive" && !options.approvalCallback && !options.sharedApprovalController) {
       throw new Error(
         'Approval mode "interactive" requires an approvalCallback. ' +
         'Either provide a callback or explicitly set approvalMode to "approve_all".'
       );
     }
 
-    // Create approval controller
-    this.approvalController = new ApprovalController({
-      mode: approvalMode,
-      approvalCallback: options.approvalCallback,
-    });
+    // Use shared approval controller (for delegation) or create new one
+    if (options.sharedApprovalController) {
+      this.approvalController = options.sharedApprovalController;
+    } else {
+      this.approvalController = new ApprovalController({
+        mode: approvalMode,
+        approvalCallback: options.approvalCallback,
+      });
+    }
   }
 
   /**
@@ -329,8 +344,10 @@ export class WorkerRuntime {
    * Initialize the runtime (creates sandbox and registers tools).
    */
   async initialize(): Promise<void> {
-    // Create sandbox
-    if (this.options.useTestSandbox) {
+    // Use shared sandbox (for delegation) or create new one
+    if (this.options.sharedSandbox) {
+      this.sandbox = this.options.sharedSandbox;
+    } else if (this.options.useTestSandbox) {
       this.sandbox = await createTestSandbox();
     } else if (this.options.projectRoot) {
       this.sandbox = await createSandbox({
@@ -475,7 +492,29 @@ export class WorkerRuntime {
           }
           break;
 
-        // Add more toolsets here as they're implemented
+        case "workers": {
+          // Worker delegation toolset - requires a registry
+          const registry = this.options.registry || new WorkerRegistry();
+          if (this.options.projectRoot) {
+            registry.addSearchPath(this.options.projectRoot);
+          }
+
+          const workerToolset = new WorkerCallToolset({
+            registry,
+            sandbox: this.sandbox,
+            approvalController: this.approvalController,
+            approvalCallback: this.options.approvalCallback,
+            approvalMode: this.options.approvalMode || "interactive",
+            delegationContext: this.options.delegationContext,
+            projectRoot: this.options.projectRoot,
+          });
+          this.toolsets.push(workerToolset);
+          for (const tool of workerToolset.getTools()) {
+            this.tools[tool.name] = tool;
+          }
+          break;
+        }
+
         default:
           // Silently skip unknown toolsets - they may be handled elsewhere
           break;

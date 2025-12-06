@@ -51,6 +51,8 @@ export interface ApprovalRequest {
   description: string;
   /** Optional security context for display purposes */
   securityContext?: SecurityContext;
+  /** Worker delegation chain for context (e.g., ["parent", "child"]) */
+  delegationPath?: string[];
 }
 
 /**
