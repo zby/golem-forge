@@ -45,7 +45,7 @@ interface ToolOptions {
 }
 
 const readFileSchema = z.object({
-  path: z.string().describe('Path to the file. Use absolute paths like "/workspace/file.txt" or "/cache/file.txt"'),
+  path: z.string().describe('Absolute path to the file (e.g., /dirname/file.txt). Use list_files("/") to discover available directories.'),
 });
 type ReadFileInput = z.infer<typeof readFileSchema>;
 
@@ -75,7 +75,7 @@ export function createReadFileTool(sandbox: Sandbox, options?: ToolOptions): Nam
 }
 
 const writeFileSchema = z.object({
-  path: z.string().describe('Path to write to. Use absolute paths like "/workspace/file.txt"'),
+  path: z.string().describe('Absolute path to write to (e.g., /dirname/file.txt). Use list_files("/") to discover available directories.'),
   content: z.string().describe('Content to write to the file'),
 });
 type WriteFileInput = z.infer<typeof writeFileSchema>;
@@ -105,7 +105,7 @@ export function createWriteFileTool(sandbox: Sandbox, options?: ToolOptions): Na
 }
 
 const listFilesSchema = z.object({
-  path: z.string().describe('Directory path to list. Use "/workspace" or "/cache" or subdirectories'),
+  path: z.string().describe('Directory path to list. Use "/" to discover available directories.'),
 });
 type ListFilesInput = z.infer<typeof listFilesSchema>;
 
@@ -135,7 +135,7 @@ export function createListFilesTool(sandbox: Sandbox, options?: ToolOptions): Na
 }
 
 const deleteFileSchema = z.object({
-  path: z.string().describe('Path to the file to delete'),
+  path: z.string().describe('Absolute path to the file to delete (e.g., /dirname/file.txt). Use list_files("/") to discover available directories.'),
 });
 type DeleteFileInput = z.infer<typeof deleteFileSchema>;
 
@@ -164,7 +164,7 @@ export function createDeleteFileTool(sandbox: Sandbox, options?: ToolOptions): N
 }
 
 const fileExistsSchema = z.object({
-  path: z.string().describe('Path to check'),
+  path: z.string().describe('Absolute path to check (e.g., /dirname/file.txt). Use list_files("/") to discover available directories.'),
 });
 type FileExistsInput = z.infer<typeof fileExistsSchema>;
 
@@ -193,7 +193,7 @@ export function createFileExistsTool(sandbox: Sandbox, options?: ToolOptions): N
 }
 
 const fileInfoSchema = z.object({
-  path: z.string().describe('Path to the file'),
+  path: z.string().describe('Absolute path to the file (e.g., /dirname/file.txt). Use list_files("/") to discover available directories.'),
 });
 type FileInfoInput = z.infer<typeof fileInfoSchema>;
 

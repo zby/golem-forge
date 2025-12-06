@@ -72,6 +72,11 @@ export class SandboxImpl implements Sandbox {
   }
 
   async list(path: string): Promise<string[]> {
+    // Special case: "/" returns available zones as directories
+    if (path === '/' || path === '') {
+      return this.getAvailableZones();
+    }
+
     const normalizedPath = this.normalizePath(path);
     const zone = this.getZone(normalizedPath);
     const realPath = this.backend.mapVirtualToReal(normalizedPath, zone);
@@ -250,6 +255,11 @@ export class RestrictedSandbox implements Sandbox {
   }
 
   async list(path: string): Promise<string[]> {
+    // Special case: "/" returns this sandbox's available zones
+    if (path === '/' || path === '') {
+      return this.getAvailableZones();
+    }
+
     this.checkZoneAccess(path, 'read');
     return this.parent.list(path);
   }
