@@ -306,6 +306,35 @@ Test instructions
         Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, writable: true });
       }
     });
+
+    it("should allow running sandbox-only workers without input", async () => {
+      // Create a worker with sandbox zones
+      const sandboxWorker = `---
+name: sandbox-processor
+sandbox:
+  zones:
+    - name: workspace
+      mode: rw
+---
+Process files in the workspace zone.
+`;
+      await fs.writeFile(path.join(workerDir, "index.worker"), sandboxWorker);
+
+      // Save original isTTY
+      const originalIsTTY = process.stdin.isTTY;
+      Object.defineProperty(process.stdin, "isTTY", { value: true, writable: true });
+
+      try {
+        await runCLI(["node", "cli", workerDir]);
+
+        // Should use the sandbox-only default message
+        expect(mockRun).toHaveBeenCalledWith(
+          "Please proceed with your task using the sandbox contents."
+        );
+      } finally {
+        Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, writable: true });
+      }
+    });
   });
 
   describe("attachments", () => {

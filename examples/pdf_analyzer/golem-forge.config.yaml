@@ -1,0 +1,10 @@
+sandbox:
+  mode: direct
+  root: "."
+  zones:
+    input:
+      path: "./input"
+      mode: ro
+    output:
+      path: "./output"
+      mode: rw

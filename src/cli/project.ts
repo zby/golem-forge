@@ -161,10 +161,20 @@ export function getEffectiveConfig(
     workerPaths: ["workers", ".workers"],
   };
 
+  // Filter out undefined values from overrides to avoid overwriting with undefined
+  const filteredOverrides: Partial<ProjectConfig> = {};
+  if (overrides) {
+    for (const [key, value] of Object.entries(overrides)) {
+      if (value !== undefined) {
+        (filteredOverrides as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+
   return {
     ...defaults,
     ...projectConfig,
-    ...overrides,
+    ...filteredOverrides,
   };
 }
 

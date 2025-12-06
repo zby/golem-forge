@@ -9,13 +9,10 @@ compatible_models:
   - "google:gemini-*-pro*"
   - "google:gemini-*-flash*"
 sandbox:
-  paths:
-    input:
-      root: "./input"
+  zones:
+    - name: input
       mode: ro
-      suffixes: [".pdf"]
-    output:
-      root: "./output"
+    - name: output
       mode: rw
 toolsets:
   filesystem: {}

@@ -404,8 +404,14 @@ async function executeWorker(
   // Read text input
   const textInput = await readInput(options, textArgs);
 
-  // Require either text input or attachments
-  if (!textInput && (!attachments || attachments.length === 0)) {
+  // Check if this is a sandbox-only worker (has sandbox zones declared)
+  // Support both the worker schema format (zones array) and project config format (zones object)
+  const hasSandboxZones = (workerDefinition.sandbox?.zones && workerDefinition.sandbox.zones.length > 0)
+    || (effectiveConfig.sandbox?.zones && Object.keys(effectiveConfig.sandbox.zones).length > 0);
+
+  // Require either text input, attachments, or sandbox zones
+  // Sandbox-only workers can run without explicit input since they operate on sandbox contents
+  if (!textInput && (!attachments || attachments.length === 0) && !hasSandboxZones) {
     throw new Error("No input provided. Use text arguments, --input, --file, file attachments, or pipe to stdin.");
   }
 
@@ -415,6 +421,9 @@ async function executeWorker(
     }
     if (attachments && attachments.length > 0) {
       console.log(`Attachments: ${attachments.map(a => a.name).join(", ")}`);
+    }
+    if (!textInput && (!attachments || attachments.length === 0) && hasSandboxZones) {
+      console.log("Sandbox-only mode: worker will operate on sandbox contents");
     }
     console.log("");
   }
@@ -467,11 +476,18 @@ async function executeWorker(
   const runtime = await createWorkerRuntime(runtimeOptions);
 
   // Prepare run input
-  // When only attachments are provided, use a default prompt
-  const effectiveTextInput = textInput || "Please process the attached file(s).";
+  // When no text input is provided, use context-appropriate default prompt
+  let effectiveTextInput = textInput;
+  if (!effectiveTextInput) {
+    if (attachments && attachments.length > 0) {
+      effectiveTextInput = "Please process the attached file(s).";
+    } else if (hasSandboxZones) {
+      effectiveTextInput = "Please proceed with your task using the sandbox contents.";
+    }
+  }
   const runInput: RunInput = attachments
-    ? { content: effectiveTextInput, attachments }
-    : effectiveTextInput;
+    ? { content: effectiveTextInput!, attachments }
+    : effectiveTextInput!;
 
   // Run worker
   if (options.verbose) {
