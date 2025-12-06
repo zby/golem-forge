@@ -387,6 +387,7 @@ export class WorkerRuntime implements WorkerRunner {
           const customToolset = await createCustomToolset({
             modulePath,
             config: customConfig,
+            sandbox: this.sandbox,
           });
 
           for (const tool of customToolset.getTools()) {

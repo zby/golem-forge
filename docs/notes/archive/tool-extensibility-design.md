@@ -1,6 +1,6 @@
 # Tool Extensibility Design
 
-**Status:** Planning
+**Status:** Implemented
 
 ## Current State
 
@@ -228,7 +228,7 @@ toolsets:
 
 ## Open Questions
 
-1. **How do custom tools access sandbox?** Pass via execute options? Inject at load time?
+1. ~~**How do custom tools access sandbox?**~~ **RESOLVED**: ToolContext passed as second argument to all custom tool functions. Functions can ignore it if not needed.
 2. **Hot reloading?** Watch tools.ts for changes during development?
 3. **Validation?** Runtime checks for tool output format?
 

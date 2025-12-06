@@ -69,4 +69,5 @@ export {
   type CustomToolsetConfig,
   type CustomApprovalConfig,
   type CustomToolsetOptions,
+  type ToolContext,
 } from "./custom.js";

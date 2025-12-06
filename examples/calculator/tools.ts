@@ -4,6 +4,16 @@
  * Demonstrates both export formats:
  * - Function + Schema (calculateFibonacci, calculateFactorial)
  * - Full Tool Object (calculatePrimeFactors)
+ *
+ * Tools can optionally receive a ToolContext as second argument:
+ * ```typescript
+ * import type { ToolContext } from '../../src/tools/index.js';
+ *
+ * export function myTool({ path }: { path: string }, ctx: ToolContext) {
+ *   if (!ctx.sandbox) throw new Error('Sandbox required');
+ *   return ctx.sandbox.read(path);
+ * }
+ * ```
  */
 
 import { z } from 'zod';

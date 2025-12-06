@@ -13,10 +13,22 @@ import { z } from 'zod';
 import type { ToolExecutionOptions } from 'ai';
 import type { NamedTool } from './filesystem.js';
 import type { ApprovalDecisionType } from '../sandbox/types.js';
+import type { Sandbox } from '../sandbox/interface.js';
 
 // ============================================================================
 // Types
 // ============================================================================
+
+/**
+ * Context passed to custom tool functions as second argument.
+ * Provides access to sandbox and execution metadata.
+ */
+export interface ToolContext {
+  /** Sandbox for file operations. Undefined if worker has no sandbox. */
+  sandbox?: Sandbox;
+  /** Unique ID for this tool call */
+  toolCallId: string;
+}
 
 /**
  * Approval configuration for custom tools.
@@ -146,20 +158,34 @@ export function wrapWithDefaultApproval(
 
 /**
  * Create a NamedTool from a function and its schema.
+ *
+ * @param name - Tool name
+ * @param fn - The tool function (args, context?) => result
+ * @param schema - Zod schema for input validation
+ * @param sandbox - Optional sandbox for file operations
+ * @param description - Optional description override
  */
 export function createToolFromFunction(
   name: string,
   fn: Function,
   schema: z.ZodType,
+  sandbox?: Sandbox,
   description?: string
 ): NamedTool {
   return {
     name,
     description: description || extractFunctionDescription(fn) || `Custom tool: ${name}`,
     inputSchema: schema,
-    execute: async (args: unknown, _options: ToolExecutionOptions) => {
+    execute: async (args: unknown, options: ToolExecutionOptions) => {
+      // Build context for the tool function
+      const context: ToolContext = {
+        sandbox,
+        toolCallId: options.toolCallId,
+      };
+
       // Support both sync and async functions
-      const result = fn(args);
+      // Pass context as second argument - tools can ignore it if not needed
+      const result = fn(args, context);
       if (result instanceof Promise) {
         return await result;
       }
@@ -177,11 +203,13 @@ export function createToolFromFunction(
  *
  * @param modulePath - Absolute path to the tools module
  * @param config - Custom toolset configuration
+ * @param sandbox - Optional sandbox for file operations
  * @returns Array of NamedTool objects
  */
 export async function loadCustomTools(
   modulePath: string,
-  config: CustomToolsetConfig
+  config: CustomToolsetConfig,
+  sandbox?: Sandbox
 ): Promise<NamedTool[]> {
   // Dynamic import the module
   let module: Record<string, unknown>;
@@ -229,7 +257,7 @@ export async function loadCustomTools(
         );
       }
 
-      const tool = createToolFromFunction(toolName, exported, schema);
+      const tool = createToolFromFunction(toolName, exported, schema, sandbox);
       tools.push(wrapWithDefaultApproval(tool, config.approval));
       continue;
     }
@@ -256,6 +284,8 @@ export interface CustomToolsetOptions {
   modulePath: string;
   /** Custom toolset configuration */
   config: CustomToolsetConfig;
+  /** Optional sandbox for file operations */
+  sandbox?: Sandbox;
 }
 
 /**
@@ -275,7 +305,8 @@ export class CustomToolset {
 
     this.tools = await loadCustomTools(
       this.options.modulePath,
-      this.options.config
+      this.options.config,
+      this.options.sandbox
     );
     this.loaded = true;
   }

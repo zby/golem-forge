@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
@@ -121,13 +121,13 @@ describe('Custom Tools', () => {
         y: z.number(),
       });
 
-      const tool = createToolFromFunction('add', fn, schema, 'Add two numbers');
+      const tool = createToolFromFunction('add', fn, schema, undefined, 'Add two numbers');
 
       expect(tool.name).toBe('add');
       expect(tool.description).toBe('Add two numbers');
       expect(tool.inputSchema).toBe(schema);
 
-      const result = await tool.execute({ x: 2, y: 3 }, {});
+      const result = await tool.execute({ x: 2, y: 3 }, { toolCallId: 'test-id' });
       expect(result).toBe(5);
     });
 
@@ -139,7 +139,7 @@ describe('Custom Tools', () => {
       const schema = z.object({ delay: z.number() });
 
       const tool = createToolFromFunction('asyncTool', fn, schema);
-      const result = await tool.execute({ delay: 10 }, {});
+      const result = await tool.execute({ delay: 10 }, { toolCallId: 'test-id' });
       expect(result).toBe('done');
     });
 
@@ -149,6 +149,41 @@ describe('Custom Tools', () => {
 
       const tool = createToolFromFunction('myTool', fn, schema);
       expect(tool.description).toBe('Custom tool: myTool');
+    });
+
+    it('passes ToolContext with sandbox to function', async () => {
+      // Mock sandbox
+      const mockSandbox = {
+        read: vi.fn().mockResolvedValue('file content'),
+      };
+
+      // Function that uses context
+      const fn = ({ path }: { path: string }, ctx: { sandbox?: { read: (p: string) => Promise<string> }; toolCallId: string }) => {
+        if (!ctx.sandbox) throw new Error('No sandbox');
+        return ctx.sandbox.read(path);
+      };
+      const schema = z.object({ path: z.string() });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tool = createToolFromFunction('readFile', fn, schema, mockSandbox as any);
+      const result = await tool.execute({ path: '/test.txt' }, { toolCallId: 'call-123' });
+
+      expect(result).toBe('file content');
+      expect(mockSandbox.read).toHaveBeenCalledWith('/test.txt');
+    });
+
+    it('passes toolCallId in context', async () => {
+      let capturedContext: { toolCallId: string } | undefined;
+      const fn = (_args: object, ctx: { toolCallId: string }) => {
+        capturedContext = ctx;
+        return 'ok';
+      };
+      const schema = z.object({});
+
+      const tool = createToolFromFunction('contextTest', fn, schema);
+      await tool.execute({}, { toolCallId: 'unique-call-id' });
+
+      expect(capturedContext?.toolCallId).toBe('unique-call-id');
     });
   });
 
