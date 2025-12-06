@@ -29,12 +29,6 @@ export class BlockedError extends Error {
 }
 
 /**
- * Request for user approval before executing a tool.
- *
- * Created when a tool call needs approval.
- * Passed to the approval callback for user decision.
- */
-/**
  * Security context for approval requests.
  */
 export interface SecurityContext {
@@ -42,6 +36,12 @@ export interface SecurityContext {
   trustLevel?: "untrusted" | "session" | "workspace" | "full";
 }
 
+/**
+ * Request for user approval before executing a tool.
+ *
+ * Created when a tool call needs approval.
+ * Passed to the approval callback for user decision.
+ */
 export interface ApprovalRequest {
   /** Name of the tool requesting approval */
   toolName: string;

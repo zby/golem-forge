@@ -64,6 +64,14 @@ export class ApprovalController {
     this.mode = options.mode ?? "interactive";
     this._approvalCallback = options.approvalCallback;
     this._memory = new ApprovalMemory();
+
+    // Fail early: interactive mode requires a callback
+    if (this.mode === "interactive" && !this._approvalCallback) {
+      throw new Error(
+        'ApprovalController in "interactive" mode requires an approvalCallback. ' +
+        'Either provide a callback or use "approve_all" or "auto_deny" mode.'
+      );
+    }
   }
 
   /**

@@ -45,12 +45,10 @@ describe("ApprovalController", () => {
   });
 
   describe("interactive mode", () => {
-    it("throws if no callback provided", async () => {
-      const controller = new ApprovalController({ mode: "interactive" });
-
-      await expect(controller.requestApproval(testRequest)).rejects.toThrow(
-        "No approvalCallback provided"
-      );
+    it("throws if no callback provided", () => {
+      expect(() => {
+        new ApprovalController({ mode: "interactive" });
+      }).toThrow('requires an approvalCallback');
     });
 
     it("calls the approval callback", async () => {
@@ -140,13 +138,10 @@ describe("ApprovalController", () => {
   });
 
   describe("getCallback", () => {
-    it("throws in interactive mode without callback on first call", async () => {
-      const controller = new ApprovalController({ mode: "interactive" });
-      const callback = controller.getCallback();
-
-      await expect(callback(testRequest)).rejects.toThrow(
-        "No approvalCallback provided"
-      );
+    it("throws in interactive mode without callback at construction", () => {
+      expect(() => {
+        new ApprovalController({ mode: "interactive" });
+      }).toThrow('requires an approvalCallback');
     });
 
     it("returns wrapped callback that includes caching", async () => {
