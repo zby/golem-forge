@@ -17,6 +17,17 @@ import type { ApprovalMode } from "../approval/index.js";
 import type { SandboxConfig } from "../sandbox/index.js";
 
 /**
+ * Trace levels control output verbosity.
+ * - quiet: Just the final response
+ * - summary: Response + stats (tokens, cost, tool calls)
+ * - full: Real-time streaming of messages/tool calls + stats
+ * - debug: Full + diagnostic info (paths, config, worker info)
+ */
+export type TraceLevel = 'quiet' | 'summary' | 'full' | 'debug';
+
+const TRACE_LEVELS: TraceLevel[] = ['quiet', 'summary', 'full', 'debug'];
+
+/**
  * CLI options from command line.
  */
 interface CLIOptions {
@@ -25,8 +36,7 @@ interface CLIOptions {
   input?: string;
   file?: string;
   project?: string;
-  verbose?: boolean;
-  trace?: boolean;
+  trace: TraceLevel;
   attach?: string[];
 }
 
@@ -314,6 +324,16 @@ function parseApprovalMode(value: string): ApprovalMode {
 }
 
 /**
+ * Parse and validate trace level option.
+ */
+function parseTraceLevel(value: string): TraceLevel {
+  if (!TRACE_LEVELS.includes(value as TraceLevel)) {
+    throw new Error(`Invalid trace level: ${value}. Must be one of: ${TRACE_LEVELS.join(", ")}`);
+  }
+  return value as TraceLevel;
+}
+
+/**
  * Main CLI execution.
  */
 export async function runCLI(argv: string[] = process.argv): Promise<void> {
@@ -331,9 +351,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .option("-f, --file <path>", "Read input from file")
     .option("-A, --attach <file>", "Attach file explicitly (can be used multiple times)", collectAttachments, [])
     .option("-p, --project <path>", "Project root directory (auto-detected if not specified)")
-    .option("-v, --verbose", "Verbose output")
-    .option("-t, --trace", "Trace mode: show all messages, tool calls, and responses", true)
-    .option("--no-trace", "Disable trace mode")
+    .option("-t, --trace <level>", "Trace level: quiet, summary, full, debug", parseTraceLevel, "debug")
     .action(async (dirArg: string, inputArgs: string[], options: CLIOptions) => {
       try {
         await executeWorker(dirArg, inputArgs, options);
@@ -380,11 +398,11 @@ async function executeWorker(
     approvalMode: options.approval,
   });
 
-  if (options.verbose && projectInfo) {
-    console.log(`Project root: ${projectInfo.root} (detected by ${projectInfo.detectedBy})`);
-  }
-
-  if (options.verbose) {
+  // Debug level shows diagnostic info
+  if (options.trace === 'debug') {
+    if (projectInfo) {
+      console.log(`Project root: ${projectInfo.root} (detected by ${projectInfo.detectedBy})`);
+    }
     console.log(`Worker directory: ${workerDir}`);
     console.log(`Worker file: ${workerFilePath}`);
     console.log(`Worker: ${workerDefinition.name}`);
@@ -419,7 +437,7 @@ async function executeWorker(
     throw new Error("No input provided. Use text arguments, --input, --file, file attachments, pipe to stdin, or define sandbox zones.");
   }
 
-  if (options.verbose) {
+  if (options.trace === 'debug') {
     if (textInput) {
       console.log(`Input: ${textInput.slice(0, 100)}${textInput.length > 100 ? "..." : ""}`);
     }
@@ -458,14 +476,16 @@ async function executeWorker(
       zones,
     };
 
-    if (options.verbose) {
+    if (options.trace === 'debug') {
       console.log(`Sandbox root: ${resolved.root}`);
       console.log(`Sandbox zones: ${Array.from(resolved.zones.keys()).join(', ')}`);
     }
   }
 
-  // Create trace formatter if trace mode is enabled
-  const onEvent = options.trace ? createTraceFormatter() : undefined;
+  // Create trace formatter for full/debug levels (real-time streaming)
+  const onEvent = (options.trace === 'full' || options.trace === 'debug')
+    ? createTraceFormatter()
+    : undefined;
 
   // Create runtime options - use detected project root
   // Model is already resolved: CLI --model > env var > project config
@@ -497,19 +517,24 @@ async function executeWorker(
     : effectiveTextInput ?? "";
 
   // Run worker
-  if (options.verbose) {
+  if (options.trace === 'debug') {
     console.log("Running worker...\n");
   }
 
   const result = await runtime.run(runInput);
 
-  // Output result (skip if trace mode already showed it)
+  // Output based on trace level
+  const showResponse = options.trace === 'quiet' || options.trace === 'summary';
+  const showStats = options.trace !== 'quiet';
+
   if (result.success) {
-    if (!options.trace) {
+    // For quiet/summary, print the response (full/debug shows it via streaming)
+    if (showResponse) {
       console.log(result.response);
     }
 
-    if (options.verbose && !options.trace) {
+    // Show stats for summary/full/debug levels
+    if (showStats) {
       console.log("\n" + "─".repeat(30));
       console.log(`Tool calls: ${result.toolCallCount}`);
       if (result.tokens) {
@@ -520,7 +545,8 @@ async function executeWorker(
       }
     }
   } else {
-    if (!options.trace) {
+    // For quiet/summary, print error (full/debug shows it via streaming)
+    if (showResponse) {
       console.error(`Worker failed: ${result.error}`);
     }
     process.exit(1);

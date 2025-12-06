@@ -229,12 +229,12 @@ Test instructions
         cost: 0.005,
       });
 
-      await runCLI(["node", "cli", workerDir, "--input", "test"]);
+      await runCLI(["node", "cli", workerDir, "--trace", "quiet", "--input", "test"]);
 
       expect(consoleLogSpy).toHaveBeenCalledWith("Hello from worker");
     });
 
-    it("should output verbose stats when --verbose flag is set", async () => {
+    it("should output stats at summary trace level", async () => {
       mockRun.mockResolvedValue({
         success: true,
         response: "Response",
@@ -243,8 +243,9 @@ Test instructions
         cost: 0.0123,
       });
 
-      await runCLI(["node", "cli", workerDir, "--verbose", "--input", "test"]);
+      await runCLI(["node", "cli", workerDir, "--trace", "summary", "--input", "test"]);
 
+      expect(consoleLogSpy).toHaveBeenCalledWith("Response");
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tool calls: 3"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tokens: 100 in / 50 out"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Cost: $0.012300"));
@@ -258,7 +259,7 @@ Test instructions
       });
 
       await expect(
-        runCLI(["node", "cli", workerDir, "--input", "test"])
+        runCLI(["node", "cli", workerDir, "--trace", "quiet", "--input", "test"])
       ).rejects.toThrow("process.exit called");
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
