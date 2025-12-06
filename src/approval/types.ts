@@ -84,79 +84,37 @@ export interface ApprovalDecision {
 export type ApprovalCallback = (request: ApprovalRequest) => Promise<ApprovalDecision>;
 
 /**
- * Interface for toolsets with custom approval logic.
+ * Per-tool approval configuration.
  *
- * Toolsets implementing this interface provide fine-grained control
- * over which tool calls need user approval.
- *
- * Note: For blocked operations (e.g., sandbox permission denied),
- * throw BlockedError instead of returning from needsApproval().
+ * Allows declarative configuration of approval behavior without
+ * implementing the full SupportsNeedsApproval interface.
  */
-export interface SupportsNeedsApproval<TContext = unknown> {
-  /**
-   * Determine if a tool call needs approval.
-   *
-   * @param name - Tool name being called
-   * @param toolArgs - Arguments passed to the tool
-   * @param ctx - Execution context
-   * @returns true if approval is needed, false if pre-approved
-   * @throws BlockedError if the operation is forbidden by policy
-   */
-  needsApproval(
-    name: string,
-    toolArgs: Record<string, unknown>,
-    ctx: TContext
-  ): boolean;
+export interface ToolApprovalConfig {
+  /** If true, tool is pre-approved (no user prompt needed) */
+  preApproved?: boolean;
+  /** If true, tool is blocked entirely (throws BlockedError) */
+  blocked?: boolean;
+  /** Reason for blocking (used in error message) */
+  blockReason?: string;
 }
 
 /**
- * Interface for toolsets that provide custom approval descriptions.
+ * Approval configuration for a set of tools.
  *
- * Optional interface. If not implemented, a default description
- * is generated from tool name and arguments.
+ * Keys are tool names, values are per-tool config.
+ * Tools not listed use the default behavior (needs approval).
+ *
+ * @example
+ * ```typescript
+ * const config: ApprovalConfig = {
+ *   read_file: { preApproved: true },
+ *   list_files: { preApproved: true },
+ *   write_file: { preApproved: false },  // explicit: needs approval
+ *   dangerous_tool: { blocked: true, blockReason: "Disabled by policy" },
+ * };
+ * ```
  */
-export interface SupportsApprovalDescription<TContext = unknown> {
-  /**
-   * Return human-readable description for approval prompt.
-   *
-   * Only called when needsApproval() returns needs_approval status.
-   *
-   * @param name - Tool name being called
-   * @param toolArgs - Arguments passed to the tool
-   * @param ctx - Execution context
-   * @returns Description string to show user (e.g., "Execute: git status")
-   */
-  getApprovalDescription(
-    name: string,
-    toolArgs: Record<string, unknown>,
-    ctx: TContext
-  ): string;
+export interface ApprovalConfig {
+  [toolName: string]: ToolApprovalConfig;
 }
 
-/**
- * Type guard to check if an object implements SupportsNeedsApproval.
- */
-export function supportsNeedsApproval<T>(
-  obj: unknown
-): obj is SupportsNeedsApproval<T> {
-  return (
-    typeof obj === "object" &&
-    obj !== null &&
-    "needsApproval" in obj &&
-    typeof (obj as SupportsNeedsApproval<T>).needsApproval === "function"
-  );
-}
-
-/**
- * Type guard to check if an object implements SupportsApprovalDescription.
- */
-export function supportsApprovalDescription<T>(
-  obj: unknown
-): obj is SupportsApprovalDescription<T> {
-  return (
-    typeof obj === "object" &&
-    obj !== null &&
-    "getApprovalDescription" in obj &&
-    typeof (obj as SupportsApprovalDescription<T>).getApprovalDescription === "function"
-  );
-}

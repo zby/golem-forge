@@ -14,10 +14,8 @@ export {
   type RememberOption,
   type ApprovalCallback,
   type SecurityContext,
-  type SupportsNeedsApproval,
-  type SupportsApprovalDescription,
-  supportsNeedsApproval,
-  supportsApprovalDescription,
+  type ToolApprovalConfig,
+  type ApprovalConfig,
 } from "./types.js";
 
 // Memory

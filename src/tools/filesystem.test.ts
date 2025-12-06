@@ -194,90 +194,61 @@ describe('FilesystemToolset', () => {
     });
   });
 
-  describe('needsApproval', () => {
-    it('pre-approves file_exists (returns false)', () => {
-      const result = toolset.needsApproval('file_exists', { path: '/workspace/file.txt' });
-      expect(result).toBe(false);
+  describe('needsApproval on tools (SDK native pattern)', () => {
+    it('read operations have needsApproval unset or false', () => {
+      const tools = toolset.getTools();
+      const readTool = tools.find(t => t.name === 'read_file');
+      const listTool = tools.find(t => t.name === 'list_files');
+      const existsTool = tools.find(t => t.name === 'file_exists');
+      const infoTool = tools.find(t => t.name === 'file_info');
+
+      // These should not need approval (false or undefined)
+      expect(readTool?.needsApproval).toBeFalsy();
+      expect(listTool?.needsApproval).toBeFalsy();
+      expect(existsTool?.needsApproval).toBeFalsy();
+      expect(infoTool?.needsApproval).toBeFalsy();
     });
 
-    it('pre-approves read_file (returns false)', () => {
-      const result = toolset.needsApproval('read_file', { path: '/workspace/file.txt' });
-      expect(result).toBe(false);
+    it('write_file has needsApproval=true by default', () => {
+      const tools = toolset.getTools();
+      const writeTool = tools.find(t => t.name === 'write_file');
+      expect(writeTool?.needsApproval).toBe(true);
     });
 
-    it('pre-approves write_file by default (returns false)', () => {
-      const result = toolset.needsApproval('write_file', { path: '/workspace/file.txt', content: 'test' });
-      expect(result).toBe(false);
-    });
-  });
-
-  describe('needsApproval with worker config', () => {
-    it('requires approval when worker config has write_approval', () => {
-      const toolsetWithConfig = new FilesystemToolset({
-        sandbox,
-        workerSandboxConfig: {
-          paths: {
-            workspace: {
-              root: '/workspace',
-              write_approval: true,
-            },
-          },
-        },
-      });
-
-      const result = toolsetWithConfig.needsApproval('write_file', {
-        path: '/workspace/file.txt',
-        content: 'test',
-      });
-      expect(result).toBe(true);
-    });
-
-    it('pre-approves when path does not match write_approval config', () => {
-      const toolsetWithConfig = new FilesystemToolset({
-        sandbox,
-        workerSandboxConfig: {
-          paths: {
-            special: {
-              root: '/workspace/special',
-              write_approval: true,
-            },
-          },
-        },
-      });
-
-      // This path doesn't match the special config
-      const result = toolsetWithConfig.needsApproval('write_file', {
-        path: '/cache/file.txt',
-        content: 'test',
-      });
-      expect(result).toBe(false);
+    it('delete_file has needsApproval=true by default', () => {
+      const tools = toolset.getTools();
+      const deleteTool = tools.find(t => t.name === 'delete_file');
+      expect(deleteTool?.needsApproval).toBe(true);
     });
   });
 
-  describe('getApprovalDescription', () => {
-    it('describes read_file', () => {
-      const desc = toolset.getApprovalDescription('read_file', {
-        path: '/workspace/file.txt',
+  describe('custom approvalConfig', () => {
+    it('pre-approves write_file when configured', () => {
+      const toolsetWithConfig = new FilesystemToolset({
+        sandbox,
+        approvalConfig: {
+          write_file: { preApproved: true },
+        },
       });
-      expect(desc).toContain('Read file');
-      expect(desc).toContain('/workspace/file.txt');
+
+      const tools = toolsetWithConfig.getTools();
+      const writeTool = tools.find(t => t.name === 'write_file');
+      // preApproved: true means needsApproval should be false
+      expect(writeTool?.needsApproval).toBe(false);
     });
 
-    it('describes write_file with size', () => {
-      const desc = toolset.getApprovalDescription('write_file', {
-        path: '/workspace/file.txt',
-        content: 'hello world',
+    it('requires approval for delete even when write is pre-approved', () => {
+      const toolsetWithConfig = new FilesystemToolset({
+        sandbox,
+        approvalConfig: {
+          write_file: { preApproved: true },
+        },
       });
-      expect(desc).toContain('Write');
-      expect(desc).toContain('11 bytes');
-    });
 
-    it('describes delete_file', () => {
-      const desc = toolset.getApprovalDescription('delete_file', {
-        path: '/workspace/file.txt',
-      });
-      expect(desc).toContain('Delete file');
-      expect(desc).toContain('/workspace/file.txt');
+      const tools = toolsetWithConfig.getTools();
+      const deleteTool = tools.find(t => t.name === 'delete_file');
+      // delete_file should still require approval (not affected by write config)
+      expect(deleteTool?.needsApproval).toBe(true);
     });
   });
 });

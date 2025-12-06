@@ -3,15 +3,6 @@
  */
 
 export {
-  ApprovedExecutor,
-  type ApprovalToolset,
-  type ApprovedExecutorOptions,
-  type ApprovedExecuteResult,
-  type ToolError,
-  type ToolExecutorFn,
-} from "./approved-executor.js";
-
-export {
   FilesystemToolset,
   createFilesystemTools,
   createReadFileTool,

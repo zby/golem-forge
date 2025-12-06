@@ -29,107 +29,19 @@ describe("WorkerCallToolset", () => {
     registry = new WorkerRegistry({ searchPaths: [tempDir] });
   });
 
-  describe("needsApproval", () => {
-    it("always returns true for call_worker", () => {
+  describe("needsApproval on tool (SDK native pattern)", () => {
+    it("call_worker tool has needsApproval=true", () => {
       const toolset = new WorkerCallToolset({
         registry,
+        allowedWorkers: ["test"],
         sandbox,
         approvalController,
         approvalMode: "approve_all",
       });
 
-      expect(toolset.needsApproval("call_worker", { worker: "test", input: "hello" })).toBe(true);
-    });
-
-    it("returns true regardless of arguments", () => {
-      const toolset = new WorkerCallToolset({
-        registry,
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-      });
-
-      expect(toolset.needsApproval("call_worker", {})).toBe(true);
-      expect(toolset.needsApproval("call_worker", { worker: "x" })).toBe(true);
-      expect(toolset.needsApproval("call_worker", { worker: "x", input: "y", instructions: "z" })).toBe(true);
-    });
-  });
-
-  describe("getApprovalDescription", () => {
-    it("shows worker name and input preview", () => {
-      const toolset = new WorkerCallToolset({
-        registry,
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-      });
-
-      const desc = toolset.getApprovalDescription("call_worker", {
-        worker: "analyzer",
-        input: "Please analyze this document",
-      });
-
-      expect(desc).toContain("analyzer");
-      expect(desc).toContain("Please analyze this document");
-    });
-
-    it("truncates long inputs", () => {
-      const toolset = new WorkerCallToolset({
-        registry,
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-      });
-
-      const longInput = "A".repeat(100);
-      const desc = toolset.getApprovalDescription("call_worker", {
-        worker: "test",
-        input: longInput,
-      });
-
-      expect(desc).toContain("...");
-      expect(desc.length).toBeLessThan(longInput.length + 50);
-    });
-
-    it("includes delegation path when present", () => {
-      const delegationContext: DelegationContext = {
-        delegationPath: ["orchestrator", "analyzer"],
-        callerModel: "anthropic:claude-haiku-4-5",
-      };
-
-      const toolset = new WorkerCallToolset({
-        registry,
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-        delegationContext,
-      });
-
-      const desc = toolset.getApprovalDescription("call_worker", {
-        worker: "formatter",
-        input: "Format this",
-      });
-
-      expect(desc).toContain("orchestrator");
-      expect(desc).toContain("analyzer");
-      expect(desc).toContain("formatter");
-    });
-
-    it("notes when custom instructions are provided", () => {
-      const toolset = new WorkerCallToolset({
-        registry,
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-      });
-
-      const desc = toolset.getApprovalDescription("call_worker", {
-        worker: "test",
-        input: "test input",
-        instructions: "Be extra careful",
-      });
-
-      expect(desc).toContain("custom instructions");
+      const tools = toolset.getTools();
+      const callWorkerTool = tools.find(t => t.name === "call_worker");
+      expect(callWorkerTool?.needsApproval).toBe(true);
     });
   });
 
@@ -137,6 +49,7 @@ describe("WorkerCallToolset", () => {
     it("returns array with call_worker tool", () => {
       const toolset = new WorkerCallToolset({
         registry,
+        allowedWorkers: ["test"],
         sandbox,
         approvalController,
         approvalMode: "approve_all",
@@ -153,6 +66,7 @@ describe("WorkerCallToolset", () => {
     it("has correct name and description", () => {
       const tool = createCallWorkerTool({
         registry,
+        allowedWorkers: ["test"],
         sandbox,
         approvalController,
         approvalMode: "approve_all",
@@ -165,6 +79,7 @@ describe("WorkerCallToolset", () => {
     it("returns error for worker not found", async () => {
       const tool = createCallWorkerTool({
         registry,
+        allowedWorkers: ["nonexistent"],
         sandbox,
         approvalController,
         approvalMode: "approve_all",
@@ -188,6 +103,7 @@ describe("WorkerCallToolset", () => {
 
       const tool = createCallWorkerTool({
         registry,
+        allowedWorkers: ["orchestrator"],
         sandbox,
         approvalController,
         approvalMode: "approve_all",
@@ -212,6 +128,7 @@ describe("WorkerCallToolset", () => {
 
       const tool = createCallWorkerTool({
         registry,
+        allowedWorkers: ["f"],
         sandbox,
         approvalController,
         approvalMode: "approve_all",

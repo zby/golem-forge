@@ -7,12 +7,7 @@
 import { z } from "zod";
 import type { ToolExecutionOptions } from "ai";
 import type { NamedTool } from "./filesystem.js";
-import type {
-  SupportsNeedsApproval,
-  SupportsApprovalDescription,
-  ApprovalCallback,
-  ApprovalMode,
-} from "../approval/index.js";
+import type { ApprovalCallback, ApprovalMode } from "../approval/index.js";
 import { ApprovalController } from "../approval/index.js";
 import type { Sandbox } from "../sandbox/index.js";
 import { WorkerRegistry } from "../worker/registry.js";
@@ -22,12 +17,10 @@ import type { WorkerDefinition } from "../worker/schema.js";
  * Schema for call_worker tool input.
  */
 export const CallWorkerInputSchema = z.object({
-  /** Worker name or relative path (e.g., "analyzer" or "./helpers/analyzer.worker") */
+  /** Worker name (must be in the allowed_workers list) */
   worker: z
     .string()
-    .describe(
-      'Worker name or path to invoke (e.g., "analyzer" or "./helpers/analyzer.worker")'
-    ),
+    .describe("Name of the worker to invoke (must be in allowed_workers list)"),
   /** Input text for the worker */
   input: z.string().describe("Input text to send to the worker"),
   /** Optional additional instructions to extend worker's base instructions */
@@ -52,8 +45,6 @@ export interface DelegationContext {
   delegationPath: string[];
   /** The resolved model being used by the parent (for inheritance) */
   callerModel: string;
-  /** Reference to caller's worker file path (for relative resolution) */
-  callerWorkerPath?: string;
 }
 
 /**
@@ -62,6 +53,8 @@ export interface DelegationContext {
 export interface WorkerCallToolsetOptions {
   /** Worker registry for looking up workers */
   registry: WorkerRegistry;
+  /** List of worker names this worker is allowed to call */
+  allowedWorkers: string[];
   /** Shared sandbox for file access */
   sandbox?: Sandbox;
   /** Approval controller to share with child workers */
@@ -100,7 +93,7 @@ const DEFAULT_MAX_DELEGATION_DEPTH = 5;
  *
  * This tool enables workers to delegate to other workers.
  * It handles:
- * - Worker lookup by name or relative path
+ * - Worker lookup by name (must be in allowed_workers list)
  * - Model inheritance from caller
  * - Attachment passing from sandbox
  * - Shared approval controller
@@ -110,6 +103,7 @@ export function createCallWorkerTool(
 ): NamedTool {
   const {
     registry,
+    allowedWorkers,
     sandbox,
     approvalController,
     approvalCallback,
@@ -122,13 +116,24 @@ export function createCallWorkerTool(
   return {
     name: "call_worker",
     description:
-      "Call another worker to perform a task. Use this when the task is better suited for a specialized worker.",
+      `Call another worker to perform a task. Allowed workers: ${allowedWorkers.join(", ")}`,
     inputSchema: CallWorkerInputSchema,
+    needsApproval: true, // Worker calls always require approval
     execute: async (
       args: CallWorkerInput,
       _options: ToolExecutionOptions
     ): Promise<CallWorkerResult> => {
-      const { worker: workerRef, input, instructions, attachments } = args;
+      const { worker: workerName, input, instructions, attachments } = args;
+
+      // Validate worker is in allowed list
+      if (!allowedWorkers.includes(workerName)) {
+        return {
+          success: false,
+          error: `Worker '${workerName}' is not in the allowed workers list. Allowed: ${allowedWorkers.join(", ")}`,
+          workerName,
+          toolCallCount: 0,
+        };
+      }
 
       // Check delegation depth
       const currentPath = delegationContext?.delegationPath || [];
@@ -136,39 +141,35 @@ export function createCallWorkerTool(
         return {
           success: false,
           error: `Maximum delegation depth (${maxDelegationDepth}) exceeded. Current path: ${currentPath.join(" -> ")}`,
-          workerName: workerRef,
+          workerName,
           toolCallCount: 0,
         };
       }
 
       // Check for circular delegation
-      if (currentPath.includes(workerRef)) {
+      if (currentPath.includes(workerName)) {
         return {
           success: false,
-          error: `Circular delegation detected: ${[...currentPath, workerRef].join(" -> ")}`,
-          workerName: workerRef,
+          error: `Circular delegation detected: ${[...currentPath, workerName].join(" -> ")}`,
+          workerName,
           toolCallCount: 0,
         };
       }
 
       try {
-        // Look up the worker
-        const callerPath = delegationContext?.callerWorkerPath;
-        const lookupResult = callerPath
-          ? await registry.getRelativeTo(workerRef, callerPath)
-          : await registry.get(workerRef);
+        // Look up the worker by name
+        const lookupResult = await registry.get(workerName);
 
         if (!lookupResult.found) {
           return {
             success: false,
             error: lookupResult.error,
-            workerName: workerRef,
+            workerName,
             toolCallCount: 0,
           };
         }
 
         const childWorker = lookupResult.worker.definition;
-        const childWorkerPath = lookupResult.worker.filePath;
 
         // Validate model compatibility if we have a caller model
         const callerModel = delegationContext?.callerModel;
@@ -181,7 +182,7 @@ export function createCallWorkerTool(
             return {
               success: false,
               error: `Model '${callerModel}' is not compatible with worker '${childWorker.name}'. Compatible models: ${childWorker.compatible_models.join(", ")}`,
-              workerName: workerRef,
+              workerName,
               toolCallCount: 0,
             };
           }
@@ -209,7 +210,6 @@ export function createCallWorkerTool(
         const childDelegationContext: DelegationContext = {
           delegationPath: [...currentPath, childWorker.name],
           callerModel: callerModel || "anthropic:claude-haiku-4-5",
-          callerWorkerPath: childWorkerPath,
         };
 
         const childRuntime = new WorkerRuntime({
@@ -250,7 +250,7 @@ export function createCallWorkerTool(
         return {
           success: false,
           error: `Worker execution failed: ${message}`,
-          workerName: workerRef,
+          workerName,
           toolCallCount: 0,
         };
       }
@@ -346,17 +346,13 @@ function getMediaType(path: string): string {
 /**
  * Toolset for worker delegation.
  *
- * Provides the call_worker tool and implements approval logic.
+ * Provides the call_worker tool with needsApproval: true.
  * Worker calls ALWAYS require approval since they execute arbitrary worker code.
  */
-export class WorkerCallToolset
-  implements SupportsNeedsApproval<unknown>, SupportsApprovalDescription<unknown>
-{
+export class WorkerCallToolset {
   private tools: NamedTool[];
-  private delegationContext?: DelegationContext;
 
   constructor(options: WorkerCallToolsetOptions) {
-    this.delegationContext = options.delegationContext;
     this.tools = [createCallWorkerTool(options)];
   }
 
@@ -365,47 +361,5 @@ export class WorkerCallToolset
    */
   getTools(): NamedTool[] {
     return this.tools;
-  }
-
-  /**
-   * Worker calls always require approval.
-   */
-  needsApproval(_name: string, _args: Record<string, unknown>): boolean {
-    // Always require approval for call_worker
-    return true;
-  }
-
-  /**
-   * Get a human-readable description for approval prompts.
-   */
-  getApprovalDescription(
-    name: string,
-    args: Record<string, unknown>
-  ): string {
-    if (name === "call_worker") {
-      const workerName = args.worker as string;
-      const input = args.input as string;
-      const instructions = args.instructions as string | undefined;
-
-      // Truncate long inputs
-      const inputPreview =
-        input.length > 80 ? input.substring(0, 80) + "..." : input;
-
-      // Build description with delegation path if present
-      const pathPrefix =
-        this.delegationContext?.delegationPath.length
-          ? `${this.delegationContext.delegationPath.join(" -> ")} -> `
-          : "";
-
-      let description = `${pathPrefix}Call worker "${workerName}"`;
-      if (instructions) {
-        description += " (with custom instructions)";
-      }
-      description += `\nInput: ${inputPreview}`;
-
-      return description;
-    }
-
-    return `Execute ${name}`;
   }
 }

@@ -14,13 +14,8 @@ import {
   ApprovalController,
   type ApprovalCallback,
   type ApprovalMode,
-  type SecurityContext as ApprovalSecurityContext,
-  supportsApprovalDescription,
 } from "../approval/index.js";
 import {
-  ApprovedExecutor,
-  type ApprovalToolset,
-  type ApprovedExecuteResult,
   FilesystemToolset,
   WorkerCallToolset,
   type DelegationContext,
@@ -31,7 +26,7 @@ import {
   createTestSandbox,
   type Sandbox,
 } from "../sandbox/index.js";
-import type { ToolCall, ExecuteToolResult, Attachment } from "../ai/types.js";
+import type { Attachment } from "../ai/types.js";
 
 /**
  * Result of a worker execution.
@@ -277,6 +272,7 @@ function createModel(modelId: string): LanguageModel {
 
 /**
  * Runtime for executing workers.
+ * Uses AI SDK's native needsApproval for tool approval.
  */
 export class WorkerRuntime {
   private worker: WorkerDefinition;
@@ -284,9 +280,7 @@ export class WorkerRuntime {
   private model: LanguageModel;
   private tools: Record<string, Tool> = {};
   private approvalController: ApprovalController;
-  private executor!: ApprovedExecutor; // Initialized in initialize()
   private sandbox?: Sandbox;
-  private toolsets: ApprovalToolset[] = [];
   private modelResolution: ModelResolution;
 
   constructor(options: WorkerRuntimeOptions) {
@@ -357,143 +351,42 @@ export class WorkerRuntime {
     }
 
     // Register tools based on worker config
+    // Tools have needsApproval set directly, SDK handles approval flow
     await this.registerTools();
-
-    // Create executor with composite toolset
-    const compositeToolset = this.toolsets.length > 0
-      ? this.createCompositeToolset()
-      : undefined;
-
-    // Security context for approval requests (simplified - no trust levels)
-    const approvalSecurityContext: ApprovalSecurityContext | undefined = undefined;
-
-    // Create tool executor function that calls the actual tool
-    const executeToolFn = async (toolCall: ToolCall): Promise<ExecuteToolResult> => {
-      const tool = this.tools[toolCall.toolName];
-      if (!tool) {
-        return {
-          success: false,
-          toolCallId: toolCall.toolCallId,
-          error: {
-            type: "not_found",
-            toolName: toolCall.toolName,
-            message: `Tool not found: ${toolCall.toolName}`,
-          },
-        };
-      }
-
-      try {
-        // Execute the tool - Tool's execute is optional
-        if (!tool.execute) {
-          return {
-            success: false,
-            toolCallId: toolCall.toolCallId,
-            error: {
-              type: "not_executable",
-              toolName: toolCall.toolName,
-              message: `Tool ${toolCall.toolName} has no execute function`,
-            },
-          };
-        }
-        // Call execute with input and options per AI SDK Tool interface
-        const result = await tool.execute(toolCall.args, {
-          toolCallId: toolCall.toolCallId,
-          messages: [],
-        });
-        return {
-          success: true,
-          toolCallId: toolCall.toolCallId,
-          result,
-        };
-      } catch (err) {
-        return {
-          success: false,
-          toolCallId: toolCall.toolCallId,
-          error: {
-            type: "execution_failed",
-            toolName: toolCall.toolName,
-            message: err instanceof Error ? err.message : String(err),
-          },
-        };
-      }
-    };
-
-    this.executor = new ApprovedExecutor({
-      executeToolFn,
-      approvalController: this.approvalController,
-      toolset: compositeToolset,
-      securityContext: approvalSecurityContext,
-    });
-  }
-
-  /**
-   * Create a composite toolset that delegates to all registered toolsets.
-   */
-  private createCompositeToolset(): ApprovalToolset {
-    const toolsets = this.toolsets;
-    return {
-      needsApproval(name: string, toolArgs: Record<string, unknown>, ctx: unknown): boolean {
-        // Check each toolset - if any requires approval, return true
-        // If any throws BlockedError, let it propagate
-        for (const ts of toolsets) {
-          const result = ts.needsApproval(name, toolArgs, ctx);
-          if (result) {
-            return true; // needs approval
-          }
-        }
-        // All toolsets say pre-approved
-        return false;
-      },
-      getApprovalDescription(name: string, toolArgs: Record<string, unknown>, ctx: unknown) {
-        // Find the first toolset that provides a custom description
-        for (const ts of toolsets) {
-          if (supportsApprovalDescription(ts)) {
-            return ts.getApprovalDescription(name, toolArgs, ctx);
-          }
-        }
-        // Default fallback
-        return `Execute tool: ${name}`;
-      },
-    };
   }
 
   /**
    * Register tools based on worker configuration.
+   * Tools have needsApproval set directly - SDK handles approval flow.
    */
   private async registerTools(): Promise<void> {
     const toolsetsConfig = this.worker.toolsets || {};
 
-    // Tool name mapping for filesystem tools
-    const toolNames = [
-      "read_file",
-      "write_file",
-      "list_files",
-      "delete_file",
-      "file_exists",
-      "file_info",
-    ];
-
-    for (const [toolsetName] of Object.entries(toolsetsConfig)) {
+    for (const [toolsetName, toolsetConfig] of Object.entries(toolsetsConfig)) {
       switch (toolsetName) {
         case "filesystem":
           if (!this.sandbox) {
             throw new Error("Filesystem toolset requires a sandbox. Set projectRoot or useTestSandbox.");
           }
-          // Pass worker's sandbox config to honor write_approval and other restrictions
+          // FilesystemToolset creates tools with needsApproval set based on config
           const fsToolset = new FilesystemToolset({
             sandbox: this.sandbox,
-            workerSandboxConfig: this.worker.sandbox,
           });
-          this.toolsets.push(fsToolset);
-          const fsTools = fsToolset.getTools();
-          // Add tools to the map with their names
-          for (let i = 0; i < fsTools.length; i++) {
-            this.tools[toolNames[i]] = fsTools[i];
+          // Register each tool by its name property
+          for (const tool of fsToolset.getTools()) {
+            this.tools[tool.name] = tool;
           }
           break;
 
         case "workers": {
-          // Worker delegation toolset - requires a registry
+          // Worker delegation toolset - requires allowed_workers list
+          const workersConfig = toolsetConfig as { allowed_workers?: string[] } | undefined;
+          const allowedWorkers = workersConfig?.allowed_workers || [];
+
+          if (allowedWorkers.length === 0) {
+            throw new Error("Workers toolset requires 'allowed_workers' list in config.");
+          }
+
           const registry = this.options.registry || new WorkerRegistry();
           if (this.options.projectRoot) {
             registry.addSearchPath(this.options.projectRoot);
@@ -501,6 +394,7 @@ export class WorkerRuntime {
 
           const workerToolset = new WorkerCallToolset({
             registry,
+            allowedWorkers,
             sandbox: this.sandbox,
             approvalController: this.approvalController,
             approvalCallback: this.options.approvalCallback,
@@ -508,7 +402,6 @@ export class WorkerRuntime {
             delegationContext: this.options.delegationContext,
             projectRoot: this.options.projectRoot,
           });
-          this.toolsets.push(workerToolset);
           for (const tool of workerToolset.getTools()) {
             this.tools[tool.name] = tool;
           }
@@ -524,6 +417,7 @@ export class WorkerRuntime {
 
   /**
    * Execute the worker with the given input.
+   * Uses AI SDK's native needsApproval for tool approval.
    * @param input - Text string or object with content and optional attachments
    */
   async run(input: RunInput): Promise<WorkerResult> {
@@ -564,7 +458,7 @@ export class WorkerRuntime {
       const hasTools = Object.keys(this.tools).length > 0;
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
-        // Call generateText - no maxSteps for manual control
+        // Call generateText - SDK handles tool execution and approval
         const result = await generateText({
           model: this.model,
           messages,
@@ -588,7 +482,6 @@ export class WorkerRuntime {
         }
 
         // Add assistant message with tool calls to history
-        // Using 'as any' to work around complex AI SDK message types
         messages.push({
           role: "assistant",
           content: [
@@ -603,31 +496,67 @@ export class WorkerRuntime {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any);
 
-        // Execute tools with approval
+        // Execute tools ourselves
         const toolResultMessages: Array<{ type: "tool-result"; toolCallId: string; toolName: string; output: unknown }> = [];
+
         for (const tc of toolCalls) {
           toolCallCount++;
 
-          // Convert to our ToolCall format
-          const toolCall: ToolCall = {
-            toolCallId: tc.toolCallId,
-            toolName: tc.toolName,
-            args: getToolArgs(tc),
-          };
+          const toolName = tc.toolName;
+          const toolArgs = getToolArgs(tc);
+          const tool = this.tools[toolName];
 
-          const execResult = await this.executor.executeTool(toolCall);
-          const formatted = this.formatToolResult(execResult);
+          let output: unknown;
+
+          if (!tool) {
+            // Tool doesn't exist
+            output = `Error: Tool not found: ${toolName}`;
+          } else if (!tool.execute) {
+            // Tool has no execute function
+            output = `Error: Tool ${toolName} has no execute function`;
+          } else {
+            // Check if tool needs approval
+            const needsApproval = typeof tool.needsApproval === 'function'
+              ? await tool.needsApproval(toolArgs, { toolCallId: tc.toolCallId, messages })
+              : tool.needsApproval;
+
+            if (needsApproval) {
+              // Get approval from controller
+              const decision = await this.approvalController.requestApproval({
+                toolName,
+                toolArgs,
+                description: `Execute tool: ${toolName}`,
+              });
+
+              if (!decision.approved) {
+                output = `Error: [DENIED] Tool execution denied${decision.note ? `: ${decision.note}` : ''}`;
+              } else {
+                // Execute approved tool
+                try {
+                  output = await tool.execute(toolArgs, { toolCallId: tc.toolCallId, messages });
+                } catch (err) {
+                  output = `Error: ${err instanceof Error ? err.message : String(err)}`;
+                }
+              }
+            } else {
+              // Pre-approved, execute directly
+              try {
+                output = await tool.execute(toolArgs, { toolCallId: tc.toolCallId, messages });
+              } catch (err) {
+                output = `Error: ${err instanceof Error ? err.message : String(err)}`;
+              }
+            }
+          }
 
           toolResultMessages.push({
             type: "tool-result",
             toolCallId: tc.toolCallId,
             toolName: tc.toolName,
-            output: formatted,
+            output,
           });
         }
 
         // Add tool results to messages
-        // Using 'as any' to work around complex AI SDK message types
         messages.push({
           role: "tool",
           content: toolResultMessages,
@@ -650,27 +579,6 @@ export class WorkerRuntime {
         tokens: { input: totalInputTokens, output: totalOutputTokens },
       };
     }
-  }
-
-  /**
-   * Format a tool execution result for the LLM.
-   */
-  private formatToolResult(result: ApprovedExecuteResult): string {
-    if (result.success) {
-      return typeof result.result === "string"
-        ? result.result
-        : JSON.stringify(result.result, null, 2);
-    }
-
-    // Format error for LLM
-    let errorMessage = result.error?.message || "Unknown error";
-    if (result.blocked) {
-      errorMessage = `[BLOCKED] ${errorMessage}`;
-    } else if (result.denied) {
-      errorMessage = `[DENIED] ${errorMessage}`;
-    }
-
-    return `Error: ${errorMessage}`;
   }
 
   /**

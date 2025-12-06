@@ -13,6 +13,7 @@ Build a multi-runtime LLM worker system with TypeScript, starting with CLI and t
 - **[User Stories](./user-stories.md)** - Requirements and validation criteria
 - **[Sandbox Design](./sandbox-design.md)** - Core sandbox abstraction
 - **[Browser Extension Architecture](./browser-extension-architecture.md)** - Browser-specific design
+- **[Tool Approval Design](./tool-approval-design.md)** - SDK-native approval pattern
 
 ## Key Learnings (from design phase)
 
