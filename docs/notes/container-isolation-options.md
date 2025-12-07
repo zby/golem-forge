@@ -9,6 +9,19 @@ See [../sandbox-design.md](../sandbox-design.md) for when and why container isol
 
 Container isolation is needed when processing **untrusted content** (downloaded files, user-provided documents) where prompt injection attacks are possible. App-level checks remain for UX; the container provides the actual security boundary.
 
+### Relationship to Clearance Protocol
+
+Container isolation and clearance protocols are complementary security layers:
+
+| Layer | What It Controls | Protects Against |
+|-------|------------------|------------------|
+| **Container Isolation** | OS-level access (files, network, processes) | Code escaping sandbox boundaries |
+| **Clearance Protocol** | Application-level data flow (git push, file export) | Data exfiltration through legitimate channels |
+
+A containerized worker might have network access for legitimate operations but still be constrained by clearance protocols that require user approval before data leaves. Conversely, clearance protocols alone can't prevent a compromised worker from directly accessing the network—container isolation provides that hard boundary.
+
+See [../sandbox-design.md](../sandbox-design.md) for clearance protocol details.
+
 ## Implementation Options
 
 ### Option 1: Docker

@@ -2,27 +2,64 @@
 
 ## Overview
 
-The sandbox provides a zone-based filesystem abstraction for AI workers, protecting against unintended operations while enabling useful file access.
+The sandbox provides a controlled environment for AI workers to process content and produce outputs. It protects the user's trusted environment from both accidental errors and adversarial manipulation.
 
-### What It Protects Against
+## Trust Model: The Gray Zone
 
-**Accidental errors** (LLM mistakes) - The LLM writes to the wrong file, runs the wrong command, or accesses something it shouldn't.
+The sandbox operates as a **gray zone**—neither fully trusted nor fully untrusted:
 
-- These are normal mistakes, not escape attempts
-- User approval catches most issues
-- **Application-level checks are sufficient**: zone permissions, approval prompts, shell whitelists
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         UNTRUSTED                                │
+│  Web content, external APIs, user-provided documents             │
+│  - Assume adversarial                                            │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ Intake (container isolation, future)
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        GRAY ZONE                                 │
+│                        (Sandbox)                                 │
+│                                                                  │
+│  LLM processes content, does valuable work                       │
+│  - Productive but not fully trustworthy                          │
+│  - Can be manipulated by prompt injection                        │
+│  - Outputs must be reviewed before entering trusted zone         │
+│                                                                  │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ Clearance (compression, review, approval)
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         TRUSTED                                  │
+│  User's git repo, persistent storage, approved outputs           │
+│  - Under user control                                            │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-**Adversarial content** (prompt injection) - An attacker embeds malicious instructions in content the LLM processes.
+This model recognizes that:
+- **Not untrusted**: The LLM is doing useful work we want
+- **Not trusted**: The LLM can be compromised by adversarial input
+- **Controlled**: We observe, limit, and gate its actions
 
-- Creative bypasses, unusual encodings, multi-step attacks
-- User may not recognize sophisticated attacks
-- **Application-level checks are insufficient** - container isolation required (future)
+## Security Layers
 
-### Design Principle
+The gray zone model drives a layered security architecture:
 
-Don't try to make application-level checks bulletproof against adversaries. Instead:
-- Use app-level checks for UX and catching mistakes (current)
-- Use container isolation when processing untrusted content (future)
+| Layer | What It Controls | Threat |
+|-------|------------------|--------|
+| **Zones** | What sandbox can access | LLM reading/writing wrong files |
+| **Approval** | Which operations need consent | Accidental destructive actions |
+| **Clearance** | What enters trusted zone | Malicious/corrupted outputs |
+| **Container** (future) | OS-level isolation | Code execution, system access |
+
+### Threats and Mitigations
+
+**Accidental errors** (LLM mistakes)—writing wrong files, running wrong commands:
+- Mitigated by zones, approval prompts, and clearance review
+- Application-level checks are sufficient
+
+**Adversarial content** (prompt injection)—malicious instructions embedded in processed content:
+- Mitigated by clearance compression and container isolation
+- Application-level checks alone are insufficient for sophisticated attacks
 
 | Content Source | Isolation Needed |
 |----------------|------------------|
@@ -31,53 +68,64 @@ Don't try to make application-level checks bulletproof against adversaries. Inst
 | Downloaded from internet | Container (future) |
 | User-provided documents | Container (future) |
 
-See [notes/container-isolation-options.md](notes/container-isolation-options.md) for container implementation.
-
-### Core Model
-
-- **Zone-based access**: Workers see a virtual filesystem with zones like `/input/`, `/output/`
-- **Two-level configuration**: Project defines available zones, workers declare what they need
-- **Secure by default**: No sandbox declaration = pure function (no file access)
-- **Automatic restriction**: Child workers only get what they declare, never more than parent
-
 ## Zone System
+
+Zones define what the sandbox can access—the **intake** boundary.
+
+### How Zones Work
+
+Workers see a virtual filesystem with named zones:
+
+```
+LLM: list_files("/")
+→ ["cache", "workspace"]
+
+LLM: list_files("/workspace")
+→ ["draft.md", "notes.txt"]
+
+LLM: write_file("/cache/new.txt", "content")
+→ Error: /cache is read-only
+```
+
+The LLM discovers available directories naturally—no special vocabulary needed.
 
 ### Project Configuration
 
-Project-level config defines **available zones**:
+Projects define available zones:
 
 ```yaml
 # golem-forge.config.yaml
 sandbox:
-  mode: sandboxed          # or 'direct'
-  root: .sandbox           # relative to project root
+  mode: sandboxed
+  root: .sandbox
   zones:
     cache:
       path: ./cache
-      mode: rw
+      mode: ro              # read-only
     workspace:
       path: ./workspace
-      mode: rw
-    data:
-      path: ./data
-      mode: ro             # read-only
+      mode: rw              # read-write
 ```
 
 ### Worker Declaration
 
-Each worker declares its **sandbox requirements**:
+Workers declare what they need:
 
 ```yaml
-# formatter.worker
+# analyzer.worker
 ---
-name: formatter
-description: Formats data files
+name: analyzer
 sandbox:
   zones:
-    - name: data
-      mode: rw             # requests read-write access
+    - name: workspace
+      mode: rw
 ---
 ```
+
+**Principles:**
+- **Secure by default**: No declaration = no file access
+- **Self-describing**: Each worker declares its requirements
+- **Least privilege**: Workers get only what they declare, never more
 
 ### Default Zones
 
@@ -88,96 +136,187 @@ When no project config exists:
 | `/cache/` | External downloads | PDFs, web pages, fetched content |
 | `/workspace/` | Working files | Reports, drafts, outputs |
 
-## Approval System
+### Worker Delegation
 
-Zones can specify **approval requirements** for write/delete operations, separate from access mode:
+Child workers can't exceed parent access:
+
+```
+Parent has: { workspace: rw, cache: ro }
+Child declares: { workspace: rw }
+Child gets: { workspace: rw }  ✓
+
+Parent has: { cache: ro }
+Child declares: { cache: rw }
+→ Error: exceeds parent access  ✗
+```
+
+### Approval Within Zones
+
+Zones can require approval for writes, separate from access mode:
 
 ```yaml
-sandbox:
-  zones:
-    - name: input
-      mode: ro
-      # no approval needed - zone is read-only
-    - name: drafts
-      mode: rw
-      approval:
-        write: preApproved    # No prompt
-        delete: preApproved
-    - name: final
-      mode: rw
-      approval:
-        write: ask            # Prompt user
-        delete: blocked       # Prevent entirely
+zones:
+  - name: drafts
+    mode: rw
+    approval:
+      write: preApproved      # No prompt needed
+      delete: preApproved
+  - name: final
+    mode: rw
+    approval:
+      write: ask              # Prompt user
+      delete: blocked         # Prevent entirely
 ```
 
-**Approval types:**
-- `preApproved` - Operation proceeds without prompt
-- `ask` - User prompted for approval (default)
-- `blocked` - Operation blocked entirely
-
-**Why separate from mode?**
-- `mode` = **capability** (what sandbox allows)
+- `mode` = **capability** (what's technically allowed)
 - `approval` = **consent** (what needs user review)
 
-A zone can be `rw` but still require approval for each write - defense in depth.
+## Clearance Protocol
 
-## Worker Delegation
+Zones control what enters the sandbox. **Clearance** controls what enters your trusted environment.
 
-When a parent calls a child worker, access is automatically restricted:
+### Why Clearance Matters
 
-```
-Parent has: { data: rw, workspace: rw, cache: rw }
-Child declares: { data: rw }
-    ↓
-Child gets: { data: rw }  (only what it declared)
-```
+Without controlled clearance, gray zone outputs flow directly into your trusted storage. A compromised LLM could inject malicious content, corrupted data, or subtle errors. Clearance ensures:
 
-```
-Parent has: { data: ro }
-Child declares: { data: rw }
-    ↓
-Error: Child requests 'rw' but parent only has 'ro'
-```
+1. **User visibility** - Content can be reviewed before entering trusted zone
+2. **Controlled initiation** - Sensitive operations require user action, not just approval
+3. **Audit trail** - All clearance operations are logged
+4. **Quality gate** - Compression makes review meaningful
 
-```
-Parent has: { data: rw, workspace: rw }
-Child declares: nothing
-    ↓
-Child gets: null (pure function - no file access)
-```
+Note: Content can also flow from sandbox to untrusted zone (external APIs, web services). That's network egress—a separate concern. Clearance specifically governs what enters *your* trusted environment.
 
-**Principles:**
-- Secure by default - no declaration = no access
-- Self-describing - each worker declares what it needs
-- Parent is ceiling - child cannot exceed parent's access
+### The Compression Principle
 
-## LLM Interface
-
-### Discoverable Filesystem
-
-The LLM sees a standard Unix-like filesystem and discovers available directories:
+Clearance must be **lower bandwidth than intake**. The LLM acts as a compression layer:
 
 ```
-LLM: list_files("/")
-→ ["input", "output"]
-
-LLM: list_files("/input")
-→ ["data.pdf", "config.json"]
-
-LLM: write_file("/input/new.txt", "content")
-→ Error: /input is read-only
+┌─────────────────────────────────────────────────────────────────┐
+│                      Intake (high bandwidth)                     │
+│  PDFs, web pages, images, databases, API responses               │
+│  - Hard for humans to review at scale                            │
+│  - May contain hidden malicious content                          │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     LLM Processing                               │
+│  Extract, summarize, transform, analyze                          │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   Clearance (low bandwidth)                      │
+│  Text summaries, structured data, reports                        │
+│  - Human-reviewable                                              │
+│  - Diff-friendly (works with git)                                │
+│  - Harder to hide malicious content                              │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**Why this design:**
-- Self-documenting - LLM discovers what's available
-- No special vocabulary - zones are just directories
-- Standard errors - "read-only" is universally understood
-- Configuration-agnostic - works with any zone setup
+| Property | Benefit |
+|----------|---------|
+| **Reviewability** | Humans can read and verify content |
+| **Diff-ability** | Text shows meaningful changes in git |
+| **Security** | Harder to smuggle data in plain text |
+| **Storage** | Less data to persist and version |
 
-**Anti-patterns:**
-- Hardcoding zone names in tool descriptions
-- Exposing "zone" terminology to LLM
-- Requiring LLM to know project configuration
+**Examples:**
+
+| Intake | Processing | Clearance |
+|--------|------------|-----------|
+| PDF document | Extract key points | Text summary |
+| Web page | Parse and filter | Structured JSON |
+| Image | Analyze content | Description + metadata |
+| Database query | Aggregate | Report table |
+
+**Anti-pattern**: Passing binary blobs unchanged—no security benefit, can't review.
+
+**Good pattern**: Extract information as text—reviewable, diffable, exfiltration attempts visible.
+
+### Scanners for Binary Content
+
+When binary output is unavoidable (generated images, compiled artifacts), automated scanners extend clearance:
+
+| Scanner Type | What It Checks |
+|--------------|----------------|
+| **Malware scanner** | Known malicious patterns |
+| **Content scanner** | Embedded text, metadata, steganography |
+| **Format validator** | File matches expected type |
+| **Size/entropy checker** | Anomalous data patterns |
+
+Scanners don't replace human review—they're defense in depth for content humans can't directly inspect.
+
+### Three Clearance Modes
+
+| Mode | Who Initiates | Approval | Use Case |
+|------|---------------|----------|----------|
+| **Autonomous** | LLM | Pre-cleared | Low-risk prep (staging, status) |
+| **Supervised** | LLM | Requires clearance | Medium-risk operations |
+| **Manual** | User only | User-initiated | High-risk boundary crossings |
+
+**Key insight**: For sensitive operations like `git_push`, the LLM has no tool to call. The operation exists only in CLI/UI. A prompt injection cannot even *request* that content enter the trusted zone.
+
+### Clearance Architecture
+
+Each clearance protocol has three layers:
+
+```
+src/clearance/<protocol>/
+├── operations.ts     # Core logic (shared)
+├── tools.ts          # LLM-callable (autonomous/supervised)
+└── commands.ts       # CLI/UI only (manual)
+```
+
+### Git Clearance
+
+Git is the first clearance protocol—version-controlled persistence with full audit trail.
+
+```
+┌─────────────────────────────────────────┐
+│         Sandbox (gray zone)             │
+│                                         │
+│  LLM writes to /workspace/              │
+│  LLM calls git_stage, git_status        │
+└──────────────────┬──────────────────────┘
+                   │
+                   │ Manual: user runs CLI command
+                   ▼
+┌─────────────────────────────────────────┐
+│     Trusted Zone (git target)           │
+│  User's local repo or GitHub            │
+└─────────────────────────────────────────┘
+```
+
+| Operation | Autonomous | Supervised | Manual |
+|-----------|------------|------------|--------|
+| `git_status` | ✓ | - | ✓ |
+| `git_stage` | ✓ | - | ✓ |
+| `git_diff` | ✓ | - | ✓ |
+| `git_pull` | ✓ | - | ✓ |
+| `git_discard` | ✓ | - | ✓ |
+| `git_push` | - | - | ✓ |
+
+**Workflow:**
+```
+LLM: git_stage({ files: [...], message: "Add report" })
+LLM: "Changes staged and ready for your review"
+
+--- User reviews when ready ---
+
+User: golem git diff           # Review staged changes
+User: golem git push           # Manual clearance into trusted zone
+```
+
+See [notes/git-integration-design.md](notes/git-integration-design.md) for implementation details.
+
+### Future Clearance Protocols
+
+| Protocol | Description | Mode |
+|----------|-------------|------|
+| **File Export** | Move files outside sandbox | Manual |
+| **API Clearance** | Send data to external services | Supervised/Manual |
+| **Clipboard** | Copy to system clipboard | Manual |
 
 ---
 
@@ -185,18 +324,17 @@ LLM: write_file("/input/new.txt", "content")
 
 ### Backend Modes
 
-**Sandboxed mode** (default) - virtual paths map to `.sandbox/`:
+**Sandboxed mode** (default)—virtual paths map to `.sandbox/`:
 
 ```typescript
 const sandbox = await createSandbox({
   mode: 'sandboxed',
   root: '.sandbox'
 });
-
 // /cache/doc.pdf → .sandbox/cache/doc.pdf
 ```
 
-**Direct mode** - virtual paths map to real directories:
+**Direct mode**—virtual paths map to real directories:
 
 ```typescript
 const sandbox = await createSandbox({
@@ -204,11 +342,10 @@ const sandbox = await createSandbox({
   cache: './downloads',
   workspace: './reports',
 });
-
 // /cache/doc.pdf → ./downloads/doc.pdf
 ```
 
-### Sandbox Interface
+### Interfaces
 
 ```typescript
 interface Sandbox {
@@ -224,11 +361,7 @@ interface Sandbox {
   getZoneAccess(zoneName: string): 'ro' | 'rw' | undefined;
   getAvailableZones(): string[];
 }
-```
 
-### Backend Interface
-
-```typescript
 interface SandboxBackend {
   read(realPath: string): Promise<string>;
   write(realPath: string, content: string): Promise<void>;
@@ -239,7 +372,7 @@ interface SandboxBackend {
 }
 ```
 
-**Implementations:**
+**Backend implementations:**
 - **CLI**: Node.js `fs`
 - **Browser**: OPFS (future)
 - **Test**: In-memory maps
@@ -257,34 +390,9 @@ class PermissionError extends SandboxError { }
 
 ---
 
-## Future: Git Integration
-
-```
-┌─────────────────────────────────────────┐
-│              Git (GitHub)               │
-│         Persistent storage              │
-└─────────────────────────────────────────┘
-          ↑                   │
-     push │                   │ pull
-          │                   ↓
-┌─────────────────────────────────────────┐
-│           Local Sandbox                 │
-│  /cache/     - downloads                │
-│  /workspace/ - working files            │
-└─────────────────────────────────────────┘
-```
-
-**Operations:**
-- `gitPull({ repo, paths })` - pull files from repo
-- `gitStage({ files, repo, message })` - stage for preview
-- `gitPush(commitId)` - push after approval
-- `gitDiscard(commitId)` - cancel staged changes
-
-See [notes/git-integration-design.md](notes/git-integration-design.md) for details.
-
 ## Future: Container Isolation
 
-For untrusted content, run workers in isolated containers:
+For untrusted content, containers provide OS-level isolation:
 
 ```
 ┌─────────────────────────────────────┐
@@ -299,6 +407,6 @@ For untrusted content, run workers in isolated containers:
 └─────────────────────────────────────┘
 ```
 
-App-level checks remain for UX; container provides security boundary.
+Container isolation hardens the **intake** boundary. Zones, approval, and clearance remain for UX and defense in depth.
 
-See [notes/container-isolation-options.md](notes/container-isolation-options.md) for options.
+See [notes/container-isolation-options.md](notes/container-isolation-options.md) for implementation options.
