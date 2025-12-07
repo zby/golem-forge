@@ -1,14 +1,26 @@
 # Git Toolset Demo
 
-Demonstrates the git workflow with a mock LLM:
+Demonstrates the git workflow step by step.
 
+## Interactive Demo
+
+Run the interactive demo that pauses at each step:
+
+```bash
+npx tsx examples/git-demo/run.ts
+```
+
+This walks you through:
 1. Setup test repo in `/tmp/golem-git-demo`
-2. Mock LLM writes a file to sandbox
-3. Mock LLM stages the file (user would approve in real usage)
-4. Manual git_push commits to the repo
-5. Verify the commit appears in git history
+2. Write a file to sandbox (simulating LLM action)
+3. Stage the file with approval dialog (you approve)
+4. Show git status and diff
+5. Push with approval dialog (you approve)
+6. Verify the commit in git history
 
-## Run the Demo
+## Automated Test
+
+Run the automated test with mock LLM:
 
 ```bash
 npx vitest run examples/git-demo/demo.test.ts
