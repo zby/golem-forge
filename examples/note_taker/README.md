@@ -2,23 +2,18 @@
 
 A note-taking worker that demonstrates write approval. Each write operation requires user confirmation in interactive mode.
 
-## Setup
+## Quick Start
 
 ```bash
-# Set your API key
 export ANTHROPIC_API_KEY="sk-ant-..."
+export GOLEM_FORGE_MODEL="anthropic:claude-haiku-4-5"
+
+golem-forge note_taker "Remember to review the PR tomorrow"
 ```
 
-## Usage
+## More Examples
 
 ```bash
-# Run from the examples directory
-golem-forge note_taker "Remember to review the PR tomorrow"
-
-# Or from within the worker directory
-cd examples/note_taker
-golem-forge . "Remember to review the PR tomorrow"
-
 # Add another note
 golem-forge note_taker "Meeting with team at 3pm"
 

@@ -2,22 +2,29 @@
 
 A code analysis assistant that explores and analyzes codebases using filesystem tools.
 
+## Quick Start
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GOLEM_FORGE_MODEL="anthropic:claude-haiku-4-5"
+
+# Put code to analyze in the codebase/ directory, then:
+golem-forge code_analyzer "Analyze the project structure"
+```
+
+## More Examples
+
+```bash
+golem-forge code_analyzer "Count all TypeScript files and summarize their purposes"
+golem-forge code_analyzer "Find configuration files and explain their settings"
+```
+
 ## Features
 
 - Explore project structure with glob patterns
 - Read and analyze source files
 - Generate detailed analysis reports
 - Count files, find patterns, identify entry points
-
-## Usage
-
-```bash
-cd examples/code_analyzer
-# Put code to analyze in the codebase/ directory, then:
-npx golem-forge . "Analyze the project structure"
-npx golem-forge . "Count all TypeScript files and summarize their purposes"
-npx golem-forge . "Find configuration files and explain their settings"
-```
 
 ## Sandbox Structure
 

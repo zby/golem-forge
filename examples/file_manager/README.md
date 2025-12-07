@@ -2,23 +2,18 @@
 
 A file management worker demonstrating filesystem tools with the sandbox.
 
-## Setup
+## Quick Start
 
 ```bash
-# Set your API key
 export ANTHROPIC_API_KEY="sk-ant-..."
+export GOLEM_FORGE_MODEL="anthropic:claude-haiku-4-5"
+
+golem-forge file_manager "List all files in the workspace"
 ```
 
-## Usage
+## More Examples
 
 ```bash
-# Run from the examples directory
-golem-forge file_manager "List all files in the workspace"
-
-# Or from within the worker directory
-cd examples/file_manager
-golem-forge . "List all files in the workspace"
-
 # Create a file
 golem-forge file_manager "Create a file called hello.txt with the content 'Hello World'"
 

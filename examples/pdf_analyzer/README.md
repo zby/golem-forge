@@ -1,9 +1,28 @@
 # PDF Analyzer Example
 
-A multi-worker document analysis system demonstrating:
-- **Worker delegation** with dynamic instructions
-- **Multi-zone sandbox** (input/output directories)
-- **Model compatibility** requirements for vision-capable models
+A multi-worker document analysis system demonstrating worker delegation with dynamic instructions and multi-zone sandboxing.
+
+## Quick Start
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GOLEM_FORGE_MODEL="anthropic:claude-sonnet-4-20250514"
+
+# Add some PDFs to analyze
+cp your-document.pdf input/
+
+# Run the analyzer
+golem-forge pdf_analyzer
+```
+
+Alternative models:
+```bash
+# OpenAI
+export GOLEM_FORGE_MODEL="openai:gpt-4o"
+
+# Google
+export GOLEM_FORGE_MODEL="google:gemini-2.0-flash"
+```
 
 ## Architecture
 
@@ -52,31 +71,6 @@ pdf_analyzer/
     │   └── analysis.md
     └── attention-is-all-you-need/
         └── analysis.md
-```
-
-## Setup
-
-```bash
-# Set your API key (at least one required)
-export ANTHROPIC_API_KEY="sk-ant-..."
-export OPENAI_API_KEY="sk-..."
-export GOOGLE_API_KEY="..."
-
-# Add some PDFs to analyze
-cp your-document.pdf examples/pdf_analyzer/input/
-```
-
-## Usage
-
-```bash
-# Run from the examples directory with a vision-capable model
-golem-forge pdf_analyzer --model anthropic:claude-sonnet-4-20250514
-
-# Or with OpenAI
-golem-forge pdf_analyzer --model openai:gpt-4o
-
-# Or with Google
-golem-forge pdf_analyzer --model google:gemini-2.0-flash
 ```
 
 ## Model Compatibility

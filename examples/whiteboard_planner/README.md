@@ -2,6 +2,22 @@
 
 Convert whiteboard photos into structured project plans using image analysis and worker delegation.
 
+## Quick Start
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GOLEM_FORGE_MODEL="anthropic:claude-haiku-4-5"
+
+# Add whiteboard photos to input/
+cp your-whiteboard.png input/
+
+# Run the orchestrator
+golem-forge whiteboard_planner "Process all whiteboards"
+
+# Check output
+cat plans/your-whiteboard.md
+```
+
 ## Features
 
 - Batch process multiple whiteboard images
@@ -11,21 +27,6 @@ Convert whiteboard photos into structured project plans using image analysis and
   - Prioritized tasks with dependencies
   - Timeline and milestones
   - Risks and open questions
-
-## Usage
-
-```bash
-cd examples/whiteboard_planner
-
-# Add whiteboard photos to input/
-cp your-whiteboard.png input/
-
-# Run the orchestrator
-npx golem-forge . "Process all whiteboards"
-
-# Check output
-cat plans/your-whiteboard.md
-```
 
 ## Project Structure
 
@@ -38,6 +39,13 @@ whiteboard_planner/
   plans/                          # Generated plans saved here (read-write)
 ```
 
+## Model Compatibility
+
+Requires a vision-capable model:
+- `anthropic:claude-haiku-4-5` or later Claude models
+- `openai:gpt-4o` or `gpt-4-turbo`
+- `google:gemini-1.5-pro` or `gemini-1.5-flash`
+
 ## Notes
 
 This example demonstrates:
@@ -46,10 +54,3 @@ This example demonstrates:
 - **Attachment policies**: Restricting file types and sizes
 - **Model compatibility**: Requiring vision-capable models
 - **Batch processing**: Processing multiple files in a workflow
-
-## Requirements
-
-Requires a vision-capable model:
-- `anthropic:claude-haiku-4-5` or later Claude models
-- `openai:gpt-4o` or `gpt-4-turbo`
-- `google:gemini-1.5-pro` or `gemini-1.5-flash`

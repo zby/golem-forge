@@ -2,25 +2,24 @@
 
 A minimal conversational worker demonstrating basic golem-forge usage. No tools, no sandbox—just a friendly chat agent.
 
-## Setup
+## Quick Start
 
 ```bash
-# Set your API key
 export ANTHROPIC_API_KEY="sk-ant-..."
+export GOLEM_FORGE_MODEL="anthropic:claude-haiku-4-5"
+
+golem-forge greeter "Hello, how are you today?"
 ```
 
-## Usage
+## More Examples
 
 ```bash
-# Run from the examples directory
-golem-forge greeter "Hello, how are you today?"
-
-# Or from within the worker directory
+# Run from within the worker directory
 cd examples/greeter
 golem-forge . "Hello, how are you today?"
 
-# With a different model
-golem-forge greeter "Tell me a joke" --model openai:gpt-4o-mini
+# Try different prompts
+golem-forge greeter "Tell me a joke"
 ```
 
 ## Worker Definition
@@ -36,5 +35,5 @@ model: anthropic:claude-haiku-4-5
 **Key points:**
 - Simple conversational agent
 - No tools or sandbox needed
-- Model specified in worker (can be overridden with `--model`)
+- Model can be set via `GOLEM_FORGE_MODEL` environment variable
 - Instructions in markdown body
