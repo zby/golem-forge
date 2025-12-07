@@ -190,6 +190,8 @@ type WriteFileInput = z.infer<typeof writeFileSchema>;
 
 /**
  * Create a write_file tool.
+ *
+ * Returns a structured DiffResultValue for UI rendering.
  */
 export function createWriteFileTool(sandbox: Sandbox, options?: ToolOptions): NamedTool {
   return {
@@ -199,10 +201,35 @@ export function createWriteFileTool(sandbox: Sandbox, options?: ToolOptions): Na
     needsApproval: options?.needsApproval ?? true, // Default: requires approval
     execute: async ({ path, content }: WriteFileInput, _options: ToolExecutionOptions) => {
       try {
+        // Check if file exists and read original content for diff
+        let original: string | undefined;
+        let isNew = true;
+
+        try {
+          const exists = await sandbox.exists(path);
+          if (exists) {
+            isNew = false;
+            // Only read original if file is not too large (skip for files > 100KB)
+            const stat = await sandbox.stat(path);
+            if (stat.size <= 100 * 1024) {
+              original = await sandbox.read(path);
+            }
+          }
+        } catch {
+          // If we can't read original, continue without it
+        }
+
         await sandbox.write(path, content);
+
+        // Return structured diff result for UI rendering
+        // Maintains backward compatibility with success/path/bytesWritten fields
         return {
+          kind: "diff" as const,
           success: true,
           path,
+          original,
+          modified: content,
+          isNew,
           bytesWritten: content.length,
         };
       } catch (error) {

@@ -286,6 +286,7 @@ export class WorkerRuntime implements WorkerRunner {
       tools: this.tools,
       approvalController: this.approvalController,
       onEvent: this.onEvent,
+      uiAdapter: this.options.uiAdapter,
     });
 
     this.initialized = true;

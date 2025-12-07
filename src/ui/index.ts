@@ -23,6 +23,14 @@ export type {
   DiffContent,
   InterruptSignal,
   ToolResult,
+  // Structured tool result types
+  TextResultValue,
+  DiffResultValue,
+  FileContentResultValue,
+  FileListResultValue,
+  JsonResultValue,
+  ToolResultValue,
+  TypedToolResult,
 } from "./types.js";
 
 // Adapter interface
@@ -70,3 +78,17 @@ export {
   isManualTool,
   isLLMTool,
 } from "./tool-info.js";
+
+// Diff rendering
+export {
+  renderDiff,
+  getDiffSummary,
+  type DiffRenderOptions,
+} from "./diff-renderer.js";
+
+// Result utilities
+export {
+  isToolResultValue,
+  toTypedToolResult,
+  isSuccessResult,
+} from "./result-utils.js";

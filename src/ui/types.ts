@@ -210,3 +210,100 @@ export type ToolResult<T = unknown> =
   | { type: "success"; value: T }
   | { type: "error"; error: string }
   | { type: "interrupted"; partial?: Partial<T> };
+
+// ============================================================================
+// Structured Tool Results
+// ============================================================================
+
+/**
+ * Plain text result.
+ */
+export interface TextResultValue {
+  kind: "text";
+  /** The text content */
+  content: string;
+}
+
+/**
+ * File diff result showing changes to a file.
+ */
+export interface DiffResultValue {
+  kind: "diff";
+  /** File path that was changed */
+  path: string;
+  /** Original content (undefined for new files) */
+  original?: string;
+  /** Modified content */
+  modified: string;
+  /** Whether this is a new file */
+  isNew: boolean;
+  /** Number of bytes written */
+  bytesWritten: number;
+}
+
+/**
+ * File content result (from read operations).
+ */
+export interface FileContentResultValue {
+  kind: "file_content";
+  /** File path */
+  path: string;
+  /** File content */
+  content: string;
+  /** File size in bytes */
+  size: number;
+}
+
+/**
+ * File list result.
+ */
+export interface FileListResultValue {
+  kind: "file_list";
+  /** Directory path that was listed */
+  path: string;
+  /** List of file/directory names */
+  files: string[];
+  /** Number of entries */
+  count: number;
+}
+
+/**
+ * JSON/structured data result.
+ */
+export interface JsonResultValue {
+  kind: "json";
+  /** The structured data */
+  data: unknown;
+  /** Optional summary for display */
+  summary?: string;
+}
+
+/**
+ * Discriminated union of all tool result value types.
+ * Tools can return these typed values for proper UI rendering.
+ */
+export type ToolResultValue =
+  | TextResultValue
+  | DiffResultValue
+  | FileContentResultValue
+  | FileListResultValue
+  | JsonResultValue;
+
+/**
+ * Typed tool result with status information.
+ * Used by UIAdapter to display tool execution results.
+ */
+export interface TypedToolResult {
+  /** Tool name that produced this result */
+  toolName: string;
+  /** Tool call ID for correlation */
+  toolCallId: string;
+  /** Execution status */
+  status: "success" | "error" | "interrupted";
+  /** Structured result value (only for success) */
+  value?: ToolResultValue;
+  /** Error message (only for error status) */
+  error?: string;
+  /** Execution duration in milliseconds */
+  durationMs: number;
+}

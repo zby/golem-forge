@@ -18,7 +18,9 @@ import type {
   TaskProgress,
   StatusUpdate,
   DiffContent,
+  TypedToolResult,
 } from "./types.js";
+import { renderDiff, getDiffSummary } from "./diff-renderer.js";
 
 /**
  * Options for CLIAdapter.
@@ -382,23 +384,194 @@ export class CLIAdapter implements UIAdapter {
       ? pc.green(`NEW: ${diff.path}`)
       : pc.yellow(`MODIFIED: ${diff.path}`);
 
+    const summary = getDiffSummary(diff.original, diff.modified);
+
     output.write("\n" + "─".repeat(60) + "\n");
-    output.write(title + "\n");
+    output.write(`${title} ${pc.dim(`(${summary})`)}\n`);
     output.write("─".repeat(60) + "\n");
 
-    if (diff.isNew) {
-      // Show new file content
-      const lines = diff.modified.split("\n");
-      for (const line of lines) {
-        output.write(pc.green(`+ ${line}`) + "\n");
-      }
-    } else if (diff.original) {
-      // Simple diff display (could be enhanced with actual diff algorithm)
-      output.write(pc.dim("(diff display)") + "\n");
-      output.write(diff.modified + "\n");
+    output.write(renderDiff(diff.original, diff.modified) + "\n");
+
+    output.write("─".repeat(60) + "\n");
+  }
+
+  // ============================================================================
+  // Tool Results
+  // ============================================================================
+
+  async displayToolResult(result: TypedToolResult): Promise<void> {
+    const output = this.options.output as NodeJS.WriteStream;
+
+    // Handle error status
+    if (result.status === "error") {
+      output.write(
+        `${pc.red("✗")} ${pc.bold(result.toolName)} ${pc.red("failed")}: ${result.error}\n`
+      );
+      return;
     }
 
+    // Handle interrupted status
+    if (result.status === "interrupted") {
+      output.write(
+        `${pc.yellow("⚠")} ${pc.bold(result.toolName)} ${pc.yellow("interrupted")}\n`
+      );
+      return;
+    }
+
+    // Handle success status - display based on value kind
+    if (!result.value) {
+      output.write(
+        `${pc.green("✓")} ${pc.bold(result.toolName)} ${pc.dim(`(${result.durationMs}ms)`)}\n`
+      );
+      return;
+    }
+
+    switch (result.value.kind) {
+      case "diff":
+        this.displayDiffResult(result.toolName, result.value, result.durationMs);
+        break;
+
+      case "text":
+        this.displayTextResult(result.toolName, result.value.content, result.durationMs);
+        break;
+
+      case "file_content":
+        this.displayFileContentResult(result.toolName, result.value, result.durationMs);
+        break;
+
+      case "file_list":
+        this.displayFileListResult(result.toolName, result.value, result.durationMs);
+        break;
+
+      case "json":
+        this.displayJsonResult(result.toolName, result.value, result.durationMs);
+        break;
+
+      default:
+        // Unknown kind, display as JSON
+        output.write(
+          `${pc.green("✓")} ${pc.bold(result.toolName)} ${pc.dim(`(${result.durationMs}ms)`)}\n`
+        );
+        output.write(JSON.stringify(result.value, null, 2) + "\n");
+    }
+  }
+
+  /**
+   * Display a diff result.
+   */
+  private displayDiffResult(
+    toolName: string,
+    value: { path: string; original?: string; modified: string; isNew: boolean; bytesWritten: number },
+    durationMs: number
+  ): void {
+    const output = this.options.output as NodeJS.WriteStream;
+
+    const title = value.isNew
+      ? pc.green(`NEW: ${value.path}`)
+      : pc.yellow(`MODIFIED: ${value.path}`);
+
+    const summary = getDiffSummary(value.original, value.modified);
+
+    output.write("\n" + "─".repeat(60) + "\n");
+    output.write(
+      `${pc.green("✓")} ${pc.bold(toolName)} → ${title} ${pc.dim(`(${summary}, ${value.bytesWritten} bytes, ${durationMs}ms)`)}\n`
+    );
     output.write("─".repeat(60) + "\n");
+
+    output.write(renderDiff(value.original, value.modified) + "\n");
+
+    output.write("─".repeat(60) + "\n");
+  }
+
+  /**
+   * Display a text result.
+   */
+  private displayTextResult(toolName: string, content: string, durationMs: number): void {
+    const output = this.options.output as NodeJS.WriteStream;
+
+    output.write(
+      `${pc.green("✓")} ${pc.bold(toolName)} ${pc.dim(`(${durationMs}ms)`)}\n`
+    );
+
+    // Truncate long content
+    const maxLen = 500;
+    if (content.length > maxLen) {
+      output.write(content.slice(0, maxLen) + pc.dim(`... (${content.length - maxLen} more chars)\n`));
+    } else {
+      output.write(content + "\n");
+    }
+  }
+
+  /**
+   * Display a file content result.
+   */
+  private displayFileContentResult(
+    toolName: string,
+    value: { path: string; content: string; size: number },
+    durationMs: number
+  ): void {
+    const output = this.options.output as NodeJS.WriteStream;
+
+    output.write(
+      `${pc.green("✓")} ${pc.bold(toolName)} → ${pc.cyan(value.path)} ${pc.dim(`(${value.size} bytes, ${durationMs}ms)`)}\n`
+    );
+
+    // Truncate long content
+    const maxLen = 500;
+    if (value.content.length > maxLen) {
+      output.write(value.content.slice(0, maxLen) + pc.dim(`\n... (${value.content.length - maxLen} more chars)\n`));
+    } else {
+      output.write(value.content + "\n");
+    }
+  }
+
+  /**
+   * Display a file list result.
+   */
+  private displayFileListResult(
+    toolName: string,
+    value: { path: string; files: string[]; count: number },
+    durationMs: number
+  ): void {
+    const output = this.options.output as NodeJS.WriteStream;
+
+    output.write(
+      `${pc.green("✓")} ${pc.bold(toolName)} → ${pc.cyan(value.path)} ${pc.dim(`(${value.count} entries, ${durationMs}ms)`)}\n`
+    );
+
+    // Show files (limit to first 20)
+    const maxFiles = 20;
+    for (let i = 0; i < Math.min(value.files.length, maxFiles); i++) {
+      output.write(`  ${value.files[i]}\n`);
+    }
+    if (value.files.length > maxFiles) {
+      output.write(pc.dim(`  ... and ${value.files.length - maxFiles} more\n`));
+    }
+  }
+
+  /**
+   * Display a JSON result.
+   */
+  private displayJsonResult(
+    toolName: string,
+    value: { data: unknown; summary?: string },
+    durationMs: number
+  ): void {
+    const output = this.options.output as NodeJS.WriteStream;
+
+    const summaryText = value.summary ? ` - ${value.summary}` : "";
+    output.write(
+      `${pc.green("✓")} ${pc.bold(toolName)}${summaryText} ${pc.dim(`(${durationMs}ms)`)}\n`
+    );
+
+    // Pretty print JSON (truncated)
+    const json = JSON.stringify(value.data, null, 2);
+    const maxLen = 500;
+    if (json.length > maxLen) {
+      output.write(json.slice(0, maxLen) + pc.dim(`\n... (${json.length - maxLen} more chars)\n`));
+    } else {
+      output.write(json + "\n");
+    }
   }
 }
 

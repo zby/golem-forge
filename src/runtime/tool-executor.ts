@@ -8,6 +8,8 @@
 import type { Tool, ModelMessage } from "ai";
 import type { ApprovalController } from "../approval/index.js";
 import type { RuntimeEventCallback, RuntimeEventData } from "./events.js";
+import type { UIAdapter } from "../ui/index.js";
+import { isToolResultValue, toTypedToolResult } from "../ui/index.js";
 
 /**
  * A tool call to be executed.
@@ -52,6 +54,8 @@ export interface ToolExecutorOptions {
   approvalController: ApprovalController;
   /** Optional event callback for observability */
   onEvent?: RuntimeEventCallback;
+  /** Optional UI adapter for displaying tool results */
+  uiAdapter?: UIAdapter;
 }
 
 /**
@@ -69,11 +73,13 @@ export class ToolExecutor {
   private tools: Record<string, Tool>;
   private approvalController: ApprovalController;
   private onEvent?: RuntimeEventCallback;
+  private uiAdapter?: UIAdapter;
 
   constructor(options: ToolExecutorOptions) {
     this.tools = options.tools;
     this.approvalController = options.approvalController;
     this.onEvent = options.onEvent;
+    this.uiAdapter = options.uiAdapter;
   }
 
   /**
@@ -196,6 +202,13 @@ export class ToolExecutor {
         truncated: outputStr.length > maxOutputLen,
         durationMs,
       });
+    }
+
+    // Display structured tool result via UI adapter if available
+    // Only display if the result is a structured ToolResultValue (has kind field)
+    if (this.uiAdapter && isToolResultValue(output)) {
+      const typedResult = toTypedToolResult(toolName, toolCallId, output, isError, durationMs);
+      await this.uiAdapter.displayToolResult(typedResult);
     }
 
     return {

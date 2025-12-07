@@ -33,6 +33,15 @@ export type {
   ParsedCommand,
   BuiltinCommand,
   CommandType,
+  // Structured tool result types
+  TextResultValue,
+  DiffResultValue,
+  FileContentResultValue,
+  FileListResultValue,
+  JsonResultValue,
+  ToolResultValue,
+  TypedToolResult,
+  DiffRenderOptions,
 } from "./ui/index.js";
 
 export {
@@ -55,4 +64,11 @@ export {
   getLLMTools,
   isManualTool,
   isLLMTool,
+  // Diff rendering
+  renderDiff,
+  getDiffSummary,
+  // Result utilities
+  isToolResultValue,
+  toTypedToolResult,
+  isSuccessResult,
 } from "./ui/index.js";

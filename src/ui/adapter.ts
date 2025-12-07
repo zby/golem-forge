@@ -14,6 +14,7 @@ import type {
   TaskProgress,
   StatusUpdate,
   DiffContent,
+  TypedToolResult,
 } from "./types.js";
 
 /**
@@ -101,6 +102,18 @@ export interface UIAdapter {
    * Display a diff for review.
    */
   displayDiff(diff: DiffContent): Promise<void>;
+
+  // ============================================================================
+  // Tool Results
+  // ============================================================================
+
+  /**
+   * Display a structured tool result.
+   * Called after tool execution to render results appropriately based on type.
+   *
+   * @param result - The typed tool result to display
+   */
+  displayToolResult(result: TypedToolResult): Promise<void>;
 
   // ============================================================================
   // Lifecycle
