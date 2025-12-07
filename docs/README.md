@@ -64,6 +64,8 @@ The CLI is the **proving ground** - we validate the core abstractions (sandbox, 
 
 ### Architecture
 - **[Sandbox Design](./sandbox-design.md)** - Unified sandbox for CLI and browser. Core security model.
+- **[UI Abstraction](./ui-abstraction.md)** - Platform-independent UI layer. Manual tools, slash commands, interruption.
+- **[Tool Approval Design](./tool-approval-design.md)** - Approval system for tool execution.
 - **[Browser Extension Architecture](./browser-extension-architecture.md)** - Browser-specific architecture, OPFS, GitHub sync.
 
 ### Implementation Plan
@@ -75,8 +77,10 @@ The CLI is the **proving ground** - we validate the core abstractions (sandbox, 
 
 1. **User Stories** - Understand what we're building
 2. **Sandbox Design** - Understand the core abstraction
-3. **Browser Extension Architecture** - Understand the browser-specific layer
-4. **Implementation Plan** - Understand the build sequence
+3. **UI Abstraction** - Understand the platform-independent UI layer
+4. **Tool Approval Design** - Understand the approval system
+5. **Browser Extension Architecture** - Understand the browser-specific layer
+6. **Implementation Plan** - Understand the build sequence
 
 ---
 
