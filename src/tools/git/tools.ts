@@ -79,6 +79,11 @@ export function createGitStatusTool(options: GitToolOptions): NamedTool {
     description: 'Show status of sandbox files and staged commits ready for push',
     inputSchema: GitStatusInputSchema,
     needsApproval: false, // Read-only
+    manualExecution: {
+      mode: 'both',
+      label: 'Git Status',
+      category: 'Git',
+    },
     execute: async (_args: GitStatusInput, _options: ToolExecutionOptions) => {
       try {
         const staged = await backend.listStagedCommits();
@@ -129,7 +134,7 @@ export function createGitStatusTool(options: GitToolOptions): NamedTool {
  * Create a git_stage tool.
  *
  * Stages files from sandbox for commit.
- * No approval needed (just prepares, doesn't persist).
+ * Requires approval (assisted mode - LLM suggests, user confirms).
  */
 export function createGitStageTool(options: GitToolOptions): NamedTool {
   const { backend, sandbox } = options;
@@ -138,7 +143,12 @@ export function createGitStageTool(options: GitToolOptions): NamedTool {
     name: 'git_stage',
     description: 'Stage sandbox files for commit. Creates a staged commit that can be reviewed and pushed.',
     inputSchema: GitStageInputSchema,
-    needsApproval: false, // Just prepares, no side effects
+    needsApproval: true, // Assisted: LLM suggests files, user confirms
+    manualExecution: {
+      mode: 'both',
+      label: 'Stage Files',
+      category: 'Git',
+    },
     execute: async (args: GitStageInput, _options: ToolExecutionOptions) => {
       try {
         if (!sandbox) {
@@ -206,6 +216,7 @@ export function createGitStageTool(options: GitToolOptions): NamedTool {
  *
  * Shows diff for staged commits.
  * Read-only, no approval needed.
+ * Available to both LLM and user.
  */
 export function createGitDiffTool(options: GitToolOptions): NamedTool {
   const { backend } = options;
@@ -215,6 +226,11 @@ export function createGitDiffTool(options: GitToolOptions): NamedTool {
     description: 'Show unified diff for a staged commit',
     inputSchema: GitDiffInputSchema,
     needsApproval: false, // Read-only
+    manualExecution: {
+      mode: 'both',
+      label: 'Show Diff',
+      category: 'Git',
+    },
     execute: async (args: GitDiffInput, _options: ToolExecutionOptions) => {
       try {
         if (args.commitId) {
@@ -256,6 +272,7 @@ export function createGitDiffTool(options: GitToolOptions): NamedTool {
  * Create a git_push tool.
  *
  * Pushes staged commit to git target.
+ * MANUAL ONLY - user must explicitly trigger push.
  * REQUIRES APPROVAL - persists changes outside sandbox.
  */
 export function createGitPushTool(options: GitToolOptions): NamedTool {
@@ -265,8 +282,12 @@ export function createGitPushTool(options: GitToolOptions): NamedTool {
     name: 'git_push',
     description: 'Push a staged commit to a git repository (local or GitHub)',
     inputSchema: GitPushInputSchema,
-    // Always require approval for push operations (persists changes outside sandbox)
-    needsApproval: true,
+    needsApproval: true, // Persists changes outside sandbox
+    manualExecution: {
+      mode: 'manual',
+      label: 'Push',
+      category: 'Git',
+    },
     execute: async (args: GitPushInput, _options: ToolExecutionOptions) => {
       try {
         const result = await backend.push({
@@ -311,6 +332,11 @@ export function createGitDiscardTool(options: GitToolOptions): NamedTool {
     description: 'Discard a staged commit without pushing',
     inputSchema: GitDiscardInputSchema,
     needsApproval: false, // Just cleans up
+    manualExecution: {
+      mode: 'both',
+      label: 'Discard Staged',
+      category: 'Git',
+    },
     execute: async (args: GitDiscardInput, _options: ToolExecutionOptions) => {
       try {
         await backend.discardStagedCommit(args.commitId);
@@ -339,6 +365,11 @@ export function createGitPullTool(options: GitToolOptions): NamedTool {
     description: 'Pull files from a git repository into the sandbox',
     inputSchema: GitPullInputSchema,
     needsApproval: false, // Writes to sandbox only
+    manualExecution: {
+      mode: 'both',
+      label: 'Pull',
+      category: 'Git',
+    },
     execute: async (args: GitPullInput, _options: ToolExecutionOptions) => {
       try {
         if (!sandbox) {
@@ -411,6 +442,11 @@ export function createGitMergeTool(_options: GitToolOptions): NamedTool {
     description: 'Perform a three-way merge on text content',
     inputSchema: GitMergeInputSchema,
     needsApproval: false, // Pure computation
+    manualExecution: {
+      mode: 'both',
+      label: 'Merge',
+      category: 'Git',
+    },
     execute: async (args: GitMergeInput, _options: ToolExecutionOptions) => {
       try {
         const result = merge(args.ours, args.theirs, args.base);
@@ -445,6 +481,11 @@ export function createGitBranchesTool(options: GitToolOptions): NamedTool {
     description: 'List branches in a git repository',
     inputSchema: GitBranchesInputSchema,
     needsApproval: false, // Read-only
+    manualExecution: {
+      mode: 'both',
+      label: 'List Branches',
+      category: 'Git',
+    },
     execute: async (args: GitBranchesInput, _options: ToolExecutionOptions) => {
       try {
         const result = await backend.listBranches(args.target);

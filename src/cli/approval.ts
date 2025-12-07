@@ -32,6 +32,82 @@ function formatArgs(args: Record<string, unknown>, indent: string = "  "): strin
 }
 
 /**
+ * Format git_stage arguments for display.
+ * Shows files and commit message in a user-friendly way.
+ */
+function formatGitStageArgs(args: Record<string, unknown>): string {
+  const lines: string[] = [];
+
+  // Files to stage
+  const files = args.files;
+  if (Array.isArray(files) && files.length > 0) {
+    lines.push("Files to stage:");
+    for (const file of files) {
+      lines.push(`  ${file}`);
+    }
+  }
+
+  // Commit message
+  const message = args.message;
+  if (typeof message === "string") {
+    lines.push("");
+    lines.push(`Commit message: "${message}"`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Format git_push arguments for display.
+ */
+function formatGitPushArgs(args: Record<string, unknown>): string {
+  const lines: string[] = [];
+
+  const commitId = args.commitId;
+  if (typeof commitId === "string") {
+    lines.push(`Staged commit: ${commitId}`);
+  }
+
+  const target = args.target as Record<string, unknown> | undefined;
+  if (target) {
+    if (target.type === "local") {
+      lines.push(`Target: local repository at ${target.path}`);
+      if (target.branch) {
+        lines.push(`Branch: ${target.branch}`);
+      }
+    } else if (target.type === "github") {
+      lines.push(`Target: GitHub ${target.repo}`);
+      if (target.branch) {
+        lines.push(`Branch: ${target.branch}`);
+      }
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Check if this is a git operation that needs special formatting.
+ */
+function isGitOperation(toolName: string): boolean {
+  return toolName.startsWith("git_");
+}
+
+/**
+ * Format arguments based on tool type.
+ */
+function formatToolArgs(toolName: string, args: Record<string, unknown>): string {
+  switch (toolName) {
+    case "git_stage":
+      return formatGitStageArgs(args);
+    case "git_push":
+      return formatGitPushArgs(args);
+    default:
+      return formatArgs(args);
+  }
+}
+
+/**
  * Create a readline interface for terminal input.
  */
 function createReadlineInterface(): readline.Interface {
@@ -95,8 +171,14 @@ export function createCLIApprovalCallback(options: CLIApprovalOptions = {}): App
       console.log(`Description: ${request.description}`);
 
       if (Object.keys(request.toolArgs).length > 0) {
-        console.log("Arguments:");
-        console.log(formatArgs(request.toolArgs));
+        // Use tool-specific formatting for git operations
+        if (isGitOperation(request.toolName)) {
+          console.log("");
+          console.log(formatToolArgs(request.toolName, request.toolArgs));
+        } else {
+          console.log("Arguments:");
+          console.log(formatArgs(request.toolArgs));
+        }
       }
 
       console.log("─".repeat(60));

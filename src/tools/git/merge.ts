@@ -273,3 +273,40 @@ export function hasConflictMarkers(content: string): boolean {
     content.includes('<<<<<<< ') // Also catch standard git markers
   );
 }
+
+/**
+ * Statistics for a diff.
+ */
+export interface DiffStats {
+  /** Number of lines added */
+  additions: number;
+  /** Number of lines removed */
+  deletions: number;
+}
+
+/**
+ * Compute diff statistics between two strings.
+ *
+ * @param oldStr - Original content (empty string for new files)
+ * @param newStr - New content (empty string for deleted files)
+ * @returns Statistics with addition and deletion counts
+ */
+export function computeDiffStats(oldStr: string, newStr: string): DiffStats {
+  const changes = diffLines(oldStr, newStr);
+
+  let additions = 0;
+  let deletions = 0;
+
+  for (const change of changes) {
+    // Count non-empty lines
+    const lineCount = change.value.split('\n').filter(line => line !== '').length;
+
+    if (change.added) {
+      additions += lineCount;
+    } else if (change.removed) {
+      deletions += lineCount;
+    }
+  }
+
+  return { additions, deletions };
+}

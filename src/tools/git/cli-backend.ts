@@ -24,7 +24,8 @@ import type {
 } from './types.js';
 import { GitError, GitAuthError } from './types.js';
 import { getGitHubAuth } from './auth.js';
-import { generateNewFilePatch, generateDeleteFilePatch } from './merge.js';
+import { generateNewFilePatch, generateDeleteFilePatch, computeDiffStats } from './merge.js';
+import type { DiffSummary } from '../../ui/types.js';
 
 /**
  * Safely execute a git command with array arguments.
@@ -537,6 +538,45 @@ export class CLIGitBackend implements GitBackend {
     }
 
     return diffs.join('\n');
+  }
+
+  async diffSummaryStagedCommit(id: string): Promise<DiffSummary[]> {
+    const staged = this.stagedCommits.get(id);
+    if (!staged) {
+      throw new GitError(`Staged commit not found: ${id}`);
+    }
+
+    const summaries: DiffSummary[] = [];
+
+    for (const file of staged.files) {
+      const content = staged.contents.get(file.sandboxPath);
+      const contentStr = content ? content.toString('utf8') : '';
+
+      let stats: { additions: number; deletions: number };
+
+      switch (file.operation) {
+        case 'create':
+          stats = computeDiffStats('', contentStr);
+          break;
+        case 'update':
+          // For updates, we'd need original content for accurate stats
+          // For now, treat as all additions
+          stats = computeDiffStats('', contentStr);
+          break;
+        case 'delete':
+          stats = computeDiffStats(contentStr, '');
+          break;
+      }
+
+      summaries.push({
+        path: file.sandboxPath,
+        operation: file.operation,
+        additions: stats.additions,
+        deletions: stats.deletions,
+      });
+    }
+
+    return summaries;
   }
 
   // ============================================================================

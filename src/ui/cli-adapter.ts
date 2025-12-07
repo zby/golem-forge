@@ -18,6 +18,8 @@ import type {
   TaskProgress,
   StatusUpdate,
   DiffContent,
+  DiffSummary,
+  DiffSummaryDisplayOptions,
   TypedToolResult,
   DiffResultValue,
   FileContentResultValue,
@@ -407,6 +409,107 @@ export class CLIAdapter implements UIAdapter {
     output.write(renderDiff(diff.original, diff.modified, { isNew: diff.isNew }) + "\n");
 
     output.write("─".repeat(60) + "\n");
+  }
+
+  async displayDiffSummary(
+    summaries: DiffSummary[],
+    options?: DiffSummaryDisplayOptions
+  ): Promise<void> {
+    const output = this.options.output as NodeJS.WriteStream;
+
+    if (summaries.length === 0) {
+      output.write(pc.dim("  No changes\n"));
+      return;
+    }
+
+    // Display each file summary
+    for (let i = 0; i < summaries.length; i++) {
+      const s = summaries[i];
+      const opSymbol = this.formatOperationSymbol(s.operation);
+      const statsStr = this.formatDiffStats(s.additions, s.deletions);
+      const indexStr = options?.getDiff ? pc.dim(`[${i + 1}] `) : "";
+
+      output.write(`  ${indexStr}${opSymbol} ${s.path} ${statsStr}\n`);
+    }
+
+    // If drill-down is available, prompt for selection
+    if (options?.getDiff && this.rl) {
+      output.write("\n");
+      const answer = await this.promptDiffSelection(summaries.length);
+
+      if (answer !== null) {
+        const selected = summaries[answer];
+        try {
+          const diff = await options.getDiff(selected.path);
+          output.write("\n" + "─".repeat(60) + "\n");
+          output.write(pc.bold(selected.path) + "\n");
+          output.write("─".repeat(60) + "\n");
+          output.write(diff + "\n");
+          output.write("─".repeat(60) + "\n");
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          output.write(pc.red(`Failed to get diff: ${msg}\n`));
+        }
+      }
+    }
+  }
+
+  /**
+   * Format operation symbol for display.
+   */
+  private formatOperationSymbol(operation: "create" | "update" | "delete"): string {
+    switch (operation) {
+      case "create":
+        return pc.green("A");
+      case "update":
+        return pc.yellow("M");
+      case "delete":
+        return pc.red("D");
+    }
+  }
+
+  /**
+   * Format diff stats for display.
+   */
+  private formatDiffStats(additions: number, deletions: number): string {
+    const parts: string[] = [];
+    if (additions > 0) {
+      parts.push(pc.green(`+${additions}`));
+    }
+    if (deletions > 0) {
+      parts.push(pc.red(`-${deletions}`));
+    }
+    if (parts.length === 0) {
+      return pc.dim("(no changes)");
+    }
+    return pc.dim(`(${parts.join(" ")})`);
+  }
+
+  /**
+   * Prompt for diff selection.
+   * Returns index of selected file, or null if skipped.
+   */
+  private async promptDiffSelection(count: number): Promise<number | null> {
+    return new Promise((resolve) => {
+      this.rl!.question(
+        pc.dim(`View diff? [1-${count}] or [s]kip: `),
+        (answer) => {
+          const trimmed = answer.trim().toLowerCase();
+          if (trimmed === "s" || trimmed === "skip" || trimmed === "") {
+            resolve(null);
+            return;
+          }
+
+          const num = parseInt(trimmed, 10);
+          if (isNaN(num) || num < 1 || num > count) {
+            resolve(null);
+            return;
+          }
+
+          resolve(num - 1);
+        }
+      );
+    });
   }
 
   // ============================================================================

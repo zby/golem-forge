@@ -187,6 +187,29 @@ export interface DiffContent {
   isNew: boolean;
 }
 
+/**
+ * Summary of changes for a single file.
+ * Used for compact diff display in approval dialogs.
+ */
+export interface DiffSummary {
+  /** File path */
+  path: string;
+  /** Type of change */
+  operation: "create" | "update" | "delete";
+  /** Number of lines added */
+  additions: number;
+  /** Number of lines removed */
+  deletions: number;
+}
+
+/**
+ * Options for displaying diff summary with drill-down capability.
+ */
+export interface DiffSummaryDisplayOptions {
+  /** Callback to get full diff for a file (enables drill-down) */
+  getDiff?: (path: string) => Promise<string>;
+}
+
 // ============================================================================
 // Interruption
 // ============================================================================

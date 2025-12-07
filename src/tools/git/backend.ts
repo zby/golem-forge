@@ -12,6 +12,7 @@ import type {
   PushResult,
   BranchListResult,
 } from './types.js';
+import type { DiffSummary } from '../../ui/types.js';
 
 /**
  * Input for creating a staged commit.
@@ -123,6 +124,17 @@ export interface GitBackend {
    * @returns Unified diff string
    */
   diffStagedCommit(id: string): Promise<string>;
+
+  /**
+   * Get diff summary for a staged commit.
+   *
+   * Returns an array of file summaries with addition/deletion counts.
+   * Used for compact display in approval dialogs.
+   *
+   * @param id - Commit ID
+   * @returns Array of diff summaries
+   */
+  diffSummaryStagedCommit(id: string): Promise<DiffSummary[]>;
 
   // ============================================================================
   // Branch Operations

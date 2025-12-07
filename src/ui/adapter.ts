@@ -14,6 +14,8 @@ import type {
   TaskProgress,
   StatusUpdate,
   DiffContent,
+  DiffSummary,
+  DiffSummaryDisplayOptions,
   TypedToolResult,
 } from "./types.js";
 
@@ -102,6 +104,25 @@ export interface UIAdapter {
    * Display a diff for review.
    */
   displayDiff(diff: DiffContent): Promise<void>;
+
+  /**
+   * Display a summary of file changes with optional drill-down.
+   *
+   * Shows compact summary like:
+   *   M src/index.ts (+10 -3)
+   *   A src/utils.ts (+25)
+   *   D old-file.ts (-42)
+   *
+   * If getDiff is provided in options, allows user to drill down
+   * into individual file diffs.
+   *
+   * @param summaries - Array of file change summaries
+   * @param options - Display options including drill-down callback
+   */
+  displayDiffSummary(
+    summaries: DiffSummary[],
+    options?: DiffSummaryDisplayOptions
+  ): Promise<void>;
 
   // ============================================================================
   // Tool Results
