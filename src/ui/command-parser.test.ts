@@ -9,6 +9,7 @@ import {
   isBuiltinCommand,
   classifyCommand,
   optionsToArgs,
+  CommandParseError,
 } from "./command-parser.js";
 
 describe("isCommand", () => {
@@ -229,5 +230,116 @@ describe("optionsToArgs", () => {
       branch: "main",
       force: true,
     });
+  });
+});
+
+describe("parseCommand - negative numbers", () => {
+  it("handles negative number as option value", () => {
+    const result = parseCommand("/tool foo --count -5");
+    expect(result).toEqual({
+      name: "tool",
+      args: ["foo"],
+      options: { count: "-5" },
+      raw: "/tool foo --count -5",
+    });
+  });
+
+  it("handles negative decimal as option value", () => {
+    const result = parseCommand("/tool foo --threshold -3.14");
+    expect(result).toEqual({
+      name: "tool",
+      args: ["foo"],
+      options: { threshold: "-3.14" },
+      raw: "/tool foo --threshold -3.14",
+    });
+  });
+
+  it("handles negative number with short option", () => {
+    const result = parseCommand("/tool foo -n -5");
+    expect(result).toEqual({
+      name: "tool",
+      args: ["foo"],
+      options: { n: "-5" },
+      raw: "/tool foo -n -5",
+    });
+  });
+
+  it("handles negative number as positional arg", () => {
+    const result = parseCommand("/calc -5");
+    expect(result).toEqual({
+      name: "calc",
+      args: ["-5"],
+      options: {},
+      raw: "/calc -5",
+    });
+  });
+
+  it("distinguishes flags from negative numbers", () => {
+    const result = parseCommand("/tool foo -abc --count -5 -xyz");
+    expect(result).toEqual({
+      name: "tool",
+      args: ["foo"],
+      options: { a: true, b: true, c: true, count: "-5", x: true, y: true, z: true },
+      raw: "/tool foo -abc --count -5 -xyz",
+    });
+  });
+});
+
+describe("parseCommand - error handling", () => {
+  it("throws CommandParseError for unclosed double quote", () => {
+    expect(() => parseCommand('/tool "unclosed')).toThrow(CommandParseError);
+    expect(() => parseCommand('/tool "unclosed')).toThrow(/Unclosed double quote/);
+  });
+
+  it("throws CommandParseError for unclosed single quote", () => {
+    expect(() => parseCommand("/tool 'unclosed")).toThrow(CommandParseError);
+    expect(() => parseCommand("/tool 'unclosed")).toThrow(/Unclosed single quote/);
+  });
+
+  it("throws CommandParseError for trailing backslash", () => {
+    expect(() => parseCommand("/tool arg\\")).toThrow(CommandParseError);
+    expect(() => parseCommand("/tool arg\\")).toThrow(/Trailing backslash/);
+  });
+
+  it("includes position in unclosed quote error", () => {
+    try {
+      parseCommand('/tool foo "bar');
+      expect.fail("Should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CommandParseError);
+      expect((e as Error).message).toMatch(/position \d+/);
+    }
+  });
+});
+
+describe("classifyCommand - case insensitivity", () => {
+  const availableTools = ["Git_Push", "git_status", "Deploy"];
+
+  it("matches tools case-insensitively", () => {
+    const parsed = parseCommand("/git_push --branch main")!;
+    const result = classifyCommand(parsed, availableTools);
+    expect(result.type).toBe("tool");
+    if (result.type === "tool") {
+      // Should return the original tool name from the list
+      expect(result.toolName).toBe("Git_Push");
+    }
+  });
+
+  it("matches uppercase input to lowercase tool", () => {
+    const parsed = parseCommand("/GIT_STATUS")!;
+    const result = classifyCommand(parsed, availableTools);
+    expect(result.type).toBe("tool");
+    if (result.type === "tool") {
+      expect(result.toolName).toBe("git_status");
+    }
+  });
+
+  it("matches mixed case input", () => {
+    const parsed = parseCommand("/dEpLoY")!;
+    const result = classifyCommand(parsed, availableTools);
+    expect(result.type).toBe("tool");
+    if (result.type === "tool") {
+      expect(result.toolName).toBe("Deploy");
+    }
   });
 });

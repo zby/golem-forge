@@ -56,6 +56,7 @@ export {
   classifyCommand,
   optionsToArgs,
   BUILTIN_COMMANDS,
+  CommandParseError,
   type ParsedCommand,
   type BuiltinCommand,
   type CommandType,

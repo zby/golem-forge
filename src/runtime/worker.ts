@@ -200,7 +200,11 @@ export class WorkerRuntime implements WorkerRunner {
     this.options = options;
 
     // Set depth (default 0 for root worker)
-    this.depth = options.depth ?? 0;
+    const depth = options.depth ?? 0;
+    if (depth < 0 || !Number.isInteger(depth)) {
+      throw new Error(`Invalid worker depth: ${depth}. Depth must be a non-negative integer.`);
+    }
+    this.depth = depth;
 
     // Use injected model or create from model resolution
     if (options.injectedModel) {
@@ -502,16 +506,13 @@ export class WorkerRuntime implements WorkerRunner {
       const hasTools = Object.keys(this.tools).length > 0;
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
-        currentIteration = iteration + 1;
-        const iterationNum = currentIteration;
-
-        // Check for interruption at the start of each iteration
+        // Check for interruption at the start of each iteration (before counting it)
         if (this.options.interruptSignal?.interrupted) {
           this.emit({
             type: "execution_end",
             success: true,
             response: "[Interrupted]",
-            totalIterations: iterationNum,
+            totalIterations: iteration,  // Report actual completed iterations
             totalToolCalls: toolCallCount,
             totalTokens: { input: totalInputTokens, output: totalOutputTokens },
             durationMs: Date.now() - startTime,
@@ -523,6 +524,9 @@ export class WorkerRuntime implements WorkerRunner {
             tokens: { input: totalInputTokens, output: totalOutputTokens },
           };
         }
+
+        currentIteration = iteration + 1;
+        const iterationNum = currentIteration;
 
         // Emit message_send event
         this.emit({

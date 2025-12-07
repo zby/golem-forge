@@ -54,6 +54,27 @@ export function isCommand(input: string): boolean {
  * // }
  * ```
  */
+/**
+ * Check if a token looks like a negative number.
+ * Returns true for tokens like "-5", "-3.14", "-.5"
+ */
+function isNegativeNumber(token: string): boolean {
+  if (!token.startsWith("-") || token.length < 2) {
+    return false;
+  }
+  const rest = token.slice(1);
+  // Check if rest is a valid number (digits, optional decimal point)
+  return /^\d*\.?\d+$/.test(rest);
+}
+
+/**
+ * Check if the next token should be treated as a value (not an option).
+ * A token is a value if it doesn't start with "-" OR if it's a negative number.
+ */
+function isValueToken(token: string): boolean {
+  return !token.startsWith("-") || isNegativeNumber(token);
+}
+
 export function parseCommand(input: string): ParsedCommand | null {
   if (!isCommand(input)) {
     return null;
@@ -87,19 +108,19 @@ export function parseCommand(input: string): ParsedCommand | null {
         // --key=value
         const [key, ...valueParts] = rest.split("=");
         options[key] = valueParts.join("=");
-      } else if (i + 1 < tokens.length && !tokens[i + 1].startsWith("-")) {
-        // --key value
+      } else if (i + 1 < tokens.length && isValueToken(tokens[i + 1])) {
+        // --key value (including negative numbers like --count -5)
         options[rest] = tokens[i + 1];
         i++;
       } else {
         // --flag (boolean)
         options[rest] = true;
       }
-    } else if (token.startsWith("-") && token.length > 1 && !token.startsWith("--")) {
-      // Short option
+    } else if (token.startsWith("-") && token.length > 1 && !token.startsWith("--") && !isNegativeNumber(token)) {
+      // Short option (but not a negative number)
       const key = token.slice(1);
 
-      if (key.length === 1 && i + 1 < tokens.length && !tokens[i + 1].startsWith("-")) {
+      if (key.length === 1 && i + 1 < tokens.length && isValueToken(tokens[i + 1])) {
         // -k value
         options[key] = tokens[i + 1];
         i++;
@@ -110,7 +131,7 @@ export function parseCommand(input: string): ParsedCommand | null {
         }
       }
     } else {
-      // Positional argument
+      // Positional argument (including negative numbers not preceded by an option)
       args.push(token);
     }
 
@@ -121,16 +142,30 @@ export function parseCommand(input: string): ParsedCommand | null {
 }
 
 /**
+ * Error thrown when command parsing fails.
+ */
+export class CommandParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CommandParseError";
+  }
+}
+
+/**
  * Tokenize a command string.
  * Handles quoted strings with spaces.
+ * Throws CommandParseError for unclosed quotes.
  */
 function tokenize(input: string): string[] {
   const tokens: string[] = [];
   let current = "";
   let inQuote: string | null = null;
+  let quoteStartPos = -1;
   let escape = false;
 
-  for (const char of input) {
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+
     if (escape) {
       current += char;
       escape = false;
@@ -145,6 +180,7 @@ function tokenize(input: string): string[] {
     if (inQuote) {
       if (char === inQuote) {
         inQuote = null;
+        quoteStartPos = -1;
       } else {
         current += char;
       }
@@ -153,6 +189,7 @@ function tokenize(input: string): string[] {
 
     if (char === '"' || char === "'") {
       inQuote = char;
+      quoteStartPos = i;
       continue;
     }
 
@@ -165,6 +202,18 @@ function tokenize(input: string): string[] {
     }
 
     current += char;
+  }
+
+  // Check for unclosed quote
+  if (inQuote) {
+    throw new CommandParseError(
+      `Unclosed ${inQuote === '"' ? "double" : "single"} quote at position ${quoteStartPos}`
+    );
+  }
+
+  // Check for trailing escape
+  if (escape) {
+    throw new CommandParseError("Trailing backslash at end of input");
   }
 
   if (current) {
@@ -236,8 +285,11 @@ export function classifyCommand(
   }
 
   // Check for direct tool invocation: /git_push (if tool exists)
-  if (availableTools.includes(parsed.name)) {
-    return { type: "tool", toolName: parsed.name, parsed };
+  // Use lowercase for consistent matching (tool names are case-insensitive)
+  const toolNameLower = parsed.name.toLowerCase();
+  const matchedTool = availableTools.find(t => t.toLowerCase() === toolNameLower);
+  if (matchedTool) {
+    return { type: "tool", toolName: matchedTool, parsed };
   }
 
   return { type: "unknown", parsed };

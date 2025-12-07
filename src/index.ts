@@ -49,6 +49,7 @@ export {
   classifyCommand,
   optionsToArgs,
   BUILTIN_COMMANDS,
+  CommandParseError,
   extractManualToolInfo,
   getManualTools,
   getLLMTools,
