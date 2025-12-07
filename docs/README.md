@@ -65,6 +65,7 @@ The CLI is the **proving ground** - we validate the core abstractions (sandbox, 
 ### Architecture
 - **[Sandbox Design](./sandbox-design.md)** - Unified sandbox for CLI and browser. Core security model.
 - **[Tools and UI](./tools-and-ui.md)** - Tool definition, approval system, execution modes, UI abstraction.
+- **[Git Toolset](./git-toolset.md)** - Git operations with staged commits and approval gates.
 - **[Browser Extension Architecture](./browser-extension-architecture.md)** - Browser-specific architecture, OPFS, GitHub sync.
 
 ### Implementation Plan
