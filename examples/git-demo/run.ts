@@ -118,17 +118,16 @@ async function main() {
   console.log("╔════════════════════════════════════════════════════════════╗");
   console.log("║         Interactive Git Toolset Demo                       ║");
   console.log("╚════════════════════════════════════════════════════════════╝");
-  console.log("\nThis demo walks through the git workflow step by step.");
-  console.log("You'll see what an LLM would do, with pauses at each action.");
+  console.log("\nThis demo simulates an LLM modifying a file and committing it.");
+  console.log("You'll be prompted to approve git_stage and git_push actions.");
 
-  await waitForEnter();
+  await waitForEnter("Press Enter to start the demo...");
 
   // ========================================================================
   // Step 0: Setup
   // ========================================================================
 
   await setupDemoRepo();
-  await waitForEnter();
 
   // ========================================================================
   // Step 1: Create Worker Runtime
@@ -177,8 +176,6 @@ async function main() {
   print("  Sandbox base: " + DEMO_REPO_PATH);
   print("  Tools: " + Object.keys(tools).join(", "));
 
-  await waitForEnter();
-
   // ========================================================================
   // Step 2: Write File (simulating LLM action)
   // ========================================================================
@@ -206,18 +203,13 @@ It demonstrates how the LLM can modify files in the sandbox.
   print("Args: { path: '/workspace/README.md', content: '...' }");
   print("\nResult: " + JSON.stringify(writeResult, null, 2));
 
-  await waitForEnter();
-
   // ========================================================================
   // Step 3: Stage File (requires approval)
   // ========================================================================
 
-  step(3, "LLM stages the file");
+  step(3, "LLM stages the file (requires your approval)");
 
-  print("\nSimulating LLM calling git_stage...");
-  print("\nThis tool requires approval. You'll see the approval dialog.\n");
-
-  await waitForEnter("Press Enter to trigger git_stage (you'll be asked to approve)...");
+  print("\nSimulating LLM calling git_stage...\n");
 
   // Use ToolExecutor to get approval flow
   const stageExecResult = await toolExecutor.execute(
@@ -244,8 +236,6 @@ It demonstrates how the LLM can modify files in the sandbox.
   const commitId = stageOutput.commitId;
   print("\n✓ Staged commit created: " + commitId);
 
-  await waitForEnter();
-
   // ========================================================================
   // Step 4: Check Status
   // ========================================================================
@@ -260,8 +250,6 @@ It demonstrates how the LLM can modify files in the sandbox.
   );
 
   print("Result: " + JSON.stringify(statusResult, null, 2));
-
-  await waitForEnter();
 
   // ========================================================================
   // Step 5: Show Diff
@@ -278,19 +266,15 @@ It demonstrates how the LLM can modify files in the sandbox.
 
   print((diffResult as { diff: string }).diff);
 
-  await waitForEnter();
-
   // ========================================================================
-  // Step 6: Push (manual action)
+  // Step 6: Push (requires approval)
   // ========================================================================
 
-  step(6, "Push to repository (manual action)");
+  step(6, "Push to repository (requires your approval)");
 
   print("\nIn real usage, git_push is manual-only (LLM cannot call it).");
   print("The user would run: /tool git_push --commitId " + commitId);
-  print("\nWe'll call it directly to complete the demo.\n");
-
-  await waitForEnter("Press Enter to push (you'll be asked to approve)...");
+  print("\nSimulating manual push...\n");
 
   // Use ToolExecutor for approval flow
   const pushExecResult = await toolExecutor.execute(
@@ -311,9 +295,9 @@ It demonstrates how the LLM can modify files in the sandbox.
     print("\n✓ Commit pushed successfully!");
   } else {
     print("\n❌ Push was denied or failed.");
+    rl.close();
+    return;
   }
-
-  await waitForEnter();
 
   // ========================================================================
   // Step 7: Verify
