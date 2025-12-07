@@ -2,6 +2,7 @@
 name: pdf_analyzer
 description: Analyze PDF documents with dynamic instructions from orchestrator
 compatible_models:
+  - "anthropic:claude-haiku-4-*"
   - "anthropic:claude-sonnet-4-*"
   - "anthropic:claude-opus-4-*"
   - "openai:gpt-4o*"

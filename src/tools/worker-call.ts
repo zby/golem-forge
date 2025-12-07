@@ -510,28 +510,50 @@ export function createNamedWorkerTool(
 }
 
 /**
+ * Check if a MIME type represents binary content.
+ */
+function isBinaryMimeType(mimeType: string): boolean {
+  return (
+    mimeType.startsWith("image/") ||
+    mimeType.startsWith("audio/") ||
+    mimeType.startsWith("video/") ||
+    mimeType === "application/pdf" ||
+    mimeType === "application/octet-stream"
+  );
+}
+
+/**
  * Read attachments from sandbox paths.
  */
 async function readAttachments(
   sandbox: Sandbox | undefined,
   paths: string[] | undefined
-): Promise<Array<{ data: string; mimeType: string }>> {
+): Promise<Array<{ data: Buffer | string; mimeType: string }>> {
   if (!sandbox || !paths || paths.length === 0) {
     return [];
   }
 
-  const attachments: Array<{ data: string; mimeType: string }> = [];
+  const attachments: Array<{ data: Buffer | string; mimeType: string }> = [];
 
   for (const filePath of paths) {
     try {
-      const content = await sandbox.read(filePath);
       const mimeType = getMediaType(filePath);
-      // For binary files, we'd need to base64 encode, but sandbox.read returns string
-      // For now, assume text-based content
-      attachments.push({
-        data: content,
-        mimeType: mimeType,
-      });
+
+      if (isBinaryMimeType(mimeType)) {
+        // Binary files: use readBinary and convert to Buffer
+        const binaryContent = await sandbox.readBinary(filePath);
+        attachments.push({
+          data: Buffer.from(binaryContent),
+          mimeType: mimeType,
+        });
+      } else {
+        // Text files: use regular read
+        const textContent = await sandbox.read(filePath);
+        attachments.push({
+          data: textContent,
+          mimeType: mimeType,
+        });
+      }
     } catch (error) {
       // Skip files that can't be read
       console.warn(`Could not read attachment ${filePath}: ${error}`);
@@ -665,3 +687,14 @@ export class WorkerCallToolset {
     return this.tools;
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Test Helpers (internal use only)
+// ─────────────────────────────────────────────────────────────────────
+
+/** @internal Exported for testing only */
+export const _internal = {
+  isBinaryMimeType,
+  readAttachments,
+  getMediaType,
+};

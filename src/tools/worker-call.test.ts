@@ -6,6 +6,7 @@ import {
   checkToolNameConflict,
   type DelegationContext,
   type WorkerCallToolsetOptions,
+  _internal,
 } from "./worker-call.js";
 import { ApprovalController } from "../approval/index.js";
 import { createTestSandbox, type Sandbox } from "../sandbox/index.js";
@@ -459,5 +460,218 @@ I am a described worker.`
     // Should have: greeter (twice), analyzer, call_worker = 4 tools
     // This documents current behavior - duplicates are allowed
     expect(tools.filter(t => t.name === "greeter")).toHaveLength(2);
+  });
+});
+
+describe("isBinaryMimeType", () => {
+  const { isBinaryMimeType } = _internal;
+
+  it("returns true for image types", () => {
+    expect(isBinaryMimeType("image/png")).toBe(true);
+    expect(isBinaryMimeType("image/jpeg")).toBe(true);
+    expect(isBinaryMimeType("image/gif")).toBe(true);
+    expect(isBinaryMimeType("image/webp")).toBe(true);
+    expect(isBinaryMimeType("image/svg+xml")).toBe(true);
+  });
+
+  it("returns true for PDF", () => {
+    expect(isBinaryMimeType("application/pdf")).toBe(true);
+  });
+
+  it("returns true for audio types", () => {
+    expect(isBinaryMimeType("audio/mpeg")).toBe(true);
+    expect(isBinaryMimeType("audio/wav")).toBe(true);
+  });
+
+  it("returns true for video types", () => {
+    expect(isBinaryMimeType("video/mp4")).toBe(true);
+    expect(isBinaryMimeType("video/webm")).toBe(true);
+  });
+
+  it("returns true for octet-stream", () => {
+    expect(isBinaryMimeType("application/octet-stream")).toBe(true);
+  });
+
+  it("returns false for text types", () => {
+    expect(isBinaryMimeType("text/plain")).toBe(false);
+    expect(isBinaryMimeType("text/html")).toBe(false);
+    expect(isBinaryMimeType("text/css")).toBe(false);
+  });
+
+  it("returns false for JSON", () => {
+    expect(isBinaryMimeType("application/json")).toBe(false);
+  });
+
+  it("returns false for XML", () => {
+    expect(isBinaryMimeType("application/xml")).toBe(false);
+  });
+});
+
+describe("getMediaType", () => {
+  const { getMediaType } = _internal;
+
+  it("returns correct MIME type for common extensions", () => {
+    expect(getMediaType("file.txt")).toBe("text/plain");
+    expect(getMediaType("file.md")).toBe("text/plain");
+    expect(getMediaType("file.json")).toBe("application/json");
+    expect(getMediaType("file.pdf")).toBe("application/pdf");
+    expect(getMediaType("file.png")).toBe("image/png");
+    expect(getMediaType("file.jpg")).toBe("image/jpeg");
+    expect(getMediaType("file.jpeg")).toBe("image/jpeg");
+    expect(getMediaType("file.gif")).toBe("image/gif");
+    expect(getMediaType("file.svg")).toBe("image/svg+xml");
+  });
+
+  it("returns octet-stream for unknown extensions", () => {
+    expect(getMediaType("file.xyz")).toBe("application/octet-stream");
+    expect(getMediaType("file.bin")).toBe("application/octet-stream");
+    expect(getMediaType("file")).toBe("application/octet-stream");
+  });
+
+  it("handles paths with directories", () => {
+    expect(getMediaType("/path/to/file.pdf")).toBe("application/pdf");
+    expect(getMediaType("./relative/path/image.png")).toBe("image/png");
+  });
+
+  it("is case-insensitive for extensions", () => {
+    expect(getMediaType("file.PDF")).toBe("application/pdf");
+    expect(getMediaType("file.PNG")).toBe("image/png");
+    expect(getMediaType("file.Json")).toBe("application/json");
+  });
+});
+
+describe("readAttachments", () => {
+  const { readAttachments } = _internal;
+  let sandbox: Sandbox;
+
+  beforeEach(async () => {
+    sandbox = await createTestSandbox();
+  });
+
+  it("returns empty array when sandbox is undefined", async () => {
+    const result = await readAttachments(undefined, ["/workspace/file.txt"]);
+    expect(result).toEqual([]);
+  });
+
+  it("returns empty array when paths is undefined", async () => {
+    const result = await readAttachments(sandbox, undefined);
+    expect(result).toEqual([]);
+  });
+
+  it("returns empty array when paths is empty", async () => {
+    const result = await readAttachments(sandbox, []);
+    expect(result).toEqual([]);
+  });
+
+  it("reads text files as strings", async () => {
+    await sandbox.write("/workspace/test.txt", "Hello, world!");
+
+    const result = await readAttachments(sandbox, ["/workspace/test.txt"]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].mimeType).toBe("text/plain");
+    expect(result[0].data).toBe("Hello, world!");
+  });
+
+  it("reads JSON files as strings", async () => {
+    await sandbox.write("/workspace/data.json", '{"key": "value"}');
+
+    const result = await readAttachments(sandbox, ["/workspace/data.json"]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].mimeType).toBe("application/json");
+    expect(result[0].data).toBe('{"key": "value"}');
+  });
+
+  it("reads binary files (PDF) as Buffer", async () => {
+    // Create fake PDF binary content (PDF magic bytes + some data)
+    const pdfContent = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34]);
+    await sandbox.writeBinary("/workspace/document.pdf", pdfContent);
+
+    const result = await readAttachments(sandbox, ["/workspace/document.pdf"]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].mimeType).toBe("application/pdf");
+    expect(Buffer.isBuffer(result[0].data)).toBe(true);
+    expect(result[0].data).toEqual(Buffer.from(pdfContent));
+  });
+
+  it("reads binary files (PNG) as Buffer", async () => {
+    // PNG magic bytes
+    const pngContent = new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    await sandbox.writeBinary("/workspace/image.png", pngContent);
+
+    const result = await readAttachments(sandbox, ["/workspace/image.png"]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].mimeType).toBe("image/png");
+    expect(Buffer.isBuffer(result[0].data)).toBe(true);
+    expect(result[0].data).toEqual(Buffer.from(pngContent));
+  });
+
+  it("reads multiple attachments with mixed types", async () => {
+    await sandbox.write("/workspace/readme.txt", "Some text");
+    const pdfContent = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    await sandbox.writeBinary("/workspace/doc.pdf", pdfContent);
+    await sandbox.write("/workspace/config.json", '{"enabled": true}');
+
+    const result = await readAttachments(sandbox, [
+      "/workspace/readme.txt",
+      "/workspace/doc.pdf",
+      "/workspace/config.json",
+    ]);
+
+    expect(result).toHaveLength(3);
+
+    // Text file
+    expect(result[0].mimeType).toBe("text/plain");
+    expect(result[0].data).toBe("Some text");
+
+    // PDF file (binary)
+    expect(result[1].mimeType).toBe("application/pdf");
+    expect(Buffer.isBuffer(result[1].data)).toBe(true);
+
+    // JSON file (text)
+    expect(result[2].mimeType).toBe("application/json");
+    expect(result[2].data).toBe('{"enabled": true}');
+  });
+
+  it("skips files that cannot be read", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await sandbox.write("/workspace/exists.txt", "I exist");
+
+    const result = await readAttachments(sandbox, [
+      "/workspace/exists.txt",
+      "/workspace/nonexistent.txt",
+    ]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].data).toBe("I exist");
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Could not read attachment /workspace/nonexistent.txt")
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("preserves binary content integrity for non-ASCII bytes", async () => {
+    // Create content with bytes that would be corrupted by UTF-8 encoding
+    const binaryContent = new Uint8Array([
+      0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD, 0x80, 0x81,
+      0xC0, 0xC1, 0xD0, 0xD1, 0xE0, 0xE1, 0xF0, 0xF1
+    ]);
+    await sandbox.writeBinary("/workspace/binary.bin", binaryContent);
+
+    const result = await readAttachments(sandbox, ["/workspace/binary.bin"]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].mimeType).toBe("application/octet-stream");
+    expect(Buffer.isBuffer(result[0].data)).toBe(true);
+
+    // Verify each byte is preserved
+    const resultBuffer = result[0].data as Buffer;
+    expect(resultBuffer.length).toBe(binaryContent.length);
+    for (let i = 0; i < binaryContent.length; i++) {
+      expect(resultBuffer[i]).toBe(binaryContent[i]);
+    }
   });
 });
