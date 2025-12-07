@@ -351,6 +351,8 @@ export class WorkerRuntime implements WorkerRunner {
             projectRoot: this.options.projectRoot,
             model: this.options.model,
             workerRunnerFactory: defaultWorkerRunnerFactory,
+            // Propagate event callback to child workers for nested tracing
+            onEvent: this.onEvent,
           });
           for (const tool of workerToolset.getTools()) {
             this.tools[tool.name] = tool;

@@ -14,6 +14,7 @@ import { createRestrictedSandbox } from "../sandbox/index.js";
 import { WorkerRegistry } from "../worker/registry.js";
 import type { WorkerDefinition, WorkerSandboxConfig } from "../worker/schema.js";
 import type { WorkerRunnerFactory } from "../runtime/interfaces.js";
+import type { RuntimeEventCallback } from "../runtime/events.js";
 
 /**
  * Schema for call_worker tool input (generic fallback).
@@ -93,6 +94,8 @@ export interface WorkerCallToolsetOptions {
   model?: string;
   /** Factory for creating child WorkerRunner instances (breaks circular dependency) */
   workerRunnerFactory?: WorkerRunnerFactory;
+  /** Event callback for runtime events (propagates to child workers) */
+  onEvent?: RuntimeEventCallback;
 }
 
 /**
@@ -216,6 +219,8 @@ interface ExecuteDelegationOptions {
   model?: string;
   /** Factory for creating child WorkerRunner instances */
   workerRunnerFactory?: WorkerRunnerFactory;
+  /** Event callback for runtime events */
+  onEvent?: RuntimeEventCallback;
 }
 
 /**
@@ -242,6 +247,7 @@ async function executeWorkerDelegation(
     maxDelegationDepth,
     model,
     workerRunnerFactory,
+    onEvent,
   } = options;
 
   // Check delegation depth
@@ -339,6 +345,8 @@ async function executeWorkerDelegation(
       sharedSandbox: childSandbox ?? undefined,
       delegationContext: childDelegationContext,
       registry: registry,
+      // Propagate event callback to child workers for nested tracing
+      onEvent: onEvent,
     });
 
     await childRuntime.initialize();
@@ -396,6 +404,7 @@ export function createCallWorkerTool(
     maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
     model,
     workerRunnerFactory,
+    onEvent,
   } = options;
 
   return {
@@ -435,6 +444,7 @@ export function createCallWorkerTool(
         maxDelegationDepth,
         model,
         workerRunnerFactory,
+        onEvent,
       });
     },
   };
@@ -476,6 +486,7 @@ export function createNamedWorkerTool(
     maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
     model,
     workerRunnerFactory,
+    onEvent,
   } = options;
 
   return {
@@ -504,6 +515,7 @@ export function createNamedWorkerTool(
         maxDelegationDepth,
         model,
         workerRunnerFactory,
+        onEvent,
       });
     },
   };
