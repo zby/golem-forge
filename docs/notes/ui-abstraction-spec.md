@@ -28,7 +28,7 @@ The system uses a **two-tier model**:
 - **Root worker (depth=0)**: Maintains conversation with user. Multi-turn, has chat history.
 - **Sub-workers (depth>0)**: Single-shot tool loops. No user messages, no conversation memory.
 
-If a sub-worker lacks information, it returns `needs_input`. The parent re-invokes it with a more complete task description. Questions bubble up until answered—ultimately reaching the user if needed.
+If a sub-worker lacks information, the parent can re-invoke it with a more complete task description. Questions bubble up until answered—ultimately reaching the user if needed.
 
 ---
 
@@ -55,7 +55,7 @@ The root worker is the only agent that converses with the user:
 
 ### Sub-Workers
 
-Sub-workers are single-shot: task in → result out. They run a tool loop but never interact with the user directly.
+Sub-workers are single-shot: task in → result out. They run a tool loop but don't converse with the user. (Their tool calls may still trigger approval dialogs in Supervised mode.)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -71,7 +71,7 @@ Sub-workers are single-shot: task in → result out. They run a tool loop but ne
 │  - Return result or request input                               │
 │                                                                  │
 │  Cannot:                                                         │
-│  - Converse with user                                           │
+│  - Converse with user (but tools may trigger approvals)         │
 │  - Access parent's chat history                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -96,58 +96,40 @@ interface WorkerContext {
 }
 ```
 
-### Worker Results
+### Re-invocation Pattern
 
-```typescript
-interface WorkerResult {
-  status: 'complete' | 'needs_input' | 'failed';
-  result?: unknown;
-  inputRequest?: {
-    question: string;
-    options?: string[];
-  };
-  error?: Error;
-}
-```
-
-### Handling `needs_input`
-
-When a sub-worker returns `needs_input`, the parent has two choices:
-
-1. **Re-invoke with clarified task** (if parent has enough context)
-2. **Bubble up** (if parent also lacks the information)
+If a sub-worker can't complete its task (missing information, ambiguity, etc.), the parent can re-invoke it with a clarified task description. If the parent also lacks the information, it bubbles up—ultimately reaching the user.
 
 ```
 Root (d=0): "Refactor auth to use JWT"
 │ Context: User said "use the same secret key as the API"
 │
 └─→ Worker (d=1): "Implement JWT signing"
-    │ Returns: needs_input("What secret key?")
+    │ Worker is unsure about which secret key to use
     │
-    ◄─ Parent knows answer from chat history
-       Parent re-invokes:
+    ◄─ Parent knows from chat history, re-invokes:
     │
     └─→ Worker (d=1): "Implement JWT signing using API_SECRET_KEY"
-        └─→ Returns: { success: true }
+        └─→ Completes successfully
 ```
 
-If no ancestor can answer, the question reaches the user:
+If no ancestor can answer:
 
 ```
 Root (d=0): "Set up authentication"
 │
 └─→ Worker (d=1): "Configure sessions"
-    │ Returns: needs_input("Redis or in-memory?")
+    │ Worker unclear on storage backend
     │
-    ◄─ Root doesn't know either
-       Root asks user: "Should I use Redis or in-memory sessions?"
+    ◄─ Root doesn't know either, asks user:
+       "Should I use Redis or in-memory sessions?"
 
 User: "Redis"
 
 Root re-invokes:
 │
 └─→ Worker (d=1): "Configure sessions using Redis"
-    └─→ Returns: { success: true }
+    └─→ Completes successfully
 ```
 
 ### Benefits
@@ -282,45 +264,46 @@ class CLIAdapter implements UIAdapter {
 }
 ```
 
-### CLI Constraint: Blocking Workers
+### CLI Output: First Iteration
 
-Sub-workers execute sequentially with progress indicators:
+For the first iteration, sub-workers stream their full output to the console, just like the root worker. The existing event system and trace formatter handle this - we just need to pass the `onEvent` callback when creating child runtimes.
+
+**Current gap**: In `src/tools/worker-call.ts`, child runtimes are created without an `onEvent` callback, so sub-worker events are not displayed. Fix: pass the callback through.
 
 ```
 You: Add error handling to the payment module
 
 Golem: I'll add error handling to the payment module.
 
+[Calling worker: analyze-payment]
+┌─ analyze-payment ────────────────────────────────────────────────┐
+│ read_file("src/payment/processor.ts")                            │
+│ grep("throw|catch", "src/payment/")                              │
+│ Found 3 functions lacking error handling                         │
+└──────────────────────────────────────────────────────────────────┘
+
+[Calling worker: implement-changes]
+┌─ implement-changes ──────────────────────────────────────────────┐
+│ edit_file("src/payment/processor.ts", ...)                       │
+│ edit_file("src/payment/processor.ts", ...)                       │
+│ Modified 3 functions                                             │
+└──────────────────────────────────────────────────────────────────┘
+
+Golem: Done! Added try/catch to processPayment(), validateCard(),
+       and refund().
+```
+
+### Future: Progress Indicators
+
+Later iterations may add summary modes with progress bullets instead of full output:
+
+```
   ● Analyzing payment module...
   ✓ Analyzed (3 functions need changes)
   ● Implementing error handling...
-  ✓ Implemented
-  ● Running tests...
-  ✓ All tests pass
-
-Golem: Done! Added try/catch to processPayment(), validateCard(),
-       and refund(). All 12 tests pass.
 ```
 
-Parallel sub-workers show as a batch:
-
-```
-  ● Running 3 analyses in parallel...
-    [████████████░░░░] 2/3 complete
-```
-
-### Presentation Modes
-
-**Summary (Default)**: User sees root messages + progress bullets for sub-workers.
-
-**Expanded**: User can expand to see tool calls:
-
-```
-  ▼ Analyzing payment module...
-  │ read_file("src/payment/processor.ts")
-  │ grep("throw|catch", "src/payment/")
-  │ → Found 3 functions lacking error handling
-```
+But for now, full streaming keeps it simple and debuggable.
 
 ---
 
@@ -429,7 +412,7 @@ Root: "Great, the report is now in the main branch."
 ### Phase 2: Worker Context Model
 1. Add `depth` tracking
 2. Modify context building: `chatHistory` only at depth=0
-3. Implement `needs_input` with re-invocation
+3. Support re-invocation with clarified tasks
 4. Add progress display
 
 ### Phase 3: Rich Clearance UI
@@ -445,12 +428,6 @@ Root: "Great, the report is now in the main branch."
 ---
 
 ## 8. Open Questions
-
-### Model Selection by Depth
-
-Should sub-workers use cheaper models?
-
-**Tentative**: Per-worker override, default to cheaper for mechanical tasks.
 
 ### Maximum Recursion Depth
 
