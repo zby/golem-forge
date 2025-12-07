@@ -19,8 +19,22 @@ import type {
   StatusUpdate,
   DiffContent,
   TypedToolResult,
+  DiffResultValue,
+  FileContentResultValue,
+  FileListResultValue,
+  JsonResultValue,
 } from "./types.js";
 import { renderDiff, getDiffSummary } from "./diff-renderer.js";
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Maximum characters to display for text/content results */
+const MAX_CONTENT_DISPLAY_CHARS = 500;
+
+/** Maximum files to display in file list results */
+const MAX_FILE_LIST_DISPLAY = 20;
 
 /**
  * Options for CLIAdapter.
@@ -384,13 +398,13 @@ export class CLIAdapter implements UIAdapter {
       ? pc.green(`NEW: ${diff.path}`)
       : pc.yellow(`MODIFIED: ${diff.path}`);
 
-    const summary = getDiffSummary(diff.original, diff.modified);
+    const summary = getDiffSummary(diff.original, diff.modified, diff.isNew);
 
     output.write("\n" + "─".repeat(60) + "\n");
     output.write(`${title} ${pc.dim(`(${summary})`)}\n`);
     output.write("─".repeat(60) + "\n");
 
-    output.write(renderDiff(diff.original, diff.modified) + "\n");
+    output.write(renderDiff(diff.original, diff.modified, { isNew: diff.isNew }) + "\n");
 
     output.write("─".repeat(60) + "\n");
   }
@@ -461,7 +475,7 @@ export class CLIAdapter implements UIAdapter {
    */
   private displayDiffResult(
     toolName: string,
-    value: { path: string; original?: string; modified: string; isNew: boolean; bytesWritten: number },
+    value: DiffResultValue,
     durationMs: number
   ): void {
     const output = this.options.output as NodeJS.WriteStream;
@@ -470,7 +484,7 @@ export class CLIAdapter implements UIAdapter {
       ? pc.green(`NEW: ${value.path}`)
       : pc.yellow(`MODIFIED: ${value.path}`);
 
-    const summary = getDiffSummary(value.original, value.modified);
+    const summary = getDiffSummary(value.original, value.modified, value.isNew);
 
     output.write("\n" + "─".repeat(60) + "\n");
     output.write(
@@ -478,7 +492,7 @@ export class CLIAdapter implements UIAdapter {
     );
     output.write("─".repeat(60) + "\n");
 
-    output.write(renderDiff(value.original, value.modified) + "\n");
+    output.write(renderDiff(value.original, value.modified, { isNew: value.isNew }) + "\n");
 
     output.write("─".repeat(60) + "\n");
   }
@@ -494,9 +508,8 @@ export class CLIAdapter implements UIAdapter {
     );
 
     // Truncate long content
-    const maxLen = 500;
-    if (content.length > maxLen) {
-      output.write(content.slice(0, maxLen) + pc.dim(`... (${content.length - maxLen} more chars)\n`));
+    if (content.length > MAX_CONTENT_DISPLAY_CHARS) {
+      output.write(content.slice(0, MAX_CONTENT_DISPLAY_CHARS) + pc.dim(`... (${content.length - MAX_CONTENT_DISPLAY_CHARS} more chars)\n`));
     } else {
       output.write(content + "\n");
     }
@@ -507,7 +520,7 @@ export class CLIAdapter implements UIAdapter {
    */
   private displayFileContentResult(
     toolName: string,
-    value: { path: string; content: string; size: number },
+    value: FileContentResultValue,
     durationMs: number
   ): void {
     const output = this.options.output as NodeJS.WriteStream;
@@ -517,9 +530,8 @@ export class CLIAdapter implements UIAdapter {
     );
 
     // Truncate long content
-    const maxLen = 500;
-    if (value.content.length > maxLen) {
-      output.write(value.content.slice(0, maxLen) + pc.dim(`\n... (${value.content.length - maxLen} more chars)\n`));
+    if (value.content.length > MAX_CONTENT_DISPLAY_CHARS) {
+      output.write(value.content.slice(0, MAX_CONTENT_DISPLAY_CHARS) + pc.dim(`\n... (${value.content.length - MAX_CONTENT_DISPLAY_CHARS} more chars)\n`));
     } else {
       output.write(value.content + "\n");
     }
@@ -530,7 +542,7 @@ export class CLIAdapter implements UIAdapter {
    */
   private displayFileListResult(
     toolName: string,
-    value: { path: string; files: string[]; count: number },
+    value: FileListResultValue,
     durationMs: number
   ): void {
     const output = this.options.output as NodeJS.WriteStream;
@@ -539,13 +551,12 @@ export class CLIAdapter implements UIAdapter {
       `${pc.green("✓")} ${pc.bold(toolName)} → ${pc.cyan(value.path)} ${pc.dim(`(${value.count} entries, ${durationMs}ms)`)}\n`
     );
 
-    // Show files (limit to first 20)
-    const maxFiles = 20;
-    for (let i = 0; i < Math.min(value.files.length, maxFiles); i++) {
+    // Show files (limit to first N)
+    for (let i = 0; i < Math.min(value.files.length, MAX_FILE_LIST_DISPLAY); i++) {
       output.write(`  ${value.files[i]}\n`);
     }
-    if (value.files.length > maxFiles) {
-      output.write(pc.dim(`  ... and ${value.files.length - maxFiles} more\n`));
+    if (value.files.length > MAX_FILE_LIST_DISPLAY) {
+      output.write(pc.dim(`  ... and ${value.files.length - MAX_FILE_LIST_DISPLAY} more\n`));
     }
   }
 
@@ -554,7 +565,7 @@ export class CLIAdapter implements UIAdapter {
    */
   private displayJsonResult(
     toolName: string,
-    value: { data: unknown; summary?: string },
+    value: JsonResultValue,
     durationMs: number
   ): void {
     const output = this.options.output as NodeJS.WriteStream;
@@ -566,9 +577,8 @@ export class CLIAdapter implements UIAdapter {
 
     // Pretty print JSON (truncated)
     const json = JSON.stringify(value.data, null, 2);
-    const maxLen = 500;
-    if (json.length > maxLen) {
-      output.write(json.slice(0, maxLen) + pc.dim(`\n... (${json.length - maxLen} more chars)\n`));
+    if (json.length > MAX_CONTENT_DISPLAY_CHARS) {
+      output.write(json.slice(0, MAX_CONTENT_DISPLAY_CHARS) + pc.dim(`\n... (${json.length - MAX_CONTENT_DISPLAY_CHARS} more chars)\n`));
     } else {
       output.write(json + "\n");
     }

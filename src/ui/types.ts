@@ -226,17 +226,10 @@ export interface TextResultValue {
 
 /**
  * File diff result showing changes to a file.
+ * Extends DiffContent with additional metadata for tool results.
  */
-export interface DiffResultValue {
+export interface DiffResultValue extends DiffContent {
   kind: "diff";
-  /** File path that was changed */
-  path: string;
-  /** Original content (undefined for new files) */
-  original?: string;
-  /** Modified content */
-  modified: string;
-  /** Whether this is a new file */
-  isNew: boolean;
   /** Number of bytes written */
   bytesWritten: number;
 }

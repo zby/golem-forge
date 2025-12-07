@@ -93,6 +93,12 @@ const readFileSchema = z.object({
 type ReadFileInput = z.infer<typeof readFileSchema>;
 
 /**
+ * Maximum file size (in bytes) to read for diff comparison.
+ * Files larger than this will skip diff comparison.
+ */
+const MAX_DIFF_FILE_SIZE = 100 * 1024; // 100KB
+
+/**
  * Known binary file extensions that should not be read as text.
  */
 const BINARY_EXTENSIONS = new Set([
@@ -209,9 +215,9 @@ export function createWriteFileTool(sandbox: Sandbox, options?: ToolOptions): Na
           const exists = await sandbox.exists(path);
           if (exists) {
             isNew = false;
-            // Only read original if file is not too large (skip for files > 100KB)
+            // Only read original if file is not too large
             const stat = await sandbox.stat(path);
-            if (stat.size <= 100 * 1024) {
+            if (stat.size <= MAX_DIFF_FILE_SIZE) {
               original = await sandbox.read(path);
             }
           }
@@ -230,7 +236,7 @@ export function createWriteFileTool(sandbox: Sandbox, options?: ToolOptions): Na
           original,
           modified: content,
           isNew,
-          bytesWritten: content.length,
+          bytesWritten: Buffer.byteLength(content, "utf8"),
         };
       } catch (error) {
         return handleError(error, path);
