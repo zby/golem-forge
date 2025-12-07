@@ -470,8 +470,13 @@ export class CLIAdapter implements UIAdapter {
 
   /**
    * Format diff stats for display.
+   * Values of -1 indicate unknown stats (e.g., updates without original content).
    */
   private formatDiffStats(additions: number, deletions: number): string {
+    // -1 indicates unknown stats
+    if (additions < 0 || deletions < 0) {
+      return pc.dim("(modified)");
+    }
     const parts: string[] = [];
     if (additions > 0) {
       parts.push(pc.green(`+${additions}`));

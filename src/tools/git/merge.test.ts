@@ -10,6 +10,7 @@ import {
   generateNewFilePatch,
   generateDeleteFilePatch,
   hasConflictMarkers,
+  computeDiffStats,
 } from './merge.js';
 
 describe('merge', () => {
@@ -123,5 +124,50 @@ describe('diff generation', () => {
       expect(patch).toContain('+++ test.txt');
       expect(patch).toContain('-old content');
     });
+  });
+});
+
+describe('computeDiffStats', () => {
+  it('counts additions for new content', () => {
+    const stats = computeDiffStats('', 'line1\nline2\nline3\n');
+    expect(stats.additions).toBe(3);
+    expect(stats.deletions).toBe(0);
+  });
+
+  it('counts deletions for removed content', () => {
+    const stats = computeDiffStats('line1\nline2\n', '');
+    expect(stats.additions).toBe(0);
+    expect(stats.deletions).toBe(2);
+  });
+
+  it('counts both additions and deletions for modifications', () => {
+    const stats = computeDiffStats('old line\n', 'new line\n');
+    expect(stats.additions).toBe(1);
+    expect(stats.deletions).toBe(1);
+  });
+
+  it('handles empty strings', () => {
+    const stats = computeDiffStats('', '');
+    expect(stats.additions).toBe(0);
+    expect(stats.deletions).toBe(0);
+  });
+
+  it('counts empty lines (matching git behavior)', () => {
+    // "a\n\nb\n" has 3 lines: "a", "", "b"
+    const stats = computeDiffStats('', 'a\n\nb\n');
+    expect(stats.additions).toBe(3);
+  });
+
+  it('handles content without trailing newline', () => {
+    const stats = computeDiffStats('', 'single line');
+    expect(stats.additions).toBe(1);
+    expect(stats.deletions).toBe(0);
+  });
+
+  it('handles partial changes in multi-line content', () => {
+    const stats = computeDiffStats('line1\nline2\nline3\n', 'line1\nmodified\nline3\n');
+    // Only line2 changed to "modified"
+    expect(stats.additions).toBe(1);
+    expect(stats.deletions).toBe(1);
   });
 });

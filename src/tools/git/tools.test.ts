@@ -109,10 +109,10 @@ describe('git tools', () => {
       expect(tool.name).toBe('git_stage');
     });
 
-    it('does not require approval', () => {
+    it('requires approval (assisted mode)', () => {
       const backend = createMockBackend();
       const tool = createGitStageTool({ backend });
-      expect(tool.needsApproval).toBe(false);
+      expect(tool.needsApproval).toBe(true);
     });
 
     it('requires sandbox', async () => {

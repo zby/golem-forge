@@ -305,4 +305,123 @@ describe('createCLIApprovalCallback', () => {
     );
     expect(trustCalls).toHaveLength(0);
   });
+
+  describe('git tool formatting', () => {
+    it('should format git_stage with files and message', async () => {
+      simulateUserInput('y');
+      const callback = createCLIApprovalCallback();
+
+      const gitStageRequest: ApprovalRequest = {
+        toolName: 'git_stage',
+        toolArgs: {
+          files: ['src/index.ts', 'src/utils.ts'],
+          message: 'Add new feature',
+        },
+        description: 'Stage files for commit',
+      };
+
+      await callback(gitStageRequest);
+
+      // Should show file list
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Files to stage:'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('src/index.ts'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('src/utils.ts'));
+      // Should show commit message
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Commit message:'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Add new feature'));
+    });
+
+    it('should format git_push with local target', async () => {
+      simulateUserInput('y');
+      const callback = createCLIApprovalCallback();
+
+      const gitPushRequest: ApprovalRequest = {
+        toolName: 'git_push',
+        toolArgs: {
+          commitId: 'abc123',
+          target: {
+            type: 'local',
+            path: '/home/user/repo',
+            branch: 'main',
+          },
+        },
+        description: 'Push staged commit',
+      };
+
+      await callback(gitPushRequest);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Staged commit: abc123'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('local repository'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('/home/user/repo'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Branch: main'));
+    });
+
+    it('should format git_push with github target', async () => {
+      simulateUserInput('y');
+      const callback = createCLIApprovalCallback();
+
+      const gitPushRequest: ApprovalRequest = {
+        toolName: 'git_push',
+        toolArgs: {
+          commitId: 'xyz789',
+          target: {
+            type: 'github',
+            repo: 'owner/repo',
+            branch: 'feature',
+          },
+        },
+        description: 'Push to GitHub',
+      };
+
+      await callback(gitPushRequest);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Staged commit: xyz789'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('GitHub owner/repo'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Branch: feature'));
+    });
+
+    it('should handle unknown target types with fallback', async () => {
+      simulateUserInput('y');
+      const callback = createCLIApprovalCallback();
+
+      const gitPushRequest: ApprovalRequest = {
+        toolName: 'git_push',
+        toolArgs: {
+          commitId: 'def456',
+          target: {
+            type: 'future-target',
+            branch: 'dev',
+          },
+        },
+        description: 'Push to future target',
+      };
+
+      await callback(gitPushRequest);
+
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Target: future-target'));
+      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('Branch: dev'));
+    });
+
+    it('should not show Arguments: prefix for git tools', async () => {
+      simulateUserInput('y');
+      const callback = createCLIApprovalCallback();
+
+      const gitStageRequest: ApprovalRequest = {
+        toolName: 'git_stage',
+        toolArgs: {
+          files: ['test.txt'],
+          message: 'Test',
+        },
+        description: 'Stage files',
+      };
+
+      await callback(gitStageRequest);
+
+      // "Arguments:" should not be printed for git tools
+      const argsCalls = consoleLogSpy.mock.calls.filter(
+        (call) => call[0] === 'Arguments:'
+      );
+      expect(argsCalls).toHaveLength(0);
+    });
+  });
 });

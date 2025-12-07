@@ -58,6 +58,18 @@ function formatGitStageArgs(args: Record<string, unknown>): string {
 }
 
 /**
+ * Type guard for git target objects.
+ */
+function isGitTarget(value: unknown): value is { type: string; [key: string]: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    typeof (value as Record<string, unknown>).type === "string"
+  );
+}
+
+/**
  * Format git_push arguments for display.
  */
 function formatGitPushArgs(args: Record<string, unknown>): string {
@@ -68,8 +80,8 @@ function formatGitPushArgs(args: Record<string, unknown>): string {
     lines.push(`Staged commit: ${commitId}`);
   }
 
-  const target = args.target as Record<string, unknown> | undefined;
-  if (target) {
+  const target = args.target;
+  if (isGitTarget(target)) {
     if (target.type === "local") {
       lines.push(`Target: local repository at ${target.path}`);
       if (target.branch) {
@@ -80,6 +92,12 @@ function formatGitPushArgs(args: Record<string, unknown>): string {
       if (target.branch) {
         lines.push(`Branch: ${target.branch}`);
       }
+    } else {
+      // Fallback for unknown target types
+      lines.push(`Target: ${target.type}`);
+      if (target.branch) {
+        lines.push(`Branch: ${target.branch}`);
+      }
     }
   }
 
@@ -87,14 +105,8 @@ function formatGitPushArgs(args: Record<string, unknown>): string {
 }
 
 /**
- * Check if this is a git operation that needs special formatting.
- */
-function isGitOperation(toolName: string): boolean {
-  return toolName.startsWith("git_");
-}
-
-/**
  * Format arguments based on tool type.
+ * Falls back to generic formatting for unknown tools.
  */
 function formatToolArgs(toolName: string, args: Record<string, unknown>): string {
   switch (toolName) {
@@ -171,13 +183,15 @@ export function createCLIApprovalCallback(options: CLIApprovalOptions = {}): App
       console.log(`Description: ${request.description}`);
 
       if (Object.keys(request.toolArgs).length > 0) {
-        // Use tool-specific formatting for git operations
-        if (isGitOperation(request.toolName)) {
+        // formatToolArgs handles tool-specific formatting and falls back to generic
+        const formatted = formatToolArgs(request.toolName, request.toolArgs);
+        // Git tools use custom formatting without "Arguments:" prefix
+        if (request.toolName === "git_stage" || request.toolName === "git_push") {
           console.log("");
-          console.log(formatToolArgs(request.toolName, request.toolArgs));
+          console.log(formatted);
         } else {
           console.log("Arguments:");
-          console.log(formatArgs(request.toolArgs));
+          console.log(formatted);
         }
       }
 

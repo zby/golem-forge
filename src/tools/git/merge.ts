@@ -287,6 +287,9 @@ export interface DiffStats {
 /**
  * Compute diff statistics between two strings.
  *
+ * Counts all lines including empty ones, matching git's behavior.
+ * Note: A trailing newline does not count as an extra line.
+ *
  * @param oldStr - Original content (empty string for new files)
  * @param newStr - New content (empty string for deleted files)
  * @returns Statistics with addition and deletion counts
@@ -298,8 +301,11 @@ export function computeDiffStats(oldStr: string, newStr: string): DiffStats {
   let deletions = 0;
 
   for (const change of changes) {
-    // Count non-empty lines
-    const lineCount = change.value.split('\n').filter(line => line !== '').length;
+    // Count all lines (matching git behavior).
+    // split('\n') on "a\nb\n" gives ["a", "b", ""] - the trailing empty is from the newline.
+    // We want to count actual lines, so if last element is empty (trailing newline), don't count it.
+    const parts = change.value.split('\n');
+    const lineCount = parts[parts.length - 1] === '' ? parts.length - 1 : parts.length;
 
     if (change.added) {
       additions += lineCount;

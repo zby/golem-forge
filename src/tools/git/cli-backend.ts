@@ -552,27 +552,35 @@ export class CLIGitBackend implements GitBackend {
       const content = staged.contents.get(file.sandboxPath);
       const contentStr = content ? content.toString('utf8') : '';
 
-      let stats: { additions: number; deletions: number };
+      let additions: number;
+      let deletions: number;
 
       switch (file.operation) {
-        case 'create':
-          stats = computeDiffStats('', contentStr);
+        case 'create': {
+          const stats = computeDiffStats('', contentStr);
+          additions = stats.additions;
+          deletions = stats.deletions;
           break;
+        }
         case 'update':
-          // For updates, we'd need original content for accurate stats
-          // For now, treat as all additions
-          stats = computeDiffStats('', contentStr);
+          // For updates, we don't have original content to compute accurate stats.
+          // Use -1 to indicate "unknown" - the UI should display appropriately.
+          additions = -1;
+          deletions = -1;
           break;
-        case 'delete':
-          stats = computeDiffStats(contentStr, '');
+        case 'delete': {
+          const stats = computeDiffStats(contentStr, '');
+          additions = stats.additions;
+          deletions = stats.deletions;
           break;
+        }
       }
 
       summaries.push({
         path: file.sandboxPath,
         operation: file.operation,
-        additions: stats.additions,
-        deletions: stats.deletions,
+        additions,
+        deletions,
       });
     }
 
