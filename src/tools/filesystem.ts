@@ -143,6 +143,8 @@ function getExtension(filePath: string): string {
 
 /**
  * Create a read_file tool.
+ *
+ * Returns a structured FileContentResultValue for UI rendering.
  */
 export function createReadFileTool(sandbox: Sandbox, options?: ToolOptions): NamedTool {
   return {
@@ -175,11 +177,13 @@ export function createReadFileTool(sandbox: Sandbox, options?: ToolOptions): Nam
           };
         }
 
+        // Return structured file_content result for UI rendering
         return {
+          kind: "file_content" as const,
           success: true,
-          content,
           path,
-          size: content.length,
+          content,
+          size: Buffer.byteLength(content, "utf8"),
         };
       } catch (error) {
         return handleError(error, path);
@@ -252,6 +256,8 @@ type ListFilesInput = z.infer<typeof listFilesSchema>;
 
 /**
  * Create a list_files tool.
+ *
+ * Returns a structured FileListResultValue for UI rendering.
  */
 export function createListFilesTool(sandbox: Sandbox, options?: ToolOptions): NamedTool {
   return {
@@ -262,7 +268,9 @@ export function createListFilesTool(sandbox: Sandbox, options?: ToolOptions): Na
     execute: async ({ path }: ListFilesInput, _options: ToolExecutionOptions) => {
       try {
         const files = await sandbox.list(path);
+        // Return structured file_list result for UI rendering
         return {
+          kind: "file_list" as const,
           success: true,
           path,
           files,
