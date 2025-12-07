@@ -1,0 +1,147 @@
+/**
+ * Git Backend Interface
+ *
+ * Abstraction layer for git operations.
+ * Different backends can implement this for CLI (isomorphic-git),
+ * browser (OPFS + Octokit), etc.
+ */
+
+import type {
+  StagedCommit,
+  GitTarget,
+  PushResult,
+  BranchListResult,
+} from './types.js';
+
+/**
+ * Input for creating a staged commit.
+ */
+export interface CreateStagedCommitInput {
+  /** Files to stage with their content */
+  files: Array<{
+    sandboxPath: string;
+    content: Buffer;
+  }>;
+  /** Commit message */
+  message: string;
+}
+
+/**
+ * Input for push operation.
+ */
+export interface PushInput {
+  /** ID of the staged commit to push */
+  commitId: string;
+  /** Target repository */
+  target: GitTarget;
+}
+
+/**
+ * Input for pull operation.
+ */
+export interface PullInput {
+  /** Source repository */
+  source: GitTarget;
+  /** Paths to pull */
+  paths: string[];
+}
+
+/**
+ * Abstract interface for git backend operations.
+ *
+ * Implementations handle the actual git operations:
+ * - CLI: Uses isomorphic-git and native git commands
+ * - Browser: Uses OPFS storage and Octokit API
+ */
+export interface GitBackend {
+  // ============================================================================
+  // Staging Operations (Sandbox → Staging Area)
+  // ============================================================================
+
+  /**
+   * Create a staged commit from sandbox files.
+   *
+   * @param input - Files and commit message
+   * @returns The created staged commit
+   */
+  createStagedCommit(input: CreateStagedCommitInput): Promise<StagedCommit>;
+
+  /**
+   * Get a staged commit by ID.
+   *
+   * @param id - Commit ID
+   * @returns The staged commit or null if not found
+   */
+  getStagedCommit(id: string): Promise<StagedCommit | null>;
+
+  /**
+   * List all staged commits.
+   *
+   * @returns Array of staged commits
+   */
+  listStagedCommits(): Promise<StagedCommit[]>;
+
+  /**
+   * Discard a staged commit.
+   *
+   * @param id - Commit ID to discard
+   */
+  discardStagedCommit(id: string): Promise<void>;
+
+  // ============================================================================
+  // Push Operations (Staging → Git)
+  // ============================================================================
+
+  /**
+   * Push a staged commit to a git target.
+   *
+   * @param input - Commit ID and target
+   * @returns Push result (success or conflict)
+   */
+  push(input: PushInput): Promise<PushResult>;
+
+  // ============================================================================
+  // Pull Operations (Git → Sandbox)
+  // ============================================================================
+
+  /**
+   * Pull files from a git source.
+   *
+   * @param input - Source and paths to pull
+   * @returns Array of path/content pairs
+   */
+  pull(input: PullInput): Promise<Array<{ path: string; content: Buffer }>>;
+
+  // ============================================================================
+  // Diff/Status Operations
+  // ============================================================================
+
+  /**
+   * Generate unified diff for a staged commit.
+   *
+   * @param id - Commit ID
+   * @returns Unified diff string
+   */
+  diffStagedCommit(id: string): Promise<string>;
+
+  // ============================================================================
+  // Branch Operations
+  // ============================================================================
+
+  /**
+   * List branches in a git target.
+   *
+   * @param target - Git target to query
+   * @returns List of branches and current branch (if applicable)
+   */
+  listBranches(target: GitTarget): Promise<BranchListResult>;
+
+  // ============================================================================
+  // Lifecycle
+  // ============================================================================
+
+  /**
+   * Clean up resources.
+   */
+  dispose(): Promise<void>;
+}

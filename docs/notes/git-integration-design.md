@@ -1,7 +1,8 @@
 # Git Integration Design
 
 **Date**: 2025-12-06
-**Status**: Design
+**Status**: Design (infrastructure ready, awaiting implementation)
+**Updated**: 2025-12-06 - Added references to established ToolContext/ToolExecutor patterns
 
 ## Problem
 
@@ -319,6 +320,26 @@ Staged commit: abc123 "Add quarterly report"
 
 ## Implementation
 
+### Existing Infrastructure
+
+The codebase already has foundational infrastructure that git tools will leverage:
+
+**ToolContext pattern** (`src/tools/custom.ts`):
+```typescript
+export interface ToolContext {
+  /** Sandbox for file operations. Undefined if worker has no sandbox. */
+  sandbox?: Sandbox;
+  /** Unique ID for this tool call */
+  toolCallId: string;
+}
+```
+
+Git tools will receive `ToolContext` as their second argument, providing access to the sandbox for reading staged files.
+
+**ToolExecutor** (`src/runtime/tool-executor.ts`): Centralized tool execution with approval handling, event emission, and dynamic `needsApproval` resolution. Git tools integrate through the standard tool registration pipeline.
+
+**WorkerRunner interface** (`src/runtime/interfaces.ts`): Abstraction for worker execution that provides `getSandbox()` and `getApprovalController()` - both needed by git operations.
+
 ### GitBackend Interface
 
 ```typescript
@@ -401,33 +422,36 @@ class CLIGitBackend implements GitBackend {
 
 ### Worker Configuration
 
-Workers can declare git targets in frontmatter:
+Workers declare git configuration in frontmatter using a simple `git:` key:
 
 ```yaml
 ---
 name: report-writer
 description: Writes analysis reports
 
-git:
-  # Default push target
-  default_target:
-    type: local
-    path: .
-    branch: reports
+toolsets:
+  filesystem: {}
+  git:
+    default_target:
+      type: local
+      path: .
+      branch: reports
 
-  # Or remote
-  # default_target:
-  #   type: github
-  #   repo: user/reports
+    # Or remote target
+    # default_target:
+    #   type: github
+    #   repo: user/reports
 
-  # Auto-pull these paths at start
-  auto_pull:
-    - path: templates/
-      source:
-        type: local
-        path: .
+    # Auto-pull these paths at start
+    auto_pull:
+      - path: templates/
+        source:
+          type: local
+          path: .
 ---
 ```
+
+The git toolset self-registers via `ToolsetRegistry`, so worker.ts needs no git-specific code.
 
 ## Security Model
 
@@ -532,20 +556,33 @@ The worker handles push conflicts the same way as pull conflicts - by resolving 
 
 ### Trust Levels
 
-```typescript
-// In approval callback
-if (toolName === 'git_push') {
-  const target = args.target as GitTarget;
+Git push uses the dynamic `needsApproval` pattern established in `ToolExecutor`:
 
-  // Higher scrutiny for pushing to production/main
-  if (target.branch === 'main' || target.branch === 'production') {
-    return {
-      ...request,
-      severity: 'high',
-      warning: 'Pushing directly to main branch',
-    };
-  }
-}
+```typescript
+// In git_push tool definition
+export const gitPush: NamedTool = {
+  name: 'git_push',
+  inputSchema: GitPushInputSchema,
+  // Dynamic approval - ToolExecutor resolves this at runtime
+  needsApproval: (args) => {
+    const { target } = args as GitPushInput;
+    // Always require approval for main/production
+    if (target.branch === 'main' || target.branch === 'production') {
+      return true;
+    }
+    // Feature branches could be auto-approved based on config
+    return true; // Default: require approval
+  },
+  execute: async (args, options) => { /* ... */ },
+};
+```
+
+The `ToolExecutor.execute()` method handles this pattern:
+```typescript
+// From src/runtime/tool-executor.ts
+const needsApproval = typeof tool.needsApproval === "function"
+  ? await tool.needsApproval(toolArgs, { toolCallId, messages: context.messages })
+  : tool.needsApproval;
 ```
 
 ## Authentication
@@ -636,9 +673,11 @@ class CLIGitBackend implements GitBackend {
 
 ### Phase 3: Browser Extension
 
-1. OPFS for sandbox storage
-2. Octokit for GitHub operations
-3. Same git tools, different backend
+See [Browser Extension Implementation Plan](implementation-plan.md) for detailed roadmap.
+
+1. OPFS for sandbox storage (Phase 1.2 of extension plan)
+2. Octokit for GitHub operations (Phase 2.2 of extension plan)
+3. Same git tools, different backend (GitBackend implementation for browser)
 
 ## Alternatives Considered
 
@@ -688,16 +727,192 @@ Filesystem that logs all changes, syncs to git automatically.
 ### Phase 1 Deliverables
 
 ```
-src/git/
+src/tools/git/
+├── index.ts           # GitToolset class + exports
 ├── types.ts           # GitTarget, StagedCommit, MergeResult, etc.
 ├── backend.ts         # GitBackend interface
 ├── cli-backend.ts     # CLI implementation (isomorphic-git + git CLI)
 ├── merge.ts           # Three-way merge using diff3/isomorphic-git
 ├── auth.ts            # GitHub auth (GITHUB_TOKEN / gh CLI)
-└── tools.ts           # Git tool definitions
+└── tools.ts           # Git tool definitions (NamedTool objects)
+
+src/tools/
+├── registry.ts        # ToolsetRegistry for plugin-style registration (new)
+└── index.ts           # Updated to export registry + git toolset
 
 src/cli/
 └── git-review.ts      # Interactive diff/approval UI
+```
+
+### Toolset Registry Pattern
+
+To minimize coupling, introduce a `ToolsetRegistry` that toolsets self-register with:
+
+```typescript
+// src/tools/registry.ts
+import type { NamedTool } from './filesystem.js';
+import type { Sandbox } from '../sandbox/interface.js';
+import type { ApprovalController } from '../approval/index.js';
+
+/**
+ * Context passed to toolset factories during registration.
+ */
+export interface ToolsetContext {
+  sandbox?: Sandbox;
+  approvalController: ApprovalController;
+  workerFilePath?: string;
+  projectRoot?: string;
+  // Toolset-specific config from worker YAML
+  config: Record<string, unknown>;
+}
+
+/**
+ * Factory function that creates tools for a toolset.
+ */
+export type ToolsetFactory = (ctx: ToolsetContext) => Promise<NamedTool[]> | NamedTool[];
+
+/**
+ * Registry for toolset factories.
+ * Toolsets self-register; worker.ts looks up by name.
+ */
+class ToolsetRegistryImpl {
+  private factories = new Map<string, ToolsetFactory>();
+
+  register(name: string, factory: ToolsetFactory): void {
+    if (this.factories.has(name)) {
+      throw new Error(`Toolset "${name}" already registered`);
+    }
+    this.factories.set(name, factory);
+  }
+
+  get(name: string): ToolsetFactory | undefined {
+    return this.factories.get(name);
+  }
+
+  has(name: string): boolean {
+    return this.factories.has(name);
+  }
+
+  list(): string[] {
+    return Array.from(this.factories.keys());
+  }
+}
+
+export const ToolsetRegistry = new ToolsetRegistryImpl();
+```
+
+### Toolset Self-Registration
+
+Each toolset registers itself when its module is imported:
+
+```typescript
+// src/tools/git/index.ts
+import { ToolsetRegistry } from '../registry.js';
+import { GitToolset } from './toolset.js';
+
+// Self-register on module load
+ToolsetRegistry.register('git', async (ctx) => {
+  const toolset = new GitToolset({
+    sandbox: ctx.sandbox,
+    config: ctx.config,
+  });
+  return toolset.getTools();
+});
+
+export { GitToolset };
+export * from './types.js';
+```
+
+### Worker Runtime Integration
+
+Replace the switch statement in `worker.ts` with registry lookup:
+
+```typescript
+// src/runtime/worker.ts (updated registerTools)
+private async registerTools(): Promise<void> {
+  const toolsetsConfig = this.worker.toolsets || {};
+
+  for (const [toolsetName, toolsetConfig] of Object.entries(toolsetsConfig)) {
+    const factory = ToolsetRegistry.get(toolsetName);
+
+    if (!factory) {
+      throw new Error(
+        `Unknown toolset "${toolsetName}" in worker "${this.worker.name}". ` +
+        `Valid toolsets: ${ToolsetRegistry.list().join(', ')}`
+      );
+    }
+
+    const tools = await factory({
+      sandbox: this.sandbox,
+      approvalController: this.approvalController,
+      workerFilePath: this.options.workerFilePath,
+      projectRoot: this.options.projectRoot,
+      config: toolsetConfig || {},
+    });
+
+    for (const tool of tools) {
+      this.tools[tool.name] = tool;
+    }
+  }
+}
+```
+
+### Built-in Toolset Migration
+
+Existing toolsets migrate to self-registration:
+
+```typescript
+// src/tools/filesystem.ts (add at end)
+import { ToolsetRegistry } from './registry.js';
+
+ToolsetRegistry.register('filesystem', (ctx) => {
+  if (!ctx.sandbox) {
+    throw new Error('Filesystem toolset requires a sandbox');
+  }
+  const toolset = new FilesystemToolset({ sandbox: ctx.sandbox, ... });
+  return toolset.getTools();
+});
+```
+
+This pattern:
+- **Minimal coupling**: worker.ts has no knowledge of specific toolsets
+- **Self-contained**: each toolset owns its registration
+- **Extensible**: new toolsets just register themselves
+- **Testable**: registry can be cleared/mocked in tests
+
+### Tool Registration Pattern
+
+Git tools follow the established custom tools pattern:
+
+```typescript
+// src/tools/git/tools.ts
+import { z } from 'zod';
+import type { ToolContext } from '../custom.js';
+import type { NamedTool } from '../filesystem.js';
+
+export const gitStatus: NamedTool = {
+  name: 'git_status',
+  description: 'Show status of sandbox and staged commits',
+  inputSchema: z.object({}),
+  needsApproval: false,  // Read-only
+  execute: async (args, options) => {
+    // Implementation
+  },
+};
+
+export const gitPush: NamedTool = {
+  name: 'git_push',
+  description: 'Push staged commit to git target',
+  inputSchema: GitPushInputSchema,
+  needsApproval: (args) => {
+    // Higher scrutiny for main/production branches
+    const input = args as GitPushInput;
+    return input.target.branch === 'main' || input.target.branch === 'production';
+  },
+  execute: async (args, options) => {
+    // Implementation
+  },
+};
 ```
 
 ### Dependencies
@@ -715,11 +930,20 @@ src/cli/
 
 ### Tests
 
+Following the project's test patterns (colocated with source):
+
 ```
-src/git/
-├── cli-backend.test.ts    # Local git operations
+src/tools/git/
+├── cli-backend.test.ts    # Local git operations, isomorphic-git
 ├── tools.test.ts          # Tool schemas and behavior
-└── integration.test.ts    # End-to-end with real repos
+├── auth.test.ts           # GitHub auth resolution
+└── merge.test.ts          # Three-way merge algorithm
+
+src/tools/
+└── registry.test.ts       # ToolsetRegistry tests
+
+tests/integration/
+└── git.test.ts            # End-to-end with real repos (requires git)
 ```
 
 ## Limitations (Phase 1)
@@ -785,3 +1009,18 @@ This model:
 - Provides user review before persistence
 - Supports both local and remote workflows
 - Enables future migration to in-memory sandbox
+
+## Changelog
+
+- **2025-12-06**: Initial design document
+- **2025-12-06**: Added references to established infrastructure patterns:
+  - ToolContext interface for passing sandbox to tools
+  - ToolExecutor for approval handling
+  - WorkerRunner interface for execution abstraction
+  - Cross-reference to browser extension implementation plan
+  - Tool registration pattern following CustomToolset conventions
+- **2025-12-06**: Refactored for minimal coupling:
+  - Moved git code to `src/tools/git/` (consistent with other toolsets)
+  - Added `ToolsetRegistry` pattern for plugin-style registration
+  - Removed hardcoded switch statement dependency
+  - Simplified worker config to use `git:` under `toolsets:`

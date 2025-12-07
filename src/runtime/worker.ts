@@ -17,6 +17,7 @@ import {
   WorkerCallToolset,
   createCustomToolset,
   CustomToolsetConfigSchema,
+  ToolsetRegistry,
   type ZoneApprovalMap,
   type CustomToolsetConfig,
 } from "../tools/index.js";
@@ -396,11 +397,42 @@ export class WorkerRuntime implements WorkerRunner {
           break;
         }
 
-        default:
+        default: {
+          // Check registry for dynamically registered toolsets
+          let factory = ToolsetRegistry.get(toolsetName);
+
+          // If not in registry, try to dynamically import the toolset module
+          // This enables lazy loading - only import toolsets that are actually used
+          if (!factory) {
+            try {
+              // Attempt to import the toolset module (triggers self-registration)
+              await import(`../tools/${toolsetName}/index.js`);
+              factory = ToolsetRegistry.get(toolsetName);
+            } catch {
+              // Module doesn't exist, will fall through to error below
+            }
+          }
+
+          if (factory) {
+            const registeredTools = await factory({
+              sandbox: this.sandbox,
+              approvalController: this.approvalController,
+              workerFilePath: this.options.workerFilePath,
+              projectRoot: this.options.projectRoot,
+              config: (toolsetConfig as Record<string, unknown>) || {},
+            });
+            for (const tool of registeredTools) {
+              this.tools[tool.name] = tool;
+            }
+            break;
+          }
+
           throw new Error(
             `Unknown toolset "${toolsetName}" in worker "${this.worker.name}". ` +
-            `Valid toolsets: filesystem, workers, custom`
+            `Valid toolsets: filesystem, workers, custom` +
+            (ToolsetRegistry.list().length > 0 ? `, ${ToolsetRegistry.list().join(', ')}` : '')
           );
+        }
       }
     }
   }

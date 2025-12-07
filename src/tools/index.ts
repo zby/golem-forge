@@ -2,6 +2,10 @@
  * Tool execution with approval support
  */
 
+// Registry
+export { ToolsetRegistry, type ToolsetContext, type ToolsetFactory } from "./registry.js";
+
+// Filesystem toolset
 export {
   FilesystemToolset,
   createFilesystemTools,
@@ -71,3 +75,46 @@ export {
   type CustomToolsetOptions,
   type ToolContext,
 } from "./custom.js";
+
+// Git toolset (self-registers on import)
+export {
+  GitToolset,
+  GitError,
+  GitAuthError,
+  GitTargetSchema,
+  GitToolsetConfigSchema,
+  CLIGitBackend,
+  createCLIGitBackend,
+  getGitHubAuth,
+  hasGitHubAuth,
+  merge,
+  threeWayMerge,
+  generateDiff,
+  hasConflictMarkers,
+  createGitTools,
+  createGitStatusTool,
+  createGitStageTool,
+  createGitDiffTool,
+  createGitPushTool,
+  createGitDiscardTool,
+  createGitPullTool,
+  createGitMergeTool,
+  createGitBranchesTool,
+  type GitTarget,
+  type GitHubTarget,
+  type LocalTarget,
+  type LocalBareTarget,
+  type StagedCommit,
+  type StagedFile,
+  type GitStatus,
+  type UnstagedFile,
+  type PullResult,
+  type MergeResult,
+  type PushResult,
+  type PushConflict,
+  type BranchListResult,
+  type GitToolsetConfig,
+  type GitToolResult,
+  type GitBackend,
+  type GitToolsetOptions,
+} from "./git/index.js";
