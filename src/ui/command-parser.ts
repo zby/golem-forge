@@ -1,0 +1,274 @@
+/**
+ * Command Parser
+ *
+ * Parses slash commands from user input.
+ * Commands start with `/` and are intercepted by the UI.
+ */
+
+/**
+ * Parsed slash command.
+ */
+export interface ParsedCommand {
+  /** Command name (without slash) */
+  name: string;
+  /** Positional arguments */
+  args: string[];
+  /** Named options (--key=value or --key value) */
+  options: Record<string, string | boolean>;
+  /** Original raw input */
+  raw: string;
+}
+
+/**
+ * Check if input is a slash command.
+ */
+export function isCommand(input: string): boolean {
+  return input.startsWith("/");
+}
+
+/**
+ * Parse a slash command string.
+ *
+ * Supports:
+ * - Positional args: `/tool name arg1 arg2`
+ * - Named options: `/tool name --flag --key=value --key value`
+ * - Short options: `/tool name -f -k value`
+ * - Interactive mode: `/tool name -i`
+ *
+ * @example
+ * ```typescript
+ * parseCommand("/tool git_push --branch main --force")
+ * // {
+ * //   name: "tool",
+ * //   args: ["git_push"],
+ * //   options: { branch: "main", force: true },
+ * //   raw: "/tool git_push --branch main --force"
+ * // }
+ *
+ * parseCommand("/git_push --branch main")
+ * // {
+ * //   name: "git_push",
+ * //   args: [],
+ * //   options: { branch: "main" },
+ * //   raw: "/git_push --branch main"
+ * // }
+ * ```
+ */
+export function parseCommand(input: string): ParsedCommand | null {
+  if (!isCommand(input)) {
+    return null;
+  }
+
+  const raw = input;
+  const trimmed = input.slice(1).trim(); // Remove leading /
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const tokens = tokenize(trimmed);
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  const name = tokens[0];
+  const args: string[] = [];
+  const options: Record<string, string | boolean> = {};
+
+  let i = 1;
+  while (i < tokens.length) {
+    const token = tokens[i];
+
+    if (token.startsWith("--")) {
+      // Long option
+      const rest = token.slice(2);
+
+      if (rest.includes("=")) {
+        // --key=value
+        const [key, ...valueParts] = rest.split("=");
+        options[key] = valueParts.join("=");
+      } else if (i + 1 < tokens.length && !tokens[i + 1].startsWith("-")) {
+        // --key value
+        options[rest] = tokens[i + 1];
+        i++;
+      } else {
+        // --flag (boolean)
+        options[rest] = true;
+      }
+    } else if (token.startsWith("-") && token.length > 1 && !token.startsWith("--")) {
+      // Short option
+      const key = token.slice(1);
+
+      if (key.length === 1 && i + 1 < tokens.length && !tokens[i + 1].startsWith("-")) {
+        // -k value
+        options[key] = tokens[i + 1];
+        i++;
+      } else {
+        // -f (boolean flag) or -abc (multiple flags)
+        for (const char of key) {
+          options[char] = true;
+        }
+      }
+    } else {
+      // Positional argument
+      args.push(token);
+    }
+
+    i++;
+  }
+
+  return { name, args, options, raw };
+}
+
+/**
+ * Tokenize a command string.
+ * Handles quoted strings with spaces.
+ */
+function tokenize(input: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let inQuote: string | null = null;
+  let escape = false;
+
+  for (const char of input) {
+    if (escape) {
+      current += char;
+      escape = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escape = true;
+      continue;
+    }
+
+    if (inQuote) {
+      if (char === inQuote) {
+        inQuote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      inQuote = char;
+      continue;
+    }
+
+    if (char === " " || char === "\t") {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
+/**
+ * Built-in command names.
+ * These take precedence over tool names.
+ */
+export const BUILTIN_COMMANDS = [
+  "help",
+  "model",
+  "clear",
+  "status",
+  "config",
+  "exit",
+  "tools",
+  "tool",
+  "t",      // Short for /tool
+  "ts",     // Short for /tools
+] as const;
+
+export type BuiltinCommand = typeof BUILTIN_COMMANDS[number];
+
+/**
+ * Check if a command name is a built-in command.
+ */
+export function isBuiltinCommand(name: string): name is BuiltinCommand {
+  return (BUILTIN_COMMANDS as readonly string[]).includes(name);
+}
+
+/**
+ * Result of command classification.
+ */
+export type CommandType =
+  | { type: "builtin"; command: BuiltinCommand; parsed: ParsedCommand }
+  | { type: "tool"; toolName: string; parsed: ParsedCommand }
+  | { type: "unknown"; parsed: ParsedCommand };
+
+/**
+ * Classify a parsed command.
+ *
+ * @param parsed - Parsed command
+ * @param availableTools - List of available manual tool names
+ */
+export function classifyCommand(
+  parsed: ParsedCommand,
+  availableTools: string[]
+): CommandType {
+  const name = parsed.name.toLowerCase();
+
+  // Check for /tool <name> or /t <name> syntax first
+  // These are special: they look like built-ins but invoke tools
+  if (name === "tool" || name === "t") {
+    if (parsed.args.length > 0) {
+      return { type: "tool", toolName: parsed.args[0], parsed };
+    }
+    // No tool name provided - this is an error case
+    return { type: "unknown", parsed };
+  }
+
+  // Check for other built-in commands
+  if (isBuiltinCommand(name)) {
+    return { type: "builtin", command: name, parsed };
+  }
+
+  // Check for direct tool invocation: /git_push (if tool exists)
+  if (availableTools.includes(parsed.name)) {
+    return { type: "tool", toolName: parsed.name, parsed };
+  }
+
+  return { type: "unknown", parsed };
+}
+
+/**
+ * Convert parsed options to tool args.
+ * Maps short option names to full names based on tool fields.
+ *
+ * @param options - Parsed options from command
+ * @param fieldMapping - Map of short names to full field names
+ */
+export function optionsToArgs(
+  options: Record<string, string | boolean>,
+  fieldMapping?: Record<string, string>
+): Record<string, unknown> {
+  const args: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(options)) {
+    // Map short names to full names if mapping provided
+    const fullName = fieldMapping?.[key] || key;
+
+    // Convert string "true"/"false" to boolean if needed
+    if (value === "true") {
+      args[fullName] = true;
+    } else if (value === "false") {
+      args[fullName] = false;
+    } else {
+      args[fullName] = value;
+    }
+  }
+
+  return args;
+}

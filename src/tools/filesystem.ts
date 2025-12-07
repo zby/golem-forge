@@ -38,6 +38,28 @@ export interface FilesystemToolResult {
 }
 
 /**
+ * Execution mode for tools.
+ *
+ * - `llm`: Tool can only be invoked by the LLM (default, current behavior)
+ * - `manual`: Tool can only be invoked by the user
+ * - `both`: Tool can be invoked by either LLM or user
+ */
+export type ExecutionMode = "llm" | "manual" | "both";
+
+/**
+ * Tool-level configuration for manual execution.
+ * Enables user-invokable tools in the UI.
+ */
+export interface ManualExecutionConfig {
+  /** Execution mode for this tool */
+  mode: ExecutionMode;
+  /** Human-readable label (defaults to tool name) */
+  label?: string;
+  /** Category for grouping in UI (e.g., "Git Operations") */
+  category?: string;
+}
+
+/**
  * A named tool extends the AI SDK Tool with a name property.
  * The name is used for tool identification in our toolset management.
  *
@@ -47,6 +69,8 @@ export interface FilesystemToolResult {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type NamedTool = Tool<any, any> & {
   name: string;
+  /** Configuration for manual tool execution (user-invoked) */
+  manualExecution?: ManualExecutionConfig;
 };
 
 /**

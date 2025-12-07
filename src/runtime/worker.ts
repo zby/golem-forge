@@ -193,10 +193,14 @@ export class WorkerRuntime implements WorkerRunner {
   private onEvent?: RuntimeEventCallback;
   private initialized = false;
   private toolExecutor?: ToolExecutor;
+  private depth: number;
 
   constructor(options: WorkerRuntimeOptions) {
     this.worker = options.worker;
     this.options = options;
+
+    // Set depth (default 0 for root worker)
+    this.depth = options.depth ?? 0;
 
     // Use injected model or create from model resolution
     if (options.injectedModel) {
@@ -501,6 +505,25 @@ export class WorkerRuntime implements WorkerRunner {
         currentIteration = iteration + 1;
         const iterationNum = currentIteration;
 
+        // Check for interruption at the start of each iteration
+        if (this.options.interruptSignal?.interrupted) {
+          this.emit({
+            type: "execution_end",
+            success: true,
+            response: "[Interrupted]",
+            totalIterations: iterationNum,
+            totalToolCalls: toolCallCount,
+            totalTokens: { input: totalInputTokens, output: totalOutputTokens },
+            durationMs: Date.now() - startTime,
+          });
+          return {
+            success: true,
+            response: "[Interrupted]",
+            toolCallCount,
+            tokens: { input: totalInputTokens, output: totalOutputTokens },
+          };
+        }
+
         // Emit message_send event
         this.emit({
           type: "message_send",
@@ -659,6 +682,21 @@ export class WorkerRuntime implements WorkerRunner {
    */
   getApprovalController(): ApprovalController {
     return this.approvalController;
+  }
+
+  /**
+   * Get the worker depth in the delegation tree.
+   * 0 = root worker, 1+ = child workers
+   */
+  getDepth(): number {
+    return this.depth;
+  }
+
+  /**
+   * Check if this is the root worker.
+   */
+  isRoot(): boolean {
+    return this.depth === 0;
   }
 
   /**
