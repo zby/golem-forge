@@ -2,6 +2,12 @@
 
 Read and follow all guidance in `AGENTS.md`.
 
+## Working Directory
+
+The working directory is always `/home/zby/llm/golem-forge`. Use simple commands without `-C` flags:
+- Use `git diff` not `git -C /home/zby/llm/golem-forge diff`
+- Use `git status` not `git -C /home/zby/llm/golem-forge status`
+
 ## Documentation Examples
 
 When writing examples that use live models:

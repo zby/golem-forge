@@ -48,17 +48,17 @@ The gray zone model drives a layered security architecture:
 |-------|------------------|--------|
 | **Zones** | What sandbox can access | LLM reading/writing wrong files |
 | **Approval** | Which operations need consent | Accidental destructive actions |
-| **Clearance** | What enters trusted zone | Malicious/corrupted outputs |
+| **Execution Mode** | Who can invoke tools (LLM/Manual) | Unauthorized boundary crossings |
 | **Container** (future) | OS-level isolation | Code execution, system access |
 
 ### Threats and Mitigations
 
 **Accidental errors** (LLM mistakes)—writing wrong files, running wrong commands:
-- Mitigated by zones, approval prompts, and clearance review
+- Mitigated by zones, approval prompts, and manual tool boundaries
 - Application-level checks are sufficient
 
 **Adversarial content** (prompt injection)—malicious instructions embedded in processed content:
-- Mitigated by clearance compression and container isolation
+- Mitigated by manual-only tools (LLM cannot invoke) and container isolation
 - Application-level checks alone are insufficient for sophisticated attacks
 
 | Content Source | Isolation Needed |
@@ -247,26 +247,39 @@ When binary output is unavoidable (generated images, compiled artifacts), automa
 
 Scanners don't replace human review—they're defense in depth for content humans can't directly inspect.
 
-### Three Clearance Modes
+### Tool Execution Modes and Clearance
 
-| Mode | Who Initiates | Approval | Use Case |
-|------|---------------|----------|----------|
-| **Autonomous** | LLM | Pre-cleared | Low-risk prep (staging, status) |
-| **Supervised** | LLM | Requires clearance | Medium-risk operations |
-| **Manual** | User only | User-initiated | High-risk boundary crossings |
+Clearance is implemented through tool execution modes, not a separate system:
 
-**Key insight**: For sensitive operations like `git_push`, the LLM has no tool to call. The operation exists only in CLI/UI. A prompt injection cannot even *request* that content enter the trusted zone.
+| Mode | Who Can Invoke | Use Case |
+|------|----------------|----------|
+| **LLM** | LLM only | Standard tools (read files, run commands) |
+| **Manual** | User only | Clearance operations (push, deploy, export) |
+| **Both** | LLM or User | Flexible operations (staging, status checks) |
 
-### Clearance Architecture
+**Key insight**: For sensitive operations like `git_push`, the tool is configured as `manualExecution: { mode: 'manual' }`. The LLM cannot call it. A prompt injection cannot even *request* that content enter the trusted zone.
 
-Each clearance protocol has three layers:
+Approval is orthogonal: a manual tool can still require confirmation before execution.
+
+### Clearance via Manual Tools
+
+Tools are configured per worker. A worker without manual tools can only return output—it cannot trigger user-invokable actions.
 
 ```
-src/clearance/<protocol>/
-├── operations.ts     # Core logic (shared)
-├── tools.ts          # LLM-callable (autonomous/supervised)
-└── commands.ts       # CLI/UI only (manual)
+Root Worker (has git_push manual tool)
+│
+├─→ Analysis Worker (read-only tools, no manual tools)
+│   └─→ Returns: "Found 3 issues"
+│
+└─→ Fix Worker (filesystem write, no git tools)
+    └─→ Writes files, returns: "Fixed 3 issues"
+
+Root: "I've fixed the issues. Files are modified locally."
+
+User invokes: golem tool git_push --branch main
 ```
+
+Tool writers define clearance semantics in their tools. The UI provides invocation and input fields derived from the tool's Zod schema.
 
 ### Git Clearance
 
@@ -280,7 +293,7 @@ Git is the first clearance protocol—version-controlled persistence with full a
 │  LLM calls git_stage, git_status        │
 └──────────────────┬──────────────────────┘
                    │
-                   │ Manual: user runs CLI command
+                   │ Manual tool: user invokes git_push
                    ▼
 ┌─────────────────────────────────────────┐
 │     Trusted Zone (git target)           │
@@ -288,14 +301,39 @@ Git is the first clearance protocol—version-controlled persistence with full a
 └─────────────────────────────────────────┘
 ```
 
-| Operation | Autonomous | Supervised | Manual |
-|-----------|------------|------------|--------|
-| `git_status` | ✓ | - | ✓ |
-| `git_stage` | ✓ | - | ✓ |
-| `git_diff` | ✓ | - | ✓ |
-| `git_pull` | ✓ | - | ✓ |
-| `git_discard` | ✓ | - | ✓ |
-| `git_push` | - | - | ✓ |
+| Tool | Execution Mode | Description |
+|------|----------------|-------------|
+| `git_status` | `both` | Check repository state |
+| `git_stage` | `both` | Stage files for commit |
+| `git_diff` | `both` | View changes |
+| `git_pull` | `both` | Fetch from remote |
+| `git_discard` | `both` | Discard local changes |
+| `git_push` | `manual` | Push to remote (clearance boundary) |
+
+**Example: git_push as manual tool:**
+```typescript
+export const gitPushTool: NamedTool = {
+  name: 'git_push',
+  description: 'Push commits to remote repository',
+
+  inputSchema: z.object({
+    remote: z.enum(['origin', 'upstream']).default('origin'),
+    branch: z.string().describe('Target branch'),
+  }),
+
+  execute: async ({ remote, branch }) => {
+    return execGit(['push', remote, branch]);
+  },
+
+  needsApproval: true,  // Requires confirmation even when manually invoked
+
+  manualExecution: {
+    mode: 'manual',           // User only - LLM cannot push
+    label: 'Push to Remote',
+    category: 'Git Operations',
+  },
+};
+```
 
 **Workflow:**
 ```
@@ -304,19 +342,19 @@ LLM: "Changes staged and ready for your review"
 
 --- User reviews when ready ---
 
-User: golem git diff           # Review staged changes
-User: golem git push           # Manual clearance into trusted zone
+User: golem tool git_diff                    # Review staged changes
+User: golem tool git_push --branch main      # Manual clearance into trusted zone
 ```
 
 See [notes/git-integration-design.md](notes/git-integration-design.md) for implementation details.
 
-### Future Clearance Protocols
+### Future Clearance Tools
 
-| Protocol | Description | Mode |
-|----------|-------------|------|
-| **File Export** | Move files outside sandbox | Manual |
-| **API Clearance** | Send data to external services | Supervised/Manual |
-| **Clipboard** | Copy to system clipboard | Manual |
+| Tool | Description | Execution Mode |
+|------|-------------|----------------|
+| `file_export` | Move files outside sandbox | `manual` |
+| `api_send` | Send data to external services | `manual` or `both` |
+| `clipboard_copy` | Copy to system clipboard | `manual` |
 
 ---
 
