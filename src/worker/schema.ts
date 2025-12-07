@@ -31,7 +31,7 @@ export const ZoneApprovalConfigSchema = z.object({
   write: ApprovalDecisionTypeSchema.optional(),
   /** Approval for delete operations. Default: 'ask' */
   delete: ApprovalDecisionTypeSchema.optional(),
-});
+}).strict();
 
 export type ZoneApprovalConfig = z.infer<typeof ZoneApprovalConfigSchema>;
 
@@ -48,7 +48,7 @@ export const WorkerZoneRequirementSchema = z.object({
   mode: z.enum(["ro", "rw"]).optional(),
   /** Approval config - consent layer (optional, defaults to 'ask' for write ops) */
   approval: ZoneApprovalConfigSchema.optional(),
-});
+}).strict();
 
 export type WorkerZoneRequirement = z.infer<typeof WorkerZoneRequirementSchema>;
 
@@ -60,7 +60,7 @@ export type WorkerZoneRequirement = z.infer<typeof WorkerZoneRequirementSchema>;
 export const WorkerSandboxConfigSchema = z.object({
   /** List of zones this worker needs access to */
   zones: z.array(WorkerZoneRequirementSchema).optional(),
-});
+}).strict();
 
 export type WorkerSandboxConfig = z.infer<typeof WorkerSandboxConfigSchema>;
 
@@ -72,7 +72,7 @@ export const AttachmentPolicySchema = z.object({
   max_total_bytes: z.number().positive().default(10_000_000),
   allowed_suffixes: z.array(z.string()).default([]),
   denied_suffixes: z.array(z.string()).default([]),
-});
+}).strict();
 
 export type AttachmentPolicy = z.infer<typeof AttachmentPolicySchema>;
 
@@ -82,7 +82,7 @@ export type AttachmentPolicy = z.infer<typeof AttachmentPolicySchema>;
 export const ServerSideToolConfigSchema = z.object({
   name: z.string(),
   config: z.record(z.unknown()).optional(),
-});
+}).strict();
 
 export type ServerSideToolConfig = z.infer<typeof ServerSideToolConfigSchema>;
 
@@ -115,7 +115,7 @@ export const WorkerFrontmatterSchema = z.object({
   attachment_policy: AttachmentPolicySchema.optional(),
   server_side_tools: z.array(ServerSideToolConfigSchema).default([]),
   locked: z.boolean().default(false),
-});
+}).strict();
 
 export type WorkerFrontmatter = z.infer<typeof WorkerFrontmatterSchema>;
 

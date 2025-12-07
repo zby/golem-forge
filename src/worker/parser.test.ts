@@ -211,6 +211,43 @@ Instructions.
 
       expect(result.success).toBe(false);
     });
+
+    it("rejects worker with unknown fields (strict validation)", () => {
+      const content = `---
+name: unknown_fields
+description: Has unknown fields
+unknown_field: should_fail
+another_typo: also_bad
+---
+
+Instructions.
+`;
+
+      const result = parseWorkerString(content);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error).toContain("Invalid");
+      }
+    });
+
+    it("rejects sandbox zone with unknown fields", () => {
+      const content = `---
+name: bad_zone_fields
+sandbox:
+  zones:
+    - name: workspace
+      mode: rw
+      typo_field: oops
+---
+
+Instructions.
+`;
+
+      const result = parseWorkerString(content);
+
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("edge cases", () => {

@@ -23,7 +23,7 @@ export const ZoneDefinitionSchema = z.object({
   path: z.string(),
   /** Access mode: ro (read-only) or rw (read-write) */
   mode: z.enum(["ro", "rw"]).default("rw"),
-});
+}).strict();
 
 export type ZoneDefinition = z.infer<typeof ZoneDefinitionSchema>;
 
@@ -37,7 +37,7 @@ export const SandboxProjectConfigSchema = z.object({
   root: z.string().default("sandbox"),
   /** Zone definitions */
   zones: z.record(z.string(), ZoneDefinitionSchema).default({}),
-});
+}).strict();
 
 export type SandboxProjectConfig = z.infer<typeof SandboxProjectConfigSchema>;
 
@@ -47,7 +47,7 @@ export type SandboxProjectConfig = z.infer<typeof SandboxProjectConfigSchema>;
 export const ApprovalProjectConfigSchema = z.object({
   /** Default approval mode */
   mode: z.enum(["interactive", "approve_all", "auto_deny"]).optional(),
-});
+}).strict();
 
 export type ApprovalProjectConfig = z.infer<typeof ApprovalProjectConfigSchema>;
 
@@ -57,7 +57,7 @@ export type ApprovalProjectConfig = z.infer<typeof ApprovalProjectConfigSchema>;
 export const DelegationProjectConfigSchema = z.object({
   /** Maximum delegation depth */
   maxDepth: z.number().positive().default(5),
-});
+}).strict();
 
 export type DelegationProjectConfig = z.infer<typeof DelegationProjectConfigSchema>;
 
@@ -75,7 +75,7 @@ export const ProjectConfigSchema = z.object({
   delegation: DelegationProjectConfigSchema.optional(),
   /** Worker search paths relative to project root */
   workerPaths: z.array(z.string()).optional(),
-});
+}).strict();
 
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 
