@@ -1,0 +1,11 @@
+# Project config for whiteboard_planner example
+sandbox:
+  mode: direct
+  root: "."
+  zones:
+    input:
+      path: "./input"
+      mode: ro
+    plans:
+      path: "./plans"
+      mode: rw

@@ -1,0 +1,11 @@
+# Project config for code_analyzer example
+sandbox:
+  mode: direct
+  root: "."
+  zones:
+    codebase:
+      path: "./codebase"
+      mode: ro
+    reports:
+      path: "./reports"
+      mode: rw

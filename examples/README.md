@@ -141,13 +141,30 @@ toolsets:
   filesystem: {}
 sandbox:
   zones:
-    - name: workspace
+    - name: data
       mode: rw
 ---
 
 You are an assistant that...
 
 Instructions for the LLM go here.
+```
+
+Zone options in worker files:
+- `name` - zone to access (must be defined in project config)
+- `mode` - `ro` (read-only) or `rw` (read-write)
+- `approval` - optional consent requirements
+
+Create a `golem-forge.config.yaml` to define where zones live:
+
+```yaml
+sandbox:
+  mode: direct
+  root: "."
+  zones:
+    data:
+      path: "./data"
+      mode: rw
 ```
 
 Run with:

@@ -91,25 +91,64 @@ The LLM discovers available directories naturally—no special vocabulary needed
 
 ### Project Configuration
 
-Projects define available zones:
+> **Note:** The current directory-based sandbox is a development/testing convenience. It provides logical isolation but not security isolation. For production use with untrusted content, container-based isolation (see [Future: Container Isolation](#future-container-isolation)) will replace this approach.
+
+Projects define available zones in `golem-forge.config.yaml`:
 
 ```yaml
 # golem-forge.config.yaml
 sandbox:
-  mode: sandboxed
-  root: .sandbox
+  mode: direct          # or "sandboxed"
+  root: "."             # base directory for path resolution
   zones:
+    notes:
+      path: "./notes"   # relative to root
+      mode: rw
     cache:
-      path: ./cache
-      mode: ro              # read-only
-    workspace:
-      path: ./workspace
-      mode: rw              # read-write
+      path: "./cache"
+      mode: ro
 ```
+
+**Configuration options:**
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `mode` | `sandboxed` or `direct` | `sandboxed` |
+| `root` | Base directory for zone paths | `sandbox` |
+| `zones` | Map of zone name → definition | `{}` |
+
+**Zone definition:**
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `path` | Directory path (relative to root) | required |
+| `mode` | `ro` (read-only) or `rw` (read-write) | `rw` |
+
+**Modes:**
+
+- **`sandboxed`** (default): All zones live under a single sandbox directory. Zone paths are relative to `root`. Good for isolation.
+  ```yaml
+  sandbox:
+    mode: sandboxed
+    root: .sandbox        # all zones under .sandbox/
+    zones:
+      workspace:
+        path: ./workspace # → .sandbox/workspace/
+  ```
+
+- **`direct`**: Zones map to actual directories. Zone paths are relative to `root` (typically `.`). Good for working with existing directory structures.
+  ```yaml
+  sandbox:
+    mode: direct
+    root: "."
+    zones:
+      notes:
+        path: "./notes"   # → ./notes/
+  ```
 
 ### Worker Declaration
 
-Workers declare what they need:
+Workers declare what zones they need by name. The actual paths are defined in project config:
 
 ```yaml
 # analyzer.worker
@@ -122,9 +161,17 @@ sandbox:
 ---
 ```
 
+Workers only specify:
+- `name` - which zone to access
+- `mode` - access level (`ro` or `rw`)
+- `approval` - optional consent requirements
+
+The zone must be defined in the project's `golem-forge.config.yaml`. If not found, the worker will fail at runtime.
+
 **Principles:**
 - **Secure by default**: No declaration = no file access
 - **Self-describing**: Each worker declares its requirements
+- **Separation of concerns**: Workers request zones, projects define paths
 - **Least privilege**: Workers get only what they declare, never more
 
 ### Default Zones

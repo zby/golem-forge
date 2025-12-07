@@ -10,7 +10,6 @@ sandbox:
   zones:
     - name: input
       mode: ro
-      # Read-only input - no approval needed
     - name: plans
       mode: rw
       approval:

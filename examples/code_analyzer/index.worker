@@ -7,7 +7,6 @@ sandbox:
   zones:
     - name: codebase
       mode: ro
-      # No approval config needed - zone is read-only
     - name: reports
       mode: rw
       approval:

@@ -1,0 +1,8 @@
+# Project config for note_taker example
+sandbox:
+  mode: direct
+  root: "."
+  zones:
+    notes:
+      path: "./notes"
+      mode: rw

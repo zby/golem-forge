@@ -37,6 +37,9 @@ export type ZoneApprovalConfig = z.infer<typeof ZoneApprovalConfigSchema>;
 
 /**
  * Worker zone requirement - what this worker needs access to.
+ *
+ * Workers declare zone requirements by name. The actual zone paths
+ * are defined in project config (golem-forge.config.yaml).
  */
 export const WorkerZoneRequirementSchema = z.object({
   /** Name of the zone (must exist in project config) */
