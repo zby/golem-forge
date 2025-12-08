@@ -2,7 +2,7 @@
  * Tests for CLIAdapter
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { Writable, Readable, PassThrough } from "stream";
 import { CLIAdapter } from "./cli-adapter.js";
 import type {

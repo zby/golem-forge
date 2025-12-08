@@ -276,11 +276,12 @@ export class CLIAdapter implements UIAdapter {
       case "s":
       case "session":
         return { approved: "session" };
-      default:
+      default: {
         // Unknown input, treat as no
         const output = this.options.output as NodeJS.WriteStream;
         output.write(pc.dim("Unknown response, treating as 'no'\n"));
         return { approved: false };
+      }
     }
   }
 

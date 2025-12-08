@@ -65,7 +65,7 @@ export function renderDiff(
 
   // Build output with context handling
   const lines: string[] = [];
-  let lineNum = { old: 1, new: 1 };
+  const lineNum = { old: 1, new: 1 };
   let truncated = false;
 
   for (const change of changes) {

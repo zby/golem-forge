@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
+import { z } from 'zod';
 import { ToolsetRegistry, type ToolsetContext } from './registry.js';
 import type { NamedTool } from './filesystem.js';
 import { ApprovalController } from '../approval/index.js';
@@ -79,7 +80,7 @@ describe('ToolsetRegistry', () => {
       const mockTool: NamedTool = {
         name: 'test_tool',
         description: 'Test tool',
-        inputSchema: {} as any,
+        inputSchema: z.object({}),
         execute: async () => ({ success: true }),
       };
 
@@ -109,7 +110,7 @@ describe('ToolsetRegistry', () => {
       const mockTool: NamedTool = {
         name: 'async_tool',
         description: 'Async tool',
-        inputSchema: {} as any,
+        inputSchema: z.object({}),
         execute: async () => ({ success: true }),
       };
 

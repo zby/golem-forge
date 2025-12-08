@@ -270,7 +270,13 @@ See [`examples/`](examples/) for working code.
 
 ## Contributing
 
-PRs welcome! Run `npm test` before committing. See [`AGENTS.md`](AGENTS.md).
+PRs welcome! Run lint and tests before committing:
+
+```bash
+npm run lint && npm test
+```
+
+See [`AGENTS.md`](AGENTS.md).
 
 ## License
 

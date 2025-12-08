@@ -363,7 +363,7 @@ export class CLIGitBackend implements GitBackend {
           commit_sha: baseCommitSha,
         });
         baseTreeSha = commitData.tree.sha;
-      } catch (error) {
+      } catch {
         // Branch doesn't exist - we'll create it
         const { data: repoData } = await octokit.repos.get({ owner, repo });
         const defaultBranch = repoData.default_branch;

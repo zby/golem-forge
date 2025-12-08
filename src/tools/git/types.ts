@@ -52,7 +52,7 @@ export type GitTarget = GitHubTarget | LocalTarget | LocalBareTarget;
 
 export const GitHubTargetSchema = z.object({
   type: z.literal('github'),
-  repo: z.string().regex(/^[^\/]+\/[^\/]+$/, 'Repository must be in format "owner/repo"'),
+  repo: z.string().regex(/^[^/]+\/[^/]+$/, 'Repository must be in format "owner/repo"'),
   branch: z.string().optional(),
 });
 

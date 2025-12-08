@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { parseWorkerString } from "./worker/parser.js";
-import type { WorkerDefinition } from "./worker/schema.js";
+import type {} from "./worker/schema.js";
 
 // Mock generateText from AI SDK
 const mockGenerateText = vi.fn();

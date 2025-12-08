@@ -299,7 +299,7 @@ export class WorkerRuntime implements WorkerRunner {
 
     for (const [toolsetName, toolsetConfig] of Object.entries(toolsetsConfig)) {
       switch (toolsetName) {
-        case "filesystem":
+        case "filesystem": {
           if (!this.sandbox) {
             throw new Error("Filesystem toolset requires a sandbox. Set projectRoot or mountSandboxConfig.");
           }
@@ -313,6 +313,7 @@ export class WorkerRuntime implements WorkerRunner {
             this.tools[tool.name] = tool;
           }
           break;
+        }
 
         case "workers": {
           // Worker delegation toolset - requires allowed_workers list

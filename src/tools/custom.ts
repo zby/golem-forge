@@ -114,7 +114,7 @@ export function isZodSchema(obj: unknown): obj is z.ZodType {
  * Extract description from a function's JSDoc comment or toString().
  * Returns undefined if no description found.
  */
-export function extractFunctionDescription(fn: Function): string | undefined {
+export function extractFunctionDescription(fn: (...args: unknown[]) => unknown): string | undefined {
   // Try to get description from function's toString()
   // This is limited - JSDoc comments are typically stripped at compile time
   const fnStr = fn.toString();
@@ -171,7 +171,7 @@ export function wrapWithDefaultApproval(
  */
 export function createToolFromFunction(
   name: string,
-  fn: Function,
+  fn: (...args: unknown[]) => unknown,
   schema: z.ZodType,
   sandbox?: FileOperations,
   description?: string
@@ -261,7 +261,7 @@ export async function loadCustomTools(
         );
       }
 
-      const tool = createToolFromFunction(toolName, exported, schema, sandbox);
+      const tool = createToolFromFunction(toolName, exported as (...args: unknown[]) => unknown, schema, sandbox);
       tools.push(wrapWithDefaultApproval(tool, config.approval));
       continue;
     }

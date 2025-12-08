@@ -2,7 +2,8 @@
  * Shell Tool Tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
+import type { ToolExecutionOptions } from 'ai';
 import {
   checkMetacharacters,
   parseCommand,
@@ -15,8 +16,11 @@ import {
   type ShellRule,
   type ShellDefault,
   type ShellConfig,
+  type ShellInput,
 } from './shell.js';
 import { BlockedError } from '../approval/index.js';
+
+const mockOptions = {} as ToolExecutionOptions;
 
 describe('checkMetacharacters', () => {
   it('should pass for safe commands', () => {
@@ -211,7 +215,7 @@ describe('createShellTool', () => {
 
     const result = await tool.execute(
       { command: 'echo hello', timeout: 30 },
-      {} as any
+      mockOptions
     );
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim()).toBe('hello');
@@ -223,7 +227,7 @@ describe('createShellTool', () => {
     });
 
     await expect(
-      tool.execute({ command: 'ls -la', timeout: 30 }, {} as any)
+      tool.execute({ command: 'ls -la', timeout: 30 }, mockOptions)
     ).rejects.toThrow(BlockedError);
   });
 
@@ -236,7 +240,7 @@ describe('createShellTool', () => {
     });
 
     await expect(
-      tool.execute({ command: 'rm -rf /', timeout: 30 }, {} as any)
+      tool.execute({ command: 'rm -rf /', timeout: 30 }, mockOptions)
     ).rejects.toThrow(BlockedError);
   });
 
@@ -249,7 +253,7 @@ describe('createShellTool', () => {
 
     const result = await tool.execute(
       { command: 'echo test', timeout: 30 },
-      {} as any
+      mockOptions
     );
     expect(result.exitCode).toBe(0);
   });
@@ -262,7 +266,7 @@ describe('createShellTool', () => {
         },
       });
 
-      const needsApproval = tool.needsApproval as (input: any) => boolean;
+      const needsApproval = tool.needsApproval as (input: ShellInput) => boolean;
       expect(needsApproval({ command: 'git status', timeout: 30 })).toBe(false);
     });
 
@@ -273,7 +277,7 @@ describe('createShellTool', () => {
         },
       });
 
-      const needsApproval = tool.needsApproval as (input: any) => boolean;
+      const needsApproval = tool.needsApproval as (input: ShellInput) => boolean;
       expect(needsApproval({ command: 'git commit -m "test"', timeout: 30 })).toBe(true);
     });
 
@@ -284,7 +288,7 @@ describe('createShellTool', () => {
         },
       });
 
-      const needsApproval = tool.needsApproval as (input: any) => boolean;
+      const needsApproval = tool.needsApproval as (input: ShellInput) => boolean;
       // Unknown commands are blocked, need approval so we can show the BlockedError
       expect(needsApproval({ command: 'rm -rf /', timeout: 30 })).toBe(true);
     });
@@ -297,7 +301,7 @@ describe('createShellTool', () => {
         },
       });
 
-      const needsApproval = tool.needsApproval as (input: any) => boolean;
+      const needsApproval = tool.needsApproval as (input: ShellInput) => boolean;
       expect(needsApproval({ command: 'any-command', timeout: 30 })).toBe(false);
     });
   });
@@ -321,7 +325,7 @@ describe('ShellToolset', () => {
     const tools = toolset.getTools();
     const tool = tools[0];
 
-    const needsApproval = tool.needsApproval as (input: any) => boolean;
+    const needsApproval = tool.needsApproval as (input: ShellInput) => boolean;
     expect(needsApproval({ command: 'echo test', timeout: 30 })).toBe(false);
   });
 });

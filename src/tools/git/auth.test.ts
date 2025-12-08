@@ -2,8 +2,8 @@
  * Tests for GitHub authentication.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { getGitHubAuth, hasGitHubAuth, clearAuthCache, GitHubAuth } from './auth.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { getGitHubAuth, hasGitHubAuth, clearAuthCache } from './auth.js';
 import { GitAuthError } from './types.js';
 
 describe('GitHub authentication', () => {
@@ -75,7 +75,7 @@ describe('GitHub authentication', () => {
     it('clears cached gh CLI token', () => {
       // Set env token, check auth, clear cache
       process.env.GITHUB_TOKEN = 'test-token';
-      const auth1 = getGitHubAuth();
+      getGitHubAuth();
 
       clearAuthCache();
 

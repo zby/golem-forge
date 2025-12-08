@@ -117,6 +117,7 @@ function isBinaryContent(content: string): boolean {
     return true;
   }
   // Check for high concentration of non-printable characters (except common whitespace)
+  // eslint-disable-next-line no-control-regex
   const nonPrintable = content.match(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\uFFFF]/g);
   if (nonPrintable && nonPrintable.length > content.length * 0.1) {
     return true;
