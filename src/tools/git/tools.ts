@@ -72,11 +72,11 @@ function handleError(error: unknown): GitToolResult {
  * Read-only, no approval needed.
  */
 export function createGitStatusTool(options: GitToolOptions): NamedTool {
-  const { backend, sandbox } = options;
+  const { backend } = options;
 
   return {
     name: 'git_status',
-    description: 'Show status of sandbox files and staged commits ready for push',
+    description: 'Show staged commits ready for push',
     inputSchema: GitStatusInputSchema,
     needsApproval: false, // Read-only
     manualExecution: {
@@ -88,27 +88,6 @@ export function createGitStatusTool(options: GitToolOptions): NamedTool {
       try {
         const staged = await backend.listStagedCommits();
 
-        // Get unstaged files from sandbox if available
-        const unstaged: Array<{ path: string; status: 'new' | 'modified' | 'deleted' }> = [];
-        if (sandbox) {
-          // List files in workspace zone
-          try {
-            const files = await sandbox.list('/workspace');
-            for (const file of files) {
-              unstaged.push({ path: `/workspace/${file}`, status: 'new' });
-            }
-          } catch (error) {
-            // Only ignore NotFoundError (workspace zone doesn't exist)
-            // Re-throw other errors
-            const isNotFound = error instanceof Error &&
-              (error.name === 'NotFoundError' ||
-               (error as NodeJS.ErrnoException).code === 'ENOENT');
-            if (!isNotFound) {
-              throw error;
-            }
-          }
-        }
-
         return {
           success: true,
           staged: staged.map(s => ({
@@ -118,7 +97,6 @@ export function createGitStatusTool(options: GitToolOptions): NamedTool {
             files: s.files.map(f => f.sandboxPath),
             createdAt: s.createdAt.toISOString(),
           })),
-          unstaged,
           hint: staged.length > 0
             ? `Use git_diff to see changes, git_push to publish, or git_discard to remove.`
             : `Use git_stage to prepare files for commit.`,
@@ -384,12 +362,14 @@ export function createGitPullTool(options: GitToolOptions): NamedTool {
           paths: args.paths,
         });
 
-        const destZone = args.destZone || 'workspace';
+        // Optional destination prefix (e.g., "/vendor" to pull into /vendor/...)
+        const destPrefix = args.destPath || '';
         const pulled: string[] = [];
         const conflicts: string[] = [];
 
         for (const file of files) {
-          const destPath = `/${destZone}/${file.path}`;
+          // Write to sandbox path directly (mount-based sandbox has no zones)
+          const destPath = destPrefix ? `${destPrefix}/${file.path}` : `/${file.path}`;
           const newContent = file.content.toString('utf8');
 
           // Check if file exists in sandbox

@@ -81,7 +81,7 @@ export const GitTargetSchema = z.discriminatedUnion('type', [
  * A file staged for commit.
  */
 export interface StagedFile {
-  /** Path within the sandbox (e.g., /workspace/report.md) */
+  /** Path within the sandbox (e.g., /src/report.md) */
   sandboxPath: string;
   /** Type of operation */
   operation: 'create' | 'update' | 'delete';
@@ -203,7 +203,7 @@ export const GitStatusInputSchema = z.object({});
 export type GitStatusInput = z.infer<typeof GitStatusInputSchema>;
 
 export const GitStageInputSchema = z.object({
-  files: z.array(z.string()).describe('Sandbox paths to stage (e.g., ["/workspace/report.md"])'),
+  files: z.array(z.string()).describe('Sandbox paths to stage (e.g., ["/src/report.md"])'),
   message: z.string().describe('Commit message for this staged commit'),
 });
 export type GitStageInput = z.infer<typeof GitStageInputSchema>;
@@ -227,7 +227,7 @@ export type GitDiscardInput = z.infer<typeof GitDiscardInputSchema>;
 export const GitPullInputSchema = z.object({
   source: GitTargetSchema.describe('Git source to pull from'),
   paths: z.array(z.string()).describe('Paths to pull from the source'),
-  destZone: z.string().optional().describe('Destination zone in sandbox. Defaults to "workspace".'),
+  destPath: z.string().optional().describe('Destination path prefix in sandbox (e.g., "/vendor"). If omitted, files are written to root.'),
 });
 export type GitPullInput = z.infer<typeof GitPullInputSchema>;
 

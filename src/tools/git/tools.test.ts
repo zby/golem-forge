@@ -8,6 +8,7 @@ import {
   createGitStageTool,
   createGitDiffTool,
   createGitDiscardTool,
+  createGitPullTool,
   createGitMergeTool,
   createGitTools,
 } from './tools.js';
@@ -81,7 +82,7 @@ describe('git tools', () => {
         id: 'commit-1',
         message: 'Test commit',
         files: [{
-          sandboxPath: '/workspace/test.txt',
+          sandboxPath: '/src/test.txt',
           operation: 'create',
           contentHash: 'hash',
           size: 100,
@@ -96,6 +97,8 @@ describe('git tools', () => {
       expect(result.success).toBe(true);
       expect(result.staged).toHaveLength(1);
       expect(result.staged[0].id).toBe('commit-1');
+      // Mount-based sandbox: no 'unstaged' field (zone concept removed)
+      expect(result.unstaged).toBeUndefined();
     });
   });
 
@@ -117,7 +120,7 @@ describe('git tools', () => {
       const tool = createGitStageTool({ backend, sandbox: undefined });
 
       const result = await tool.execute(
-        { files: ['/workspace/test.txt'], message: 'Test' },
+        { files: ['/src/test.txt'], message: 'Test' },
         { toolCallId: 'test' }
       );
 
@@ -128,12 +131,12 @@ describe('git tools', () => {
     it('stages files from sandbox', async () => {
       const backend = createMockBackend();
       const sandbox = createMockSandbox({
-        '/workspace/test.txt': 'file content',
+        '/src/test.txt': 'file content',
       });
       const tool = createGitStageTool({ backend, sandbox });
 
       const result = await tool.execute(
-        { files: ['/workspace/test.txt'], message: 'Add test file' },
+        { files: ['/src/test.txt'], message: 'Add test file' },
         { toolCallId: 'test' }
       );
 
@@ -196,6 +199,89 @@ describe('git tools', () => {
       expect(result.success).toBe(true);
       expect(result.discarded).toBe('test-id');
       expect(backend.discardStagedCommit).toHaveBeenCalledWith('test-id');
+    });
+  });
+
+  describe('createGitPullTool', () => {
+    it('creates a tool with correct name', () => {
+      const backend = createMockBackend();
+      const tool = createGitPullTool({ backend });
+      expect(tool.name).toBe('git_pull');
+    });
+
+    it('does not require approval', () => {
+      const backend = createMockBackend();
+      const tool = createGitPullTool({ backend });
+      expect(tool.needsApproval).toBe(false);
+    });
+
+    it('requires sandbox', async () => {
+      const backend = createMockBackend();
+      const tool = createGitPullTool({ backend, sandbox: undefined });
+
+      const result = await tool.execute(
+        { source: { type: 'local', path: '/repo' }, paths: ['file.txt'] },
+        { toolCallId: 'test' }
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('No sandbox');
+    });
+
+    it('pulls files to root by default', async () => {
+      const backend = createMockBackend();
+      (backend.pull as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { path: 'src/file.txt', content: Buffer.from('content') },
+      ]);
+      const sandbox = createMockSandbox({});
+      const tool = createGitPullTool({ backend, sandbox });
+
+      const result = await tool.execute(
+        { source: { type: 'local', path: '/repo' }, paths: ['src/file.txt'] },
+        { toolCallId: 'test' }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.pulled).toEqual(['/src/file.txt']);
+      expect(sandbox.write).toHaveBeenCalledWith('/src/file.txt', 'content');
+    });
+
+    it('pulls files to destPath when specified', async () => {
+      const backend = createMockBackend();
+      (backend.pull as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { path: 'file.txt', content: Buffer.from('content') },
+      ]);
+      const sandbox = createMockSandbox({});
+      const tool = createGitPullTool({ backend, sandbox });
+
+      const result = await tool.execute(
+        { source: { type: 'local', path: '/repo' }, paths: ['file.txt'], destPath: '/vendor' },
+        { toolCallId: 'test' }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.pulled).toEqual(['/vendor/file.txt']);
+      expect(sandbox.write).toHaveBeenCalledWith('/vendor/file.txt', 'content');
+    });
+
+    it('detects conflicts when file exists with different content', async () => {
+      const backend = createMockBackend();
+      (backend.pull as ReturnType<typeof vi.fn>).mockResolvedValue([
+        { path: 'file.txt', content: Buffer.from('new content') },
+      ]);
+      const sandbox = createMockSandbox({
+        '/file.txt': 'existing content',
+      });
+      const tool = createGitPullTool({ backend, sandbox });
+
+      const result = await tool.execute(
+        { source: { type: 'local', path: '/repo' }, paths: ['file.txt'] },
+        { toolCallId: 'test' }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.pulled).toEqual(['/file.txt']);
+      expect(result.conflicts).toHaveLength(1);
     });
   });
 
