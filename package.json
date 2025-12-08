@@ -8,10 +8,10 @@
   ],
   "scripts": {
     "build": "npm run build -w @golem-forge/core && npm run build -w @golem-forge/cli",
-    "build:all": "npm run build && npm run build -w @golem-forge/extension",
-    "test": "npm run test -w @golem-forge/core && npm run test -w @golem-forge/cli && npm run test -w @golem-forge/extension",
+    "build:all": "npm run build && npm run build -w @golem-forge/browser",
+    "test": "npm run test -w @golem-forge/core && npm run test -w @golem-forge/cli && npm run test -w @golem-forge/browser",
     "test:cli": "npm run test -w @golem-forge/cli",
-    "test:extension": "npm run test -w @golem-forge/extension",
+    "test:browser": "npm run test -w @golem-forge/browser",
     "test:integration": "npm run test:integration -w @golem-forge/cli",
     "test:live": "npm run test:live -w @golem-forge/cli",
     "lint": "npm run lint -w @golem-forge/cli",

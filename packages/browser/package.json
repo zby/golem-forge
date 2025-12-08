@@ -1,5 +1,5 @@
 {
-  "name": "@golem-forge/extension",
+  "name": "@golem-forge/browser",
   "version": "0.1.0",
   "description": "Golem Forge browser extension - AI-powered workflow automation",
   "type": "module",
