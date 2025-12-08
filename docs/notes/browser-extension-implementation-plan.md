@@ -220,7 +220,7 @@ These are fundamentally different operations that happen to have the same *outpu
 
 - [Browser Extension Architecture](../browser-extension-architecture.md) - System architecture
 - [Sandbox Design](../sandbox-design.md) - Zone model and clearance protocol
-- [AI SDK Browser Lessons](./ai-sdk-browser-lessons.md) - Lessons learned from validation
+- [AI SDK Browser Lessons](./archive/ai-sdk-browser-lessons.md) - Lessons learned from validation (archived)
 - [Container Isolation Options](./container-isolation-options.md) - WASM and other isolation strategies
 - [Browser Package README](../../packages/browser/README.md) - Development setup
 - [Browser Package Review Notes](../../packages/browser/REVIEW-NOTES.md) - Recent fixes

@@ -2,6 +2,16 @@
 
 Plan for adopting [Ink](https://github.com/vadimdemedes/ink) as the terminal UI framework for golem-forge.
 
+## Monorepo Structure
+
+> **Updated**: The project now uses npm workspaces with three packages:
+
+| Package | Description |
+|---------|-------------|
+| `@golem-forge/core` | Platform-agnostic types, sandbox errors, worker schema |
+| `@golem-forge/cli` | CLI implementation (Node.js) - includes UIAdapter, CLIAdapter |
+| `@golem-forge/browser` | Browser extension (React/Vite) - OPFS sandbox, React components |
+
 ## Current Implementation Status
 
 > **Important for implementers**: This section documents what already exists. The `UIAdapter` interface and types are stable. The `CLIAdapter` is the reference implementation but will be superseded by `InkAdapter`.
@@ -10,23 +20,23 @@ Plan for adopting [Ink](https://github.com/vadimdemedes/ink) as the terminal UI 
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| `src/ui/adapter.ts` | ✅ Stable | `UIAdapter` interface - the contract |
-| `src/ui/types.ts` | ✅ Stable | All types used by UIAdapter |
-| `src/tools/filesystem.ts` | ✅ Stable | `ExecutionMode`, `ManualExecutionConfig` |
+| `packages/cli/src/ui/adapter.ts` | ✅ Stable | `UIAdapter` interface - the contract |
+| `packages/cli/src/ui/types.ts` | ✅ Stable | All types used by UIAdapter |
+| `packages/cli/src/tools/filesystem.ts` | ✅ Stable | `ExecutionMode`, `ManualExecutionConfig` |
 
 ### Implemented Logic (Reuse)
 
 | Module | What It Does | Reuse In Ink? |
 |--------|--------------|---------------|
-| `src/ui/tool-info.ts` | `extractManualToolInfo()`, `getManualTools()`, `isManualTool()`, `isLLMTool()` | ✅ Yes - pure logic |
-| `src/ui/schema-to-fields.ts` | `deriveFieldsFromSchema()` - Zod → form fields | ✅ Yes - pure logic |
-| `src/ui/diff-renderer.ts` | `renderDiff()`, `renderDiffSummary()` - diff formatting | ⚠️ Partial - output is ANSI strings, may need Ink components |
-| `src/ui/result-utils.ts` | `toTypedToolResult()` - converts tool results | ✅ Yes - pure logic |
-| `src/ui/command-parser.ts` | `/command` parsing with completion | ✅ Yes - pure logic |
+| `packages/cli/src/ui/tool-info.ts` | `extractManualToolInfo()`, `getManualTools()`, `isManualTool()`, `isLLMTool()` | ✅ Yes - pure logic |
+| `packages/cli/src/ui/schema-to-fields.ts` | `deriveFieldsFromSchema()` - Zod → form fields | ✅ Yes - pure logic |
+| `packages/cli/src/ui/diff-renderer.ts` | `renderDiff()`, `renderDiffSummary()` - diff formatting | ⚠️ Partial - output is ANSI strings, may need Ink components |
+| `packages/cli/src/ui/result-utils.ts` | `toTypedToolResult()` - converts tool results | ✅ Yes - pure logic |
+| `packages/cli/src/ui/command-parser.ts` | `/command` parsing with completion | ✅ Yes - pure logic |
 
 ### CLIAdapter Methods → Ink Components
 
-The `CLIAdapter` (`src/ui/cli-adapter.ts`) implements `UIAdapter` imperatively. Here's how each method should map to Ink:
+The `CLIAdapter` (`packages/cli/src/ui/cli-adapter.ts`) implements `UIAdapter` imperatively. Here's how each method should map to Ink:
 
 | UIAdapter Method | CLIAdapter Impl | Ink Equivalent |
 |------------------|-----------------|----------------|
@@ -47,12 +57,12 @@ The `CLIAdapter` (`src/ui/cli-adapter.ts`) implements `UIAdapter` imperatively. 
 The clearance/manual tool system is complete:
 
 ```
-src/tools/filesystem.ts    → ExecutionMode type, ManualExecutionConfig
-src/tools/git/tools.ts     → git_push is mode:'manual' (clearance boundary)
-src/ui/tool-info.ts        → Extract ManualToolInfo from NamedTool
-src/ui/schema-to-fields.ts → Derive form fields from Zod schemas
-src/ui/types.ts            → ManualToolInfo, ManualToolField, ManualToolHandler
-src/ui/cli-adapter.ts      → displayManualTools(), executeManualTool()
+packages/cli/src/tools/filesystem.ts    → ExecutionMode type, ManualExecutionConfig
+packages/cli/src/tools/git/tools.ts     → git_push is mode:'manual' (clearance boundary)
+packages/cli/src/ui/tool-info.ts        → Extract ManualToolInfo from NamedTool
+packages/cli/src/ui/schema-to-fields.ts → Derive form fields from Zod schemas
+packages/cli/src/ui/types.ts            → ManualToolInfo, ManualToolField, ManualToolHandler
+packages/cli/src/ui/cli-adapter.ts      → displayManualTools(), executeManualTool()
 ```
 
 **For Ink**: Need `<ManualToolDialog>` component that renders fields from `ManualToolInfo.fields` and collects user input.
@@ -67,29 +77,33 @@ src/ui/cli-adapter.ts      → displayManualTools(), executeManualTool()
 
 ## Architecture Context
 
-The `UIAdapter` interface (`src/ui/adapter.ts`) provides platform-independent UI abstraction:
+The project uses a monorepo structure where `@golem-forge/core` provides shared types, and each platform has its own package:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                      UIAdapter Interface                        │
-│    (displayMessage, requestApproval, showProgress...)           │
+│                     @golem-forge/core                           │
+│   (sandbox types, worker schema, shared errors)                 │
 └─────────────────────────────────────────────────────────────────┘
                               │
-        ┌─────────────────────┼─────────────────────┐
-        ▼                     ▼                     ▼
-┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-│  Shared Logic │    │  Shared Logic │    │  Shared Logic │
-│  (approval,   │    │  (approval,   │    │  (approval,   │
-│   workers)    │    │   workers)    │    │   workers)    │
-└───────┬───────┘    └───────┬───────┘    └───────┬───────┘
-        ▼                    ▼                    ▼
-┌───────────────┐    ┌───────────────┐    ┌───────────────┐
-│  InkAdapter   │    │ BrowserAdapter│    │  CLIAdapter   │
-│  (React/Ink)  │    │ (React DOM)   │    │  (readline)   │
-└───────────────┘    └───────────────┘    └───────────────┘
+        ┌─────────────────────┴─────────────────────┐
+        ▼                                           ▼
+┌───────────────────────────────┐    ┌───────────────────────────────┐
+│       @golem-forge/cli        │    │      @golem-forge/browser     │
+│  ┌─────────────────────────┐  │    │  ┌─────────────────────────┐  │
+│  │    UIAdapter Interface  │  │    │  │    React Components     │  │
+│  └───────────┬─────────────┘  │    │  │    OPFS Sandbox         │  │
+│              │                │    │  │    Worker Manager        │  │
+│  ┌───────────┴─────────────┐  │    │  └─────────────────────────┘  │
+│  │  CLIAdapter (readline)  │  │    └───────────────────────────────┘
+│  │     - or -              │  │
+│  │  InkAdapter (React/Ink) │  │
+│  └─────────────────────────┘  │
+└───────────────────────────────┘
 ```
 
-**Key insight**: The `UIAdapter` interface is the contract. Internal architecture (contexts, state management) is implementation-specific. Shared *logic* (not components) can be extracted for reuse.
+The `UIAdapter` interface (`packages/cli/src/ui/adapter.ts`) provides the CLI UI contract:
+
+**Key insight**: The `UIAdapter` interface is the contract for CLI implementations. `@golem-forge/browser` uses React components directly. Shared *logic* (not components) can be extracted to `@golem-forge/core` for reuse.
 
 ## Experiment Results
 
@@ -141,30 +155,34 @@ ThemeProvider              # Semantic colors
 
 ## Shared Logic Layer (Proposed)
 
-Extract platform-agnostic logic from contexts for reuse between CLI and browser:
+Extract platform-agnostic logic from contexts for reuse between CLI and browser. The monorepo structure enables clean separation:
 
 ```
-src/ui/
-├── logic/                    # Shared (no React, no Ink)
-│   ├── approval-state.ts     # Pattern matching, auto-approve, history
-│   ├── worker-state.ts       # Tree operations, path computation
-│   ├── message-state.ts      # History, streaming buffer
-│   └── theme-tokens.ts       # Semantic token definitions
+packages/
+├── core/src/                 # @golem-forge/core - Shared (no React, no Ink)
+│   ├── sandbox-types.ts      # ✅ Already exists
+│   ├── sandbox-errors.ts     # ✅ Already exists
+│   ├── worker-schema.ts      # ✅ Already exists
+│   ├── approval-state.ts     # NEW: Pattern matching, auto-approve, history
+│   ├── worker-state.ts       # NEW: Tree operations, path computation
+│   └── message-state.ts      # NEW: History, streaming buffer
 │
-├── ink/                      # CLI-specific
-│   ├── contexts/             # React bindings for shared logic
-│   ├── components/           # Ink components
-│   └── InkAdapter.tsx
+├── cli/src/ui/               # @golem-forge/cli - CLI-specific
+│   ├── ink/                  # Ink implementation
+│   │   ├── contexts/         # React bindings for shared logic
+│   │   ├── components/       # Ink components
+│   │   └── InkAdapter.tsx
+│   └── cli-adapter.ts        # Fallback readline implementation
 │
-└── browser/                  # Browser-specific (future)
-    ├── hooks/                # React hooks for shared logic
-    └── components/           # React DOM components
+└── browser/src/              # @golem-forge/browser - Browser-specific
+    ├── components/           # React DOM components
+    └── services/             # ✅ Already has WorkerManager, etc.
 ```
 
 ### Example: Shared Approval Logic
 
 ```typescript
-// src/ui/logic/approval-state.ts - Platform agnostic
+// packages/core/src/approval-state.ts - Platform agnostic
 export interface ApprovalState {
   sessionApprovals: ApprovalPattern[];
   alwaysApprovals: ApprovalPattern[];
@@ -177,8 +195,8 @@ export function addApproval(state: ApprovalState, request: UIApprovalRequest, re
 ```
 
 ```typescript
-// src/ui/ink/contexts/ApprovalContext.tsx - CLI binding
-import { createApprovalState, isAutoApproved, addApproval } from "../../logic/approval-state.js";
+// packages/cli/src/ui/ink/contexts/ApprovalContext.tsx - CLI binding
+import { createApprovalState, isAutoApproved, addApproval } from "@golem-forge/core";
 
 export function ApprovalProvider({ children }) {
   const [state, setState] = useState(createApprovalState);
@@ -188,63 +206,82 @@ export function ApprovalProvider({ children }) {
 
 ### What Gets Shared
 
-| Module | Shared Logic | Platform Binding |
-|--------|-------------|------------------|
-| Approval | Pattern matching, history, auto-approve rules | React Context (Ink) / Hook (Browser) |
-| Workers | Tree ops, path computation, status tracking | React Context (Ink) / Redux (Browser) |
-| Messages | History management, streaming buffer | React Context (Ink) / State (Browser) |
-| Themes | Token definitions, semantic mappings | Ink colors / CSS variables |
+| Module | @golem-forge/core (Shared) | @golem-forge/cli (Ink) | @golem-forge/browser |
+|--------|---------------------------|------------------------|---------------------|
+| Approval | Pattern matching, history, auto-approve rules | React Context | React hooks |
+| Workers | Tree ops, path computation, status tracking | React Context | WorkerManager service |
+| Messages | History management, streaming buffer | React Context | Component state |
+| Themes | Token definitions, semantic mappings | Ink colors | CSS variables |
 
 ## Updated Directory Structure
 
 ```
-src/ui/
-├── adapter.ts              # UIAdapter interface (unchanged)
-├── types.ts                # Shared types (unchanged)
+packages/
+├── core/                     # @golem-forge/core
+│   └── src/
+│       ├── index.ts          # Package exports
+│       ├── sandbox-types.ts  # ✅ Exists
+│       ├── sandbox-errors.ts # ✅ Exists
+│       ├── worker-schema.ts  # ✅ Exists
+│       ├── approval-state.ts # NEW: Pattern matching, auto-approve
+│       ├── worker-state.ts   # NEW: Tree operations, path computation
+│       └── message-state.ts  # NEW: History, streaming buffer
 │
-├── logic/                  # NEW: Platform-agnostic logic
-│   ├── approval-state.ts
-│   ├── worker-state.ts
-│   ├── message-state.ts
-│   └── theme-tokens.ts
+├── cli/                      # @golem-forge/cli
+│   └── src/
+│       ├── ui/
+│       │   ├── adapter.ts        # UIAdapter interface (unchanged)
+│       │   ├── types.ts          # CLI-specific UI types (unchanged)
+│       │   ├── cli-adapter.ts    # Legacy CLI adapter (fallback)
+│       │   ├── index.ts          # UI exports
+│       │   │
+│       │   └── ink/              # NEW: Ink implementation
+│       │       ├── index.ts
+│       │       ├── InkAdapter.tsx
+│       │       ├── contexts/
+│       │       │   ├── ThemeContext.tsx
+│       │       │   ├── WorkerContext.tsx
+│       │       │   ├── ApprovalContext.tsx
+│       │       │   ├── MessagesContext.tsx
+│       │       │   └── UIStateContext.tsx
+│       │       ├── hooks/
+│       │       │   ├── useTerminalSize.ts
+│       │       │   └── useKeyHandler.ts
+│       │       ├── components/
+│       │       │   ├── messages/     # UserMessage, AssistantMessage, WorkerMessage
+│       │       │   ├── dialogs/      # ApprovalDialog
+│       │       │   ├── shared/       # DiffView, ToolResult, Progress
+│       │       │   └── layout/       # Header, Footer, MainContent
+│       │       └── themes/
+│       │           ├── types.ts
+│       │           └── default.ts
+│       └── ...
 │
-├── ink/                    # Ink implementation
-│   ├── index.ts
-│   ├── InkAdapter.tsx
-│   ├── contexts/
-│   │   ├── ThemeContext.tsx
-│   │   ├── WorkerContext.tsx
-│   │   ├── ApprovalContext.tsx
-│   │   ├── MessagesContext.tsx
-│   │   └── UIStateContext.tsx
-│   ├── hooks/
-│   │   ├── useTerminalSize.ts
-│   │   └── useKeyHandler.ts
-│   ├── components/
-│   │   ├── messages/       # UserMessage, AssistantMessage, WorkerMessage
-│   │   ├── dialogs/        # ApprovalDialog
-│   │   ├── shared/         # DiffView, ToolResult, Progress
-│   │   └── layout/         # Header, Footer, MainContent
-│   └── themes/
-│       ├── types.ts
-│       └── default.ts
-│
-├── cli-adapter.ts          # Legacy CLI adapter (fallback)
-└── index.ts                # Exports
+└── browser/                  # @golem-forge/browser
+    └── src/
+        ├── background.ts     # Service worker entry
+        ├── services/         # ✅ Exists: WorkerManager, BrowserRuntime, etc.
+        ├── storage/          # ✅ Exists: ProjectManager, SettingsManager
+        └── components/       # NEW: React DOM components (when UI is added)
 ```
 
 ## Adoption Strategy (Revised)
 
-### Phase 1: Extract Shared Logic
-1. Create `src/ui/logic/` with platform-agnostic state management
-2. Unit test shared logic independently
-3. No UI changes yet
+### Phase 1: Extract Shared Logic to @golem-forge/core
+1. Add platform-agnostic state management to `packages/core/src/`:
+   - `approval-state.ts` - pattern matching, auto-approve rules
+   - `worker-state.ts` - tree operations, path computation
+   - `message-state.ts` - history management, streaming buffer
+2. Export from `packages/core/src/index.ts`
+3. Unit test shared logic independently
+4. No UI changes yet
 
-### Phase 2: Integrate Ink
-1. Copy prototype to `src/ui/ink/`
-2. Refactor contexts to use shared logic
-3. Wire up `InkAdapter` to implement `UIAdapter`
-4. Add feature flag for adapter selection
+### Phase 2: Integrate Ink into @golem-forge/cli
+1. Add Ink dependencies to `packages/cli/package.json`
+2. Copy prototype to `packages/cli/src/ui/ink/`
+3. Refactor contexts to import shared logic from `@golem-forge/core`
+4. Wire up `InkAdapter` to implement `UIAdapter`
+5. Add feature flag for adapter selection in CLI
 
 ### Phase 3: Enhanced Features
 1. Syntax highlighting in messages
@@ -253,7 +290,7 @@ src/ui/
 4. Split pane for worker tree
 
 ### Phase 4: Default & Cleanup
-1. Make Ink the default adapter
+1. Make Ink the default adapter in `@golem-forge/cli`
 2. Simplify `CLIAdapter` to output-only fallback
 3. Update documentation
 
@@ -285,10 +322,23 @@ Current interface methods map cleanly to context actions:
 
 ## References
 
+### Internal
+
 - Prototype v2: `experiments/ink-ui-prototype/` (context-based)
 - Gemini CLI analysis: `docs/notes/archive/gemini-cli-alignment.md` (archived)
 - Clearance UI requirements: `docs/notes/archive/ui-clearance-requirements.md` (archived, key items above)
+
+### Current Implementation
+
+| Component | Location |
+|-----------|----------|
+| UIAdapter interface | `packages/cli/src/ui/adapter.ts` |
+| CLIAdapter | `packages/cli/src/ui/cli-adapter.ts` |
+| UI types | `packages/cli/src/ui/types.ts` |
+| Core package | `packages/core/src/` |
+| Browser extension | `packages/browser/src/` |
+
+### External
+
 - Ink docs: https://github.com/vadimdemedes/ink
 - Ink UI components: https://github.com/vadimdemedes/ink-ui
-- Current CLIAdapter: `src/ui/cli-adapter.ts`
-- UIAdapter interface: `src/ui/adapter.ts`
