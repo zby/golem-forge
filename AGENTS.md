@@ -4,23 +4,66 @@ Key expectations that frequently trip up automation agents. See `README.md` for 
 
 ---
 
+## Monorepo Structure
+
+This is an npm workspaces monorepo with three packages:
+
+| Package | Path | Purpose |
+|---------|------|---------|
+| `@golem-forge/core` | `packages/core/` | Shared types and utilities (sandbox types, errors) |
+| `@golem-forge/cli` | `packages/cli/` | CLI tool and Node.js runtime |
+| `@golem-forge/extension` | `packages/extension/` | Chrome browser extension |
+
+---
+
 ## Key References
 
 - `README.md` - setup, CLI usage, examples
 - `docs/concept.md` - design philosophy and core concepts
 - `docs/notes/` - working design documents and explorations (see Notes section)
-- `typescript-port-plan.md` - implementation plan with experiments
-- `experiments/` - validation experiments (code moves to src/ after validation)
+- `packages/*/README.md` - package-specific documentation
 - Uses [Vercel AI SDK](https://ai-sdk.dev/) for LLM abstraction
 
 ---
 
 ## Development
 
+### Monorepo Commands
+
+```bash
+# Install all dependencies
+npm install
+
+# Build core and CLI (extension depends on core)
+npm run build
+
+# Build everything including extension
+npm run build:all
+
+# Run all tests
+npm test
+
+# Run tests for specific package
+npm run test:cli
+npm run test:extension
+```
+
+### Package-Specific Development
+
+```bash
+# Work on CLI
+npm run build -w @golem-forge/core   # Build dependency first
+npm run test -w @golem-forge/cli
+
+# Work on extension
+npm run build -w @golem-forge/core   # Build dependency first
+npm run dev -w @golem-forge/extension  # Watch mode
+```
+
+### Guidelines
+
 - Run `npm test` before committing (tests use mock models, no live API calls)
-- Use `npm run build` to compile TypeScript
-- Experiments go in `experiments/NN-name/` - after validation, move code to `src/`
-- Test worker features by creating example projects in `examples/` and running with `golem-forge`
+- Shared types go in `@golem-forge/core`, not duplicated across packages
 - Do not preserve backwards compatibility; with no external consumers, always prioritize cleaner design over keeping old behavior alive
 - **YAGNI**: Don't implement features that aren't needed yet. If you identify a gap in the spec, create a note in `docs/notes/` instead of implementing it
 - Favor clear architecture over hacks; delete dead code when possible

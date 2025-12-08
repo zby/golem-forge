@@ -5,8 +5,8 @@ Platform-agnostic types and utilities shared between golem-forge implementations
 ## Purpose
 
 This package contains types that are used by both:
-- **CLI**: Node.js-based implementation (`src/sandbox/`, `src/worker/`)
-- **Browser Extension**: OPFS-based implementation (`browser-extension/src/services/`)
+- **CLI** (`@golem-forge/cli`): Node.js-based implementation
+- **Browser Extension** (`@golem-forge/extension`): OPFS-based implementation
 
 By extracting shared types here, we avoid duplication and ensure consistency across platforms.
 
@@ -62,3 +62,9 @@ As golem-forge evolves, this package will include:
 - Worker definition schemas (`WorkerDefinitionSchema`, etc.)
 - Approval types (`UIApprovalRequest`, `UIApprovalResult`)
 - Shared UI types for Ink adoption
+
+## See Also
+
+- [Main README](../../README.md) - Project overview and concepts
+- [@golem-forge/cli](../cli/) - CLI tool and Node.js runtime
+- [@golem-forge/extension](../extension/) - Browser extension

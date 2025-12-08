@@ -262,6 +262,36 @@ See [`examples/`](examples/) for working code.
 - `docs/browser_extension.md` - Browser extension usage
 -->
 
+## Packages
+
+golem-forge is organized as a monorepo with three packages:
+
+| Package | Description |
+|---------|-------------|
+| [`@golem-forge/core`](packages/core/) | Shared types and utilities (sandbox types, error classes) |
+| [`@golem-forge/cli`](packages/cli/) | CLI tool and Node.js runtime (worker execution, filesystem sandbox) |
+| [`@golem-forge/extension`](packages/extension/) | Chrome browser extension (OPFS storage, web UI) |
+
+### Development
+
+```bash
+# Install all dependencies
+npm install
+
+# Build core and cli packages
+npm run build
+
+# Build all packages (including extension)
+npm run build:all
+
+# Run all tests
+npm test
+
+# Run tests for specific package
+npm run test:cli
+npm run test:extension
+```
+
 ## Status
 
 **Experimental** - Built on [Vercel AI SDK](https://ai-sdk.dev/). APIs may change.

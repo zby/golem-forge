@@ -1,5 +1,17 @@
 # Golem Forge Documentation
 
+## Package Structure
+
+golem-forge is organized as a monorepo with three packages:
+
+| Package | Description |
+|---------|-------------|
+| [`@golem-forge/core`](../packages/core/) | Shared types and utilities |
+| [`@golem-forge/cli`](../packages/cli/) | CLI tool and Node.js runtime |
+| [`@golem-forge/extension`](../packages/extension/) | Chrome browser extension |
+
+---
+
 ## Strategic Direction
 
 **Start with CLI, build toward Browser Extension.**
@@ -12,19 +24,17 @@
 The CLI is the **proving ground** - we validate the core abstractions (sandbox, approval, workers) in an environment where debugging is straightforward. Once stable, the same core runs in the browser with a different backend.
 
 ```
-                    Shared Core
-                    ┌─────────────────────────────┐
-                    │  • Sandbox interface        │
-                    │  • Approval system          │
-                    │  • Worker runtime           │
-                    │  • Tool definitions         │
-                    └──────────────┬──────────────┘
-                                   │
-              ┌────────────────────┴────────────────────┐
-              │                                        │
-              ▼                                        ▼
+                 @golem-forge/core
+                 ┌─────────────────────────────┐
+                 │  • Sandbox types & errors   │
+                 │  • Shared interfaces        │
+                 └──────────────┬──────────────┘
+                                │
+           ┌────────────────────┴────────────────────┐
+           │                                         │
+           ▼                                         ▼
     ┌─────────────────────┐              ┌─────────────────────────┐
-    │     CLI Runtime     │              │  Browser Extension      │
+    │  @golem-forge/cli   │              │ @golem-forge/extension  │
     │                     │              │                         │
     │  • Node.js fs       │              │  • OPFS storage         │
     │  • Terminal UI      │              │  • Popup/sidebar UI     │
