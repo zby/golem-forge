@@ -235,7 +235,6 @@ describe("Git Toolset Demo", () => {
 
     // First check git_status to get the staged commit ID
     const statusResult = await tools.git_status.execute({}, { toolCallId: "manual_1", messages: [] });
-    console.log("\n📋 Git status:", JSON.stringify(statusResult, null, 2));
 
     // The status should show our staged commit
     expect(statusResult).toHaveProperty("staged");
@@ -243,7 +242,6 @@ describe("Git Toolset Demo", () => {
     expect(staged.length).toBe(1);
 
     const commitId = staged[0].id;
-    console.log(`\n📦 Staged commit ID: ${commitId}`);
 
     // Now push (this is the manual-only action)
     const pushResult = await tools.git_push.execute(
@@ -254,7 +252,6 @@ describe("Git Toolset Demo", () => {
       { toolCallId: "manual_2", messages: [] }
     );
 
-    console.log("\n🚀 Push result:", JSON.stringify(pushResult, null, 2));
     expect(pushResult).toHaveProperty("success", true);
 
     // Verify the commit is now in the repo
@@ -268,13 +265,6 @@ describe("Git Toolset Demo", () => {
     // Note: sandbox path /workspace/README.md becomes workspace/README.md in repo
     const repoContent = await getFileContent("workspace/README.md");
     expect(repoContent).toContain("Added by LLM");
-
-    console.log("\n✅ Demo completed successfully!");
-    console.log("   - File written to sandbox");
-    console.log("   - Changes staged for commit");
-    console.log("   - Commit pushed to repository");
-    console.log(`   - Final commit count: ${finalCommits}`);
-    console.log(`   - Last commit: "${lastMessage}"`);
   });
 
   it("shows that git_push is manual-only (LLM cannot invoke)", async () => {
@@ -335,9 +325,8 @@ describe("Git Toolset Demo", () => {
 
     // git_push should be filtered out because mode is 'manual'
     // (This depends on the runtime filtering implementation)
-    console.log("\n📋 Available tools for LLM:", toolNames.join(", "));
-
     // For now, git_push might still be in tools but the LLM shouldn't call it
     // The full implementation would filter manual-only tools from LLM view
+    expect(toolNames).toContain("git_status");
   });
 });

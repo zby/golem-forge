@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   WorkerCallToolset,
   createCallWorkerTool,
@@ -20,8 +20,12 @@ describe("WorkerCallToolset", () => {
   let registry: WorkerRegistry;
   let approvalController: ApprovalController;
   let tempDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
+    // Suppress console.warn for tests that use non-existent workers
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
     sandbox = await createTestSandbox();
     approvalController = new ApprovalController({
       mode: "approve_all",
@@ -30,6 +34,10 @@ describe("WorkerCallToolset", () => {
     // Create temp directory for worker files
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "worker-call-test-"));
     registry = new WorkerRegistry({ searchPaths: [tempDir] });
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
   });
 
   describe("needsApproval on tool (SDK native pattern)", () => {
@@ -362,14 +370,22 @@ describe("WorkerCallToolset.create edge cases", () => {
   let registry: WorkerRegistry;
   let approvalController: ApprovalController;
   let tempDir: string;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
+    // Suppress console.warn by default - tests that verify warnings will override
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
     sandbox = await createTestSandbox();
     approvalController = new ApprovalController({
       mode: "approve_all",
     });
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "worker-call-edge-test-"));
     registry = new WorkerRegistry({ searchPaths: [tempDir] });
+  });
+
+  afterEach(() => {
+    warnSpy.mockRestore();
   });
 
   it("logs warning for tool name conflicts with reserved names", async () => {
