@@ -7,192 +7,223 @@ Plan for adopting [Ink](https://github.com/vadimdemedes/ink) as the terminal UI 
 The `UIAdapter` interface (`src/ui/adapter.ts`) provides platform-independent UI abstraction:
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   UIAdapter Interface               │
-│  (displayMessage, requestApproval, showProgress...) │
-└─────────────────────────────────────────────────────┘
-            │                          │
-            ▼                          ▼
-┌───────────────────────┐    ┌───────────────────────┐
-│     CLIAdapter        │    │    BrowserAdapter     │
-│   (Ink + React)       │    │   (React DOM)         │
-│                       │    │                       │
-│  Terminal-specific    │    │  Browser-specific     │
-│  - ANSI colors        │    │  - HTML/CSS           │
-│  - Flexbox via Yoga   │    │  - DOM events         │
-│  - Raw mode input     │    │  - Web APIs           │
-└───────────────────────┘    └───────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      UIAdapter Interface                        │
+│    (displayMessage, requestApproval, showProgress...)           │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        ▼                     ▼                     ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│  Shared Logic │    │  Shared Logic │    │  Shared Logic │
+│  (approval,   │    │  (approval,   │    │  (approval,   │
+│   workers)    │    │   workers)    │    │   workers)    │
+└───────┬───────┘    └───────┬───────┘    └───────┬───────┘
+        ▼                    ▼                    ▼
+┌───────────────┐    ┌───────────────┐    ┌───────────────┐
+│  InkAdapter   │    │ BrowserAdapter│    │  CLIAdapter   │
+│  (React/Ink)  │    │ (React DOM)   │    │  (readline)   │
+└───────────────┘    └───────────────┘    └───────────────┘
 ```
 
-**Key insight**: Ink is specifically for CLI richness. It doesn't help browser implementation - that needs React DOM anyway. The `UIAdapter` interface is the right abstraction for sharing logic between platforms.
+**Key insight**: The `UIAdapter` interface is the contract. Internal architecture (contexts, state management) is implementation-specific. Shared *logic* (not components) can be extracted for reuse.
 
-## Background
+## Experiment Results
 
-### Current State
-- `CLIAdapter` in `src/ui/cli-adapter.ts` uses raw readline + picocolors
-- Simple but limited: no layout system, manual ANSI codes, basic input handling
-- ~700 lines of imperative code
+### Prototype v2 (Context-Based Architecture)
 
-### Why Ink for CLI?
-- **Battle-tested**: 33k GitHub stars, used by Claude Code, GitHub Copilot CLI, Shopify CLI
-- **React patterns**: Component-based, familiar to most developers
-- **Flexbox layouts**: CSS-like terminal layouts via Yoga
-- **Rich ecosystem**: [@inkjs/ui](https://github.com/vadimdemedes/ink-ui) provides pre-built components
-- **Node.js native**: No Bun/Zig dependencies (unlike OpenTUI)
-- **CLI-specific**: Optimized for terminal rendering, not browser
+See `experiments/ink-ui-prototype/` - refactored to use context-based architecture inspired by [Gemini CLI](https://github.com/google-gemini/gemini-cli).
 
-### Prototype Validation
-See `experiments/ink-ui-prototype/` for working prototype demonstrating:
-- Message display with styled boxes
-- Interactive approval prompts with keyboard navigation
-- Progress tracking with nested tasks
-- Tool result rendering
-- Diff display
+**What was validated:**
+- Context-based state management works well with Ink
+- Semantic theming (palette → tokens → components)
+- Worker tree display in footer and approval dialogs
+- Streaming content rendering
+- All `UIAdapter` methods implementable without interface changes
 
-## What's Shared vs Platform-Specific
+**Architecture validated in prototype:**
 
-| Layer | Shared | CLI (Ink) | Browser (React DOM) |
-|-------|--------|-----------|---------------------|
-| **Interface** | `UIAdapter` | - | - |
-| **Types** | `Message`, `UIApprovalRequest`, `TaskProgress`, etc. | - | - |
-| **Logic** | Approval flow, progress tracking, result formatting | - | - |
-| **Rendering** | - | Ink components, ANSI | React components, CSS |
-| **Input** | - | Raw mode, readline | DOM events |
-| **Layout** | - | Yoga flexbox | CSS flexbox |
+```
+ThemeProvider              # Semantic colors
+└── WorkerProvider         # Worker tree state (golem-forge specific)
+    └── ApprovalProvider   # Approval flow + session/always memory
+        └── MessagesProvider   # Conversation + streaming
+            └── UIStateProvider    # UI mode, model info
+                └── App
+                    ├── Header
+                    ├── Composer → MainContent
+                    └── Footer (worker status, model, context %)
+```
 
-The `UIAdapter` interface ensures both implementations handle the same operations, while rendering is completely platform-specific.
+**Demo:** `cd experiments/ink-ui-prototype && npm run demo:v2`
 
-## Adoption Strategy
+### Gemini CLI Patterns Adopted
 
-### Phase 1: Parallel Implementation
-**Goal**: Create `InkAdapter` alongside `CLIAdapter` without breaking existing functionality.
+| Pattern | Description | Adopted |
+|---------|-------------|---------|
+| Separated contexts | State vs actions in different contexts | ✅ |
+| Semantic theming | 3-layer: palette → tokens → usage | ✅ |
+| Message components | One component per message type | ✅ |
+| Footer status bar | Model, context %, status indicators | ✅ |
+| Hooks library | `useTerminalSize`, `useKeyCommands` | ✅ |
 
-1. Add dependencies to main package.json:
-   ```json
-   {
-     "ink": "^6.0.0",
-     "@inkjs/ui": "^2.0.0",
-     "react": "^19.0.0"
-   }
-   ```
+### golem-forge Differentiators Preserved
 
-2. Create `src/ui/ink/` directory structure:
-   ```
-   src/ui/ink/
-   ├── index.ts
-   ├── InkAdapter.tsx
-   └── components/
-       ├── Message.tsx
-       ├── ApprovalPrompt.tsx
-       ├── Progress.tsx
-       ├── ToolResult.tsx
-       └── DiffView.tsx
-   ```
+| Feature | Implementation |
+|---------|---------------|
+| Worker hierarchy | `WorkerContext` tracks tree, `useWorkerPath()` for delegation chain |
+| Rich approval types | `"session"` and `"always"` with pattern matching |
+| Worker path in approvals | `ApprovalDialog` shows full delegation chain |
+| Worker status in footer | Shows active/total workers, current task |
 
-3. Export both adapters from `src/ui/index.ts`:
-   ```typescript
-   export { CLIAdapter, createCLIAdapter } from "./cli-adapter.js";
-   export { InkAdapter, createInkAdapter } from "./ink/index.js";
-   ```
+## Shared Logic Layer (Proposed)
 
-### Phase 2: Feature Flag Integration
-**Goal**: Allow runtime selection between adapters.
+Extract platform-agnostic logic from contexts for reuse between CLI and browser:
 
-1. Add configuration option:
-   ```yaml
-   # golem-forge.config.yaml
-   ui:
-     adapter: "ink"  # or "cli" for legacy
-   ```
+```
+src/ui/
+├── logic/                    # Shared (no React, no Ink)
+│   ├── approval-state.ts     # Pattern matching, auto-approve, history
+│   ├── worker-state.ts       # Tree operations, path computation
+│   ├── message-state.ts      # History, streaming buffer
+│   └── theme-tokens.ts       # Semantic token definitions
+│
+├── ink/                      # CLI-specific
+│   ├── contexts/             # React bindings for shared logic
+│   ├── components/           # Ink components
+│   └── InkAdapter.tsx
+│
+└── browser/                  # Browser-specific (future)
+    ├── hooks/                # React hooks for shared logic
+    └── components/           # React DOM components
+```
 
-2. Add CLI flag:
-   ```bash
-   golem-forge run worker.worker --ui=ink
-   golem-forge run worker.worker --ui=cli
-   ```
+### Example: Shared Approval Logic
 
-3. Auto-detect TTY capability:
-   ```typescript
-   function selectAdapter(): UIAdapter {
-     if (!process.stdin.isTTY) {
-       return createCLIAdapter();  // Fallback for non-TTY
-     }
-     return config.ui?.adapter === "cli"
-       ? createCLIAdapter()
-       : createInkAdapter();
-   }
-   ```
+```typescript
+// src/ui/logic/approval-state.ts - Platform agnostic
+export interface ApprovalState {
+  sessionApprovals: ApprovalPattern[];
+  alwaysApprovals: ApprovalPattern[];
+  history: ApprovalHistoryEntry[];
+}
 
-### Phase 3: Enhanced Components
-**Goal**: Add features not possible with raw readline.
+export function createApprovalState(): ApprovalState;
+export function isAutoApproved(state: ApprovalState, request: UIApprovalRequest): boolean;
+export function addApproval(state: ApprovalState, request: UIApprovalRequest, result: UIApprovalResult): ApprovalState;
+```
 
-1. **Spinner/Progress Bar**
-   - Use `@inkjs/ui` Spinner component
-   - Add progress percentage for long operations
+```typescript
+// src/ui/ink/contexts/ApprovalContext.tsx - CLI binding
+import { createApprovalState, isAutoApproved, addApproval } from "../../logic/approval-state.js";
 
-2. **Scrollable History**
-   - Keep message history in React state
-   - Allow scrolling through past messages
+export function ApprovalProvider({ children }) {
+  const [state, setState] = useState(createApprovalState);
+  // Uses shared logic, provides React context
+}
+```
 
-3. **Split Panes**
-   - Show task tree on left, output on right
-   - Real-time updates without clearing screen
+### What Gets Shared
 
-4. **Syntax Highlighting**
-   - Highlight code blocks in assistant messages
-   - Colorize diff output
+| Module | Shared Logic | Platform Binding |
+|--------|-------------|------------------|
+| Approval | Pattern matching, history, auto-approve rules | React Context (Ink) / Hook (Browser) |
+| Workers | Tree ops, path computation, status tracking | React Context (Ink) / Redux (Browser) |
+| Messages | History management, streaming buffer | React Context (Ink) / State (Browser) |
+| Themes | Token definitions, semantic mappings | Ink colors / CSS variables |
 
-5. **Command Palette**
-   - Fuzzy-searchable command list
-   - Similar to VS Code's Cmd+P
+## Updated Directory Structure
 
-### Phase 4: Deprecate CLIAdapter
-**Goal**: Make Ink the default, keep CLI as minimal fallback.
+```
+src/ui/
+├── adapter.ts              # UIAdapter interface (unchanged)
+├── types.ts                # Shared types (unchanged)
+│
+├── logic/                  # NEW: Platform-agnostic logic
+│   ├── approval-state.ts
+│   ├── worker-state.ts
+│   ├── message-state.ts
+│   └── theme-tokens.ts
+│
+├── ink/                    # Ink implementation
+│   ├── index.ts
+│   ├── InkAdapter.tsx
+│   ├── contexts/
+│   │   ├── ThemeContext.tsx
+│   │   ├── WorkerContext.tsx
+│   │   ├── ApprovalContext.tsx
+│   │   ├── MessagesContext.tsx
+│   │   └── UIStateContext.tsx
+│   ├── hooks/
+│   │   ├── useTerminalSize.ts
+│   │   └── useKeyHandler.ts
+│   ├── components/
+│   │   ├── messages/       # UserMessage, AssistantMessage, WorkerMessage
+│   │   ├── dialogs/        # ApprovalDialog
+│   │   ├── shared/         # DiffView, ToolResult, Progress
+│   │   └── layout/         # Header, Footer, MainContent
+│   └── themes/
+│       ├── types.ts
+│       └── default.ts
+│
+├── cli-adapter.ts          # Legacy CLI adapter (fallback)
+└── index.ts                # Exports
+```
 
-1. Make `InkAdapter` the default
-2. Reduce `CLIAdapter` to essential output-only mode
+## Adoption Strategy (Revised)
+
+### Phase 1: Extract Shared Logic
+1. Create `src/ui/logic/` with platform-agnostic state management
+2. Unit test shared logic independently
+3. No UI changes yet
+
+### Phase 2: Integrate Ink
+1. Copy prototype to `src/ui/ink/`
+2. Refactor contexts to use shared logic
+3. Wire up `InkAdapter` to implement `UIAdapter`
+4. Add feature flag for adapter selection
+
+### Phase 3: Enhanced Features
+1. Syntax highlighting in messages
+2. Scrollable history
+3. Command palette for manual tools
+4. Split pane for worker tree
+
+### Phase 4: Default & Cleanup
+1. Make Ink the default adapter
+2. Simplify `CLIAdapter` to output-only fallback
 3. Update documentation
 
-## Migration Considerations
+## UIAdapter Interface
 
-### Breaking Changes
-- React 19 required (Ink 6.x dependency)
-- Bundle size increases (~500KB for ink + react)
-- Node.js 18+ required
+**No changes needed.** The interface defines the contract; internal architecture is implementation-specific.
 
-### Compatibility
-- Keep `CLIAdapter` for:
-  - Non-TTY environments (CI/CD, pipes)
-  - Minimal/headless deployments
-  - Users who prefer simpler output
+Current interface methods map cleanly to context actions:
 
-### Testing Strategy
-1. Unit tests for components (already have patterns from prototype)
-2. Integration tests using Ink's testing utilities
-3. Manual testing for interactive features
+| Interface Method | Ink Implementation |
+|-----------------|-------------------|
+| `displayMessage` | `messages.addMessage()` |
+| `getUserInput` | `ui.requestInput()` |
+| `requestApproval` | `approval.requestApproval()` |
+| `showProgress` | `workers.updateFromProgress()` |
+| `updateStatus` | `messages.addStatus()` |
+| `displayToolResult` | `messages.addToolResult()` |
 
-## Timeline Estimate
+## Open Questions (Updated)
 
-| Phase | Scope | Effort |
-|-------|-------|--------|
-| Phase 1 | Parallel implementation | 2-3 days |
-| Phase 2 | Feature flags & detection | 1 day |
-| Phase 3 | Enhanced components | 3-5 days |
-| Phase 4 | Default switch & docs | 1 day |
+1. ~~**Streaming output**: How does Ink handle streaming LLM responses?~~
+   **Resolved**: Use `setStreaming()` / `appendStreaming()` / `commitStreaming()` pattern in MessagesContext.
 
-## Open Questions
+2. **Bundle size**: Is ~500KB acceptable? Consider dynamic import.
 
-1. **React version**: React 19 is new - any compatibility concerns with other tooling?
+3. **Testing**: Ink provides `render()` for testing. Need strategy for CI.
 
-2. **Bundle size**: Is ~500KB acceptable for CLI tool? Could use dynamic import to lazy-load.
-
-3. **Testing in CI**: How to test interactive components in CI environment?
-
-4. **Streaming output**: How does Ink handle streaming LLM responses? May need custom component.
+4. **Shared logic granularity**: How much logic to extract vs keep platform-specific?
 
 ## References
 
-- Prototype: `experiments/ink-ui-prototype/`
+- Prototype v2: `experiments/ink-ui-prototype/` (context-based)
+- Gemini CLI analysis: `docs/notes/gemini-cli-alignment.md`
 - Ink docs: https://github.com/vadimdemedes/ink
 - Ink UI components: https://github.com/vadimdemedes/ink-ui
 - Current CLIAdapter: `src/ui/cli-adapter.ts`
