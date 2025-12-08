@@ -7,7 +7,7 @@
 
 import type { Tool, LanguageModel } from "ai";
 import type { ApprovalController, ApprovalCallback, ApprovalMode } from "../approval/index.js";
-import type { Sandbox, SandboxConfig } from "../sandbox/index.js";
+import type { MountSandboxConfig, FileOperations } from "../sandbox/index.js";
 import type { WorkerDefinition } from "../worker/schema.js";
 import type { WorkerRegistry } from "../worker/registry.js";
 import type { DelegationContext } from "../tools/worker-call.js";
@@ -78,7 +78,7 @@ export interface WorkerRunner {
   /**
    * Get the sandbox if available (for shared access in delegation).
    */
-  getSandbox(): Sandbox | undefined;
+  getSandbox(): FileOperations | undefined;
 
   /**
    * Get the approval controller (for shared approval state).
@@ -102,8 +102,6 @@ export interface WorkerRunnerOptions {
   projectRoot?: string;
   /** Path to the worker file (for resolving relative module paths) */
   workerFilePath?: string;
-  /** Use test sandbox instead of CLI sandbox */
-  useTestSandbox?: boolean;
   /** Maximum tool call iterations */
   maxIterations?: number;
   /** Inject a model directly (for testing) */
@@ -111,13 +109,15 @@ export interface WorkerRunnerOptions {
   /** Shared approval controller (for worker delegation) */
   sharedApprovalController?: ApprovalController;
   /** Shared sandbox (for worker delegation) */
-  sharedSandbox?: Sandbox;
+  sharedSandbox?: FileOperations;
   /** Delegation context when called by another worker */
   delegationContext?: DelegationContext;
   /** Worker registry for delegation lookups */
   registry?: WorkerRegistry;
-  /** Custom sandbox configuration (from project config) */
-  sandboxConfig?: SandboxConfig;
+  /** Mount-based sandbox configuration (Docker-style) */
+  mountSandboxConfig?: MountSandboxConfig;
+  /** Create a temporary sandbox for testing (convenience option) */
+  useTestSandbox?: boolean;
   /** Callback for runtime events (for tracing/debugging) */
   onEvent?: RuntimeEventCallback;
   /** UI adapter for platform-independent UI (optional) */

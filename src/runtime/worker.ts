@@ -18,14 +18,14 @@ import {
   createCustomToolset,
   CustomToolsetConfigSchema,
   ToolsetRegistry,
-  type ZoneApprovalMap,
   type CustomToolsetConfig,
 } from "../tools/index.js";
 import { WorkerRegistry } from "../worker/registry.js";
 import {
-  createSandbox,
+  createMountSandbox,
+  createMountSandboxAsync,
   createTestSandbox,
-  type Sandbox,
+  type FileOperations,
 } from "../sandbox/index.js";
 import type { Attachment } from "../ai/types.js";
 import type { RuntimeEventCallback, RuntimeEventData } from "./events.js";
@@ -189,7 +189,7 @@ export class WorkerRuntime implements WorkerRunner {
   private resolvedModelId: string;
   private tools: Record<string, Tool> = {};
   private approvalController: ApprovalController;
-  private sandbox?: Sandbox;
+  private sandbox?: FileOperations;
   private onEvent?: RuntimeEventCallback;
   private initialized = false;
   private toolExecutor?: ToolExecutor;
@@ -264,17 +264,15 @@ export class WorkerRuntime implements WorkerRunner {
     // Use shared sandbox (for delegation) or create new one
     if (this.options.sharedSandbox) {
       this.sandbox = this.options.sharedSandbox;
+    } else if (this.options.mountSandboxConfig) {
+      // Mount-based sandbox (Docker-style)
+      this.sandbox = await createMountSandboxAsync(this.options.mountSandboxConfig);
     } else if (this.options.useTestSandbox) {
+      // Create temp sandbox for testing
       this.sandbox = await createTestSandbox();
-    } else if (this.options.sandboxConfig) {
-      // Use custom sandbox configuration from project config
-      this.sandbox = await createSandbox(this.options.sandboxConfig);
     } else if (this.options.projectRoot) {
-      // Default sandbox configuration (backwards compatible)
-      this.sandbox = await createSandbox({
-        mode: 'sandboxed',
-        root: `${this.options.projectRoot}/sandbox`,
-      });
+      // Default: mount project root at /
+      this.sandbox = createMountSandbox({ root: this.options.projectRoot });
     }
 
     // Register tools based on worker config
@@ -303,30 +301,12 @@ export class WorkerRuntime implements WorkerRunner {
       switch (toolsetName) {
         case "filesystem":
           if (!this.sandbox) {
-            throw new Error("Filesystem toolset requires a sandbox. Set projectRoot or useTestSandbox.");
-          }
-
-          // Build zone approval config from worker's sandbox zones
-          const zoneApprovalConfig: ZoneApprovalMap = {};
-          const zones = this.worker.sandbox?.zones;
-          if (zones) {
-            for (const zone of zones) {
-              if (zone.approval) {
-                zoneApprovalConfig[zone.name] = {
-                  write: zone.approval.write,
-                  delete: zone.approval.delete,
-                };
-              }
-              // If no approval config, zone uses defaults (ask for approval)
-            }
+            throw new Error("Filesystem toolset requires a sandbox. Set projectRoot or mountSandboxConfig.");
           }
 
           // FilesystemToolset creates tools with needsApproval set based on config
           const fsToolset = new FilesystemToolset({
             sandbox: this.sandbox,
-            zoneApprovalConfig: Object.keys(zoneApprovalConfig).length > 0
-              ? zoneApprovalConfig
-              : undefined,
           });
           // Register each tool by its name property
           for (const tool of fsToolset.getTools()) {
@@ -678,7 +658,7 @@ export class WorkerRuntime implements WorkerRunner {
   /**
    * Get the sandbox (if available).
    */
-  getSandbox(): Sandbox | undefined {
+  getSandbox(): FileOperations | undefined {
     return this.sandbox;
   }
 

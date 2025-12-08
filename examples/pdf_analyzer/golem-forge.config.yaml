@@ -1,10 +1,3 @@
+# Project config for pdf_analyzer example
 sandbox:
-  mode: direct
   root: "."
-  zones:
-    input:
-      path: "./input"
-      mode: ro
-    output:
-      path: "./output"
-      mode: rw

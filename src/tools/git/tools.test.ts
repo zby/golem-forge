@@ -13,10 +13,10 @@ import {
 } from './tools.js';
 import type { GitBackend } from './backend.js';
 import type { StagedCommit } from './types.js';
-import type { Sandbox } from '../../sandbox/interface.js';
+import type { FileOperations } from '../../sandbox/index.js';
 
 // Mock sandbox
-function createMockSandbox(files: Record<string, string> = {}): Sandbox {
+function createMockSandbox(files: Record<string, string> = {}): FileOperations {
   return {
     read: vi.fn(async (path: string) => {
       if (files[path]) return files[path];
@@ -33,11 +33,8 @@ function createMockSandbox(files: Record<string, string> = {}): Sandbox {
     list: vi.fn(async () => Object.keys(files).map(p => p.split('/').pop()!)),
     stat: vi.fn(),
     resolve: vi.fn((path: string) => path),
-    getZone: vi.fn(),
     isValidPath: vi.fn(() => true),
-    getZoneAccess: vi.fn(),
-    getAvailableZones: vi.fn(() => ['workspace']),
-  } as unknown as Sandbox;
+  } as FileOperations;
 }
 
 // Mock backend

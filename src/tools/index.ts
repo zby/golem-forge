@@ -18,7 +18,6 @@ export {
   type FilesystemToolResult,
   type FilesystemToolsetOptions,
   type NamedTool,
-  type ZoneApprovalMap,
   type ExecutionMode,
   type ManualExecutionConfig,
 } from "./filesystem.js";

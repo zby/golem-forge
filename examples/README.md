@@ -140,9 +140,9 @@ description: What this worker does
 toolsets:
   filesystem: {}
 sandbox:
-  zones:
-    - name: data
-      mode: rw
+  restrict: /data
+  approval:
+    write: preApproved
 ---
 
 You are an assistant that...
@@ -150,21 +150,16 @@ You are an assistant that...
 Instructions for the LLM go here.
 ```
 
-Zone options in worker files:
-- `name` - zone to access (must be defined in project config)
-- `mode` - `ro` (read-only) or `rw` (read-write)
-- `approval` - optional consent requirements
+Sandbox options in worker files (used for sub-worker restrictions):
+- `restrict` - restrict to subtree (e.g., `/data`)
+- `readonly` - make read-only (default: inherit from parent)
+- `approval` - consent requirements for write/delete operations
 
-Create a `golem-forge.config.yaml` to define where zones live:
+Create a `golem-forge.config.yaml` to define the sandbox root:
 
 ```yaml
 sandbox:
-  mode: direct
   root: "."
-  zones:
-    data:
-      path: "./data"
-      mode: rw
 ```
 
 Run with:

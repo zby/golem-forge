@@ -4,12 +4,10 @@ description: Mathematical calculator assistant that performs calculations and ex
 toolsets:
   filesystem: {}
 sandbox:
-  zones:
-    - name: scratch
-      mode: rw
-      approval:
-        write: preApproved   # Scratch space - no prompts needed
-        delete: preApproved  # Can clean up scratch files freely
+  restrict: /scratch
+  approval:
+    write: preApproved
+    delete: preApproved
 ---
 
 You are a mathematical calculator assistant that helps users with calculations.

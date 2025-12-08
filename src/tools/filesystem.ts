@@ -8,24 +8,16 @@
 import { z } from 'zod';
 import type { Tool, ToolExecutionOptions } from 'ai';
 import {
-  Sandbox,
+  type FileOperations,
   NotFoundError,
   isSandboxError,
-  getZoneNameFromPath,
-  type ApprovalDecisionType,
 } from '../sandbox/index.js';
 import { type ApprovalConfig } from '../approval/index.js';
 
 /**
- * Zone approval configuration map.
- * Maps zone names to their approval settings.
+ * Sandbox type for filesystem tools.
  */
-export interface ZoneApprovalMap {
-  [zoneName: string]: {
-    write?: ApprovalDecisionType;
-    delete?: ApprovalDecisionType;
-  };
-}
+type FilesystemSandbox = FileOperations;
 
 /**
  * Result returned by filesystem tools.
@@ -146,7 +138,7 @@ function getExtension(filePath: string): string {
  *
  * Returns a structured FileContentResultValue for UI rendering.
  */
-export function createReadFileTool(sandbox: Sandbox, options?: ToolOptions): NamedTool {
+export function createReadFileTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
   return {
     name: 'read_file',
     description: 'Read the contents of a text file from the sandbox filesystem. Cannot read binary files (images, PDFs, etc.).',
@@ -203,7 +195,7 @@ type WriteFileInput = z.infer<typeof writeFileSchema>;
  *
  * Returns a structured DiffResultValue for UI rendering.
  */
-export function createWriteFileTool(sandbox: Sandbox, options?: ToolOptions): NamedTool {
+export function createWriteFileTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
   return {
     name: 'write_file',
     description: 'Write content to a file in the sandbox filesystem',
@@ -259,7 +251,7 @@ type ListFilesInput = z.infer<typeof listFilesSchema>;
  *
  * Returns a structured FileListResultValue for UI rendering.
  */
-export function createListFilesTool(sandbox: Sandbox, options?: ToolOptions): NamedTool {
+export function createListFilesTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
   return {
     name: 'list_files',
     description: 'List files and directories in a sandbox directory',
@@ -291,7 +283,7 @@ type DeleteFileInput = z.infer<typeof deleteFileSchema>;
 /**
  * Create a delete_file tool.
  */
-export function createDeleteFileTool(sandbox: Sandbox, options?: ToolOptions): NamedTool {
+export function createDeleteFileTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
   return {
     name: 'delete_file',
     description: 'Delete a file from the sandbox filesystem',
@@ -320,7 +312,7 @@ type FileExistsInput = z.infer<typeof fileExistsSchema>;
 /**
  * Create a file_exists tool.
  */
-export function createFileExistsTool(sandbox: Sandbox, options?: ToolOptions): NamedTool {
+export function createFileExistsTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
   return {
     name: 'file_exists',
     description: 'Check if a file or directory exists in the sandbox',
@@ -349,7 +341,7 @@ type FileInfoInput = z.infer<typeof fileInfoSchema>;
 /**
  * Create a file_info tool.
  */
-export function createFileInfoTool(sandbox: Sandbox, options?: ToolOptions): NamedTool {
+export function createFileInfoTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
   return {
     name: 'file_info',
     description: 'Get metadata about a file (size, dates, type)',
@@ -407,30 +399,14 @@ function handleError(error: unknown, path?: string): FilesystemToolResult {
  * Options for creating a FilesystemToolset.
  */
 export interface FilesystemToolsetOptions {
-  sandbox: Sandbox;
+  sandbox: FilesystemSandbox;
   /**
    * Approval configuration for filesystem tools (static, per-tool).
    * If not provided, uses secure defaults:
    * - read_file, list_files, file_exists, file_info: preApproved
    * - write_file, delete_file: needs approval
-   *
-   * @deprecated Use zoneApprovalConfig for zone-aware approval instead.
    */
   approvalConfig?: ApprovalConfig;
-  /**
-   * Zone-aware approval configuration.
-   * Maps zone names to their approval settings for write/delete operations.
-   * Takes precedence over approvalConfig when provided.
-   *
-   * @example
-   * ```typescript
-   * {
-   *   scratch: { write: 'preApproved', delete: 'preApproved' },
-   *   output: { write: 'ask', delete: 'blocked' },
-   * }
-   * ```
-   */
-  zoneApprovalConfig?: ZoneApprovalMap;
 }
 
 /**
@@ -459,59 +435,14 @@ function configToNeedsApproval(config: ApprovalConfig, toolName: string): boolea
 }
 
 /**
- * Create a zone-aware approval function for write or delete operations.
- *
- * The function checks the zone from the path argument and returns whether
- * approval is needed based on the zone's approval config.
- *
- * @param zoneConfig - Map of zone names to their approval settings
- * @param operation - 'write' or 'delete'
- * @returns A function that takes tool input and returns whether approval is needed
- */
-function createZoneAwareApproval(
-  zoneConfig: ZoneApprovalMap,
-  operation: 'write' | 'delete'
-): NeedsApprovalFn<{ path: string }> {
-  return (input: { path: string }) => {
-    try {
-      const zoneName = getZoneNameFromPath(input.path);
-      const zoneApproval = zoneConfig[zoneName];
-
-      if (!zoneApproval) {
-        // Unknown zone - require approval (secure default)
-        return true;
-      }
-
-      const decision = zoneApproval[operation];
-
-      switch (decision) {
-        case 'preApproved':
-          return false;  // No approval needed
-        case 'blocked':
-          // Blocked operations still go through approval flow
-          // The approval controller or sandbox will reject them
-          return true;
-        case 'ask':
-        default:
-          return true;  // Needs approval
-      }
-    } catch {
-      // Invalid path or zone - require approval
-      return true;
-    }
-  };
-}
-
-/**
  * Toolset that provides all filesystem tools.
  * Uses AI SDK's native needsApproval for tool approval.
  */
 export class FilesystemToolset {
   private tools: NamedTool[];
 
-  constructor(sandboxOrOptions: Sandbox | FilesystemToolsetOptions) {
-    let sandbox: Sandbox;
-    let zoneApprovalConfig: ZoneApprovalMap | undefined;
+  constructor(sandboxOrOptions: FilesystemSandbox | FilesystemToolsetOptions) {
+    let sandbox: FilesystemSandbox;
     let approvalConfig: ApprovalConfig;
 
     // Support both old (Sandbox) and new (options) constructor signatures
@@ -522,30 +453,18 @@ export class FilesystemToolset {
     } else {
       // It's options
       sandbox = sandboxOrOptions.sandbox;
-      zoneApprovalConfig = sandboxOrOptions.zoneApprovalConfig;
       approvalConfig = {
         ...DEFAULT_FILESYSTEM_APPROVAL_CONFIG,
         ...sandboxOrOptions.approvalConfig,
       };
     }
 
-    // Determine approval for write/delete operations
-    // Zone-aware config takes precedence when provided
-    const writeApproval = zoneApprovalConfig
-      ? createZoneAwareApproval(zoneApprovalConfig, 'write')
-      : configToNeedsApproval(approvalConfig, 'write_file');
-
-    const deleteApproval = zoneApprovalConfig
-      ? createZoneAwareApproval(zoneApprovalConfig, 'delete')
-      : configToNeedsApproval(approvalConfig, 'delete_file');
-
     // Create tools with needsApproval set based on config
-    // Read operations always use static config (no zone-based approval for reads)
     this.tools = [
       createReadFileTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'read_file') }),
-      createWriteFileTool(sandbox, { needsApproval: writeApproval }),
+      createWriteFileTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'write_file') }),
       createListFilesTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'list_files') }),
-      createDeleteFileTool(sandbox, { needsApproval: deleteApproval }),
+      createDeleteFileTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'delete_file') }),
       createFileExistsTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'file_exists') }),
       createFileInfoTool(sandbox, { needsApproval: configToNeedsApproval(approvalConfig, 'file_info') }),
     ];
@@ -563,6 +482,6 @@ export class FilesystemToolset {
  * Create all filesystem tools for a sandbox.
  * Convenience function that returns individual tools.
  */
-export function createFilesystemTools(sandbox: Sandbox): NamedTool[] {
+export function createFilesystemTools(sandbox: FilesystemSandbox): NamedTool[] {
   return new FilesystemToolset(sandbox).getTools();
 }

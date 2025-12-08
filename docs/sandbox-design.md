@@ -46,7 +46,7 @@ The gray zone model drives a layered security architecture:
 
 | Layer | What It Controls | Threat |
 |-------|------------------|--------|
-| **Zones** | What sandbox can access | LLM reading/writing wrong files |
+| **Mounts** | What sandbox can access | LLM reading/writing wrong files |
 | **Approval** | Which operations need consent | Accidental destructive actions |
 | **Execution Mode** | Who can invoke tools (LLM/Manual) | Unauthorized boundary crossings |
 | **Container** (future) | OS-level isolation | Code execution, system access |
@@ -54,7 +54,7 @@ The gray zone model drives a layered security architecture:
 ### Threats and Mitigations
 
 **Accidental errors** (LLM mistakes)—writing wrong files, running wrong commands:
-- Mitigated by zones, approval prompts, and manual tool boundaries
+- Mitigated by sandbox paths, approval prompts, and manual tool boundaries
 - Application-level checks are sufficient
 
 **Adversarial content** (prompt injection)—malicious instructions embedded in processed content:
@@ -63,164 +63,164 @@ The gray zone model drives a layered security architecture:
 
 | Content Source | Isolation Needed |
 |----------------|------------------|
-| Local files you created | App-level (zones + approval) |
-| Files from collaborators | App-level (zones + approval) |
+| Local files you created | App-level (sandbox + approval) |
+| Files from collaborators | App-level (sandbox + approval) |
 | Downloaded from internet | Container (future) |
 | User-provided documents | Container (future) |
 
-## Zone System
+## Sandbox Model
 
-Zones define what the sandbox can access—the **intake** boundary.
+Golem Forge uses a **mount-based sandbox** with Docker-style bind mount semantics:
 
-### How Zones Work
+- Paths are direct (no virtual zone prefix)
+- Mount points map real filesystem paths to sandbox paths
+- Sub-workers can have restricted access via the `restrict()` method
 
-Workers see a virtual filesystem with named zones:
+---
+
+## Mount-Based Sandbox (Recommended)
+
+The mount-based sandbox uses [Docker bind mount](https://docs.docker.com/engine/storage/bind-mounts/) semantics. This is the recommended approach for new projects.
+
+### How Mounts Work
+
+Workers see a virtual filesystem rooted at `/` that maps to a real directory:
+
+```typescript
+// Mount the project at root
+const sandbox = createMountSandbox({
+  root: "/home/user/project"
+});
+
+// Worker paths map directly
+// /src/app.ts → /home/user/project/src/app.ts
+// /README.md → /home/user/project/README.md
+```
+
+The LLM uses simple paths without zone prefixes:
 
 ```
 LLM: list_files("/")
-→ ["cache", "workspace"]
+→ ["src", "package.json", "README.md"]
 
-LLM: list_files("/workspace")
-→ ["draft.md", "notes.txt"]
+LLM: read_file("/src/app.ts")
+→ (file contents)
 
-LLM: write_file("/cache/new.txt", "content")
-→ Error: /cache is read-only
+LLM: write_file("/src/new-feature.ts", "...")
+→ Success
 ```
 
-The LLM discovers available directories naturally—no special vocabulary needed.
+### Mount Configuration
 
-### Project Configuration
+```typescript
+interface MountSandboxConfig {
+  /** Real filesystem path mounted at / */
+  root: string;
 
-> **Note:** The current directory-based sandbox is a development/testing convenience. It provides logical isolation but not security isolation. For production use with untrusted content, container-based isolation (see [Future: Container Isolation](#future-container-isolation)) will replace this approach.
+  /** Read-only access (default: false) */
+  readonly?: boolean;
 
-Projects define available zones in `golem-forge.config.yaml`:
+  /** Additional mount points */
+  mounts?: Mount[];
+}
 
-```yaml
-# golem-forge.config.yaml
-sandbox:
-  mode: direct          # or "sandboxed"
-  root: "."             # base directory for path resolution
-  zones:
-    notes:
-      path: "./notes"   # relative to root
-      mode: rw
-    cache:
-      path: "./cache"
-      mode: ro
+interface Mount {
+  /** Real filesystem path (Docker: "source") */
+  source: string;
+
+  /** Virtual path in sandbox (Docker: "target") */
+  target: string;
+
+  /** Read-only mount (default: false) */
+  readonly?: boolean;
+}
 ```
 
-**Configuration options:**
+### Examples
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| `mode` | `sandboxed` or `direct` | `sandboxed` |
-| `root` | Base directory for zone paths | `sandbox` |
-| `zones` | Map of zone name → definition | `{}` |
+**Simple project access:**
+```typescript
+const runtime = await createWorkerRuntime({
+  worker,
+  mountSandboxConfig: {
+    root: "/home/user/my-project"
+  }
+});
+```
 
-**Zone definition:**
+**Read-only analysis:**
+```typescript
+const runtime = await createWorkerRuntime({
+  worker,
+  mountSandboxConfig: {
+    root: "/home/user/my-project",
+    readonly: true
+  }
+});
+```
 
-| Field | Description | Default |
-|-------|-------------|---------|
-| `path` | Directory path (relative to root) | required |
-| `mode` | `ro` (read-only) or `rw` (read-write) | `rw` |
+**Project with shared cache:**
+```typescript
+const runtime = await createWorkerRuntime({
+  worker,
+  mountSandboxConfig: {
+    root: "/home/user/my-project",
+    mounts: [
+      { source: "/home/user/.npm", target: "/cache", readonly: true }
+    ]
+  }
+});
+```
 
-**Modes:**
+### Sub-Worker Restriction
 
-- **`sandboxed`** (default): All zones live under a single sandbox directory. Zone paths are relative to `root`. Good for isolation.
-  ```yaml
-  sandbox:
-    mode: sandboxed
-    root: .sandbox        # all zones under .sandbox/
-    zones:
-      workspace:
-        path: ./workspace # → .sandbox/workspace/
-  ```
+When spawning sub-workers, access can only be restricted—never expanded:
 
-- **`direct`**: Zones map to actual directories. Zone paths are relative to `root` (typically `.`). Good for working with existing directory structures.
-  ```yaml
-  sandbox:
-    mode: direct
-    root: "."
-    zones:
-      notes:
-        path: "./notes"   # → ./notes/
-  ```
+```typescript
+// Main worker has full access to /home/user/project
+mainWorker.sandbox.root = "/home/user/project";
 
-### Worker Declaration
+// Sub-worker restricted to /src subtree, read-only
+callWorker({
+  worker: "code-reviewer",
+  sandbox: {
+    restrict: "/src",     // Can only see /src and below
+    readonly: true        // Cannot write
+  }
+});
+```
 
-Workers declare what zones they need by name. The actual paths are defined in project config:
+The sub-worker sees the same paths (`/src/app.ts`) but cannot access `/secrets/` or write anything.
 
-```yaml
-# analyzer.worker
+### Git Integration with Mounts
+
+With mount-based sandboxes, git tools use the same paths:
+
+```typescript
+// Worker writes a file
+writeFile("/src/feature.ts", code);
+
+// Git stages it - same path
+gitStage({ files: ["/src/feature.ts"], message: "Add feature" });
+
+// Git push works with the same path resolution
+gitPush({ commitId: "abc123" });
+```
+
+No path translation needed—everything is consistent.
+
+### Security Considerations
+
+1. **Path Traversal**: Always normalize paths and verify resolved path is within allowed boundaries
+2. **Symlink Following**: Decide policy - follow symlinks (convenient) or reject (secure)
+3. **Permission Escalation**: Sub-workers cannot upgrade permissions
+4. **Mount Shadowing**: Later mounts can shadow earlier ones - document this behavior
+
 ---
-name: analyzer
-sandbox:
-  zones:
-    - name: workspace
-      mode: rw
----
-```
-
-Workers only specify:
-- `name` - which zone to access
-- `mode` - access level (`ro` or `rw`)
-- `approval` - optional consent requirements
-
-The zone must be defined in the project's `golem-forge.config.yaml`. If not found, the worker will fail at runtime.
-
-**Principles:**
-- **Secure by default**: No declaration = no file access
-- **Self-describing**: Each worker declares its requirements
-- **Separation of concerns**: Workers request zones, projects define paths
-- **Least privilege**: Workers get only what they declare, never more
-
-### Default Zones
-
-When no project config exists:
-
-| Zone | Purpose | Examples |
-|------|---------|----------|
-| `/cache/` | External downloads | PDFs, web pages, fetched content |
-| `/workspace/` | Working files | Reports, drafts, outputs |
-
-### Worker Delegation
-
-Child workers can't exceed parent access:
-
-```
-Parent has: { workspace: rw, cache: ro }
-Child declares: { workspace: rw }
-Child gets: { workspace: rw }  ✓
-
-Parent has: { cache: ro }
-Child declares: { cache: rw }
-→ Error: exceeds parent access  ✗
-```
-
-### Approval Within Zones
-
-Zones can require approval for writes, separate from access mode:
-
-```yaml
-zones:
-  - name: drafts
-    mode: rw
-    approval:
-      write: preApproved      # No prompt needed
-      delete: preApproved
-  - name: final
-    mode: rw
-    approval:
-      write: ask              # Prompt user
-      delete: blocked         # Prevent entirely
-```
-
-- `mode` = **capability** (what's technically allowed)
-- `approval` = **consent** (what needs user review)
 
 ## Clearance Protocol
 
-Zones control what enters the sandbox. **Clearance** controls what enters your trusted environment.
+The sandbox controls what the LLM can access. **Clearance** controls what enters your trusted environment.
 
 ### Why Clearance Matters
 
@@ -484,53 +484,66 @@ toolsets:
 
 ## Implementation
 
-### Backend Modes
-
-**Sandboxed mode** (default)—virtual paths map to `.sandbox/`:
+### Mount-Based Sandbox (Recommended)
 
 ```typescript
-const sandbox = await createSandbox({
-  mode: 'sandboxed',
-  root: '.sandbox'
-});
-// /cache/doc.pdf → .sandbox/cache/doc.pdf
-```
+import { createMountSandbox } from './sandbox/mount-sandbox.js';
 
-**Direct mode**—virtual paths map to real directories:
-
-```typescript
-const sandbox = await createSandbox({
-  mode: 'direct',
-  cache: './downloads',
-  workspace: './reports',
+// Simple project access
+const sandbox = createMountSandbox({
+  root: '/home/user/project'
 });
-// /cache/doc.pdf → ./downloads/doc.pdf
+
+// With additional mounts
+const sandbox = createMountSandbox({
+  root: '/home/user/project',
+  readonly: false,
+  mounts: [
+    { source: '/home/user/.cache', target: '/cache', readonly: true }
+  ]
+});
+
+// Sub-worker restriction
+const restricted = sandbox.restrict({
+  restrict: '/src',
+  readonly: true
+});
 ```
 
 ### Interfaces
 
+The sandbox implements the `FileOperations` interface:
+
 ```typescript
-interface Sandbox {
+interface FileOperations {
   // File operations
   read(path: string): Promise<string>;
+  readBinary(path: string): Promise<Uint8Array>;
   write(path: string, content: string): Promise<void>;
+  writeBinary(path: string, content: Uint8Array): Promise<void>;
   delete(path: string): Promise<void>;
   exists(path: string): Promise<boolean>;
   list(path: string): Promise<string[]>;
   stat(path: string): Promise<FileStat>;
 
-  // Zone operations
-  getZoneAccess(zoneName: string): 'ro' | 'rw' | undefined;
-  getAvailableZones(): string[];
+  // Path operations
+  resolve(path: string): string;
+  isValidPath(path: string): boolean;
 }
+```
 
-interface SandboxBackend {
-  read(realPath: string): Promise<string>;
-  write(realPath: string, content: string): Promise<void>;
-  delete(realPath: string): Promise<void>;
-  exists(realPath: string): Promise<boolean>;
-  list(realPath: string): Promise<string[]>;
-  mkdir(realPath: string): Promise<void>;
+Mount-based sandbox adds restriction capability:
+
+```typescript
+interface MountSandbox extends FileOperations {
+  /** Create restricted sandbox for sub-worker */
+  restrict(config: SubWorkerRestriction): MountSandbox;
+
+  /** Check if path is writable */
+  canWrite(path: string): boolean;
+
+  /** Get effective configuration */
+  getConfig(): MountSandboxConfig;
 }
 ```
 
@@ -569,6 +582,6 @@ For untrusted content, containers provide OS-level isolation:
 └─────────────────────────────────────┘
 ```
 
-Container isolation hardens the **intake** boundary. Zones, approval, and clearance remain for UX and defense in depth.
+Container isolation hardens the **intake** boundary. Mount-based sandboxing, approval, and clearance remain for UX and defense in depth.
 
 See [notes/container-isolation-options.md](notes/container-isolation-options.md) for implementation options.

@@ -12,8 +12,12 @@
 import { z } from 'zod';
 import type { ToolExecutionOptions } from 'ai';
 import type { NamedTool } from './filesystem.js';
-import type { ApprovalDecisionType } from '../sandbox/types.js';
-import type { Sandbox } from '../sandbox/interface.js';
+import type { FileOperations } from '../sandbox/index.js';
+
+/**
+ * Approval decision for custom tools.
+ */
+type ApprovalDecisionType = 'preApproved' | 'ask' | 'blocked';
 
 // ============================================================================
 // Types
@@ -25,7 +29,7 @@ import type { Sandbox } from '../sandbox/interface.js';
  */
 export interface ToolContext {
   /** Sandbox for file operations. Undefined if worker has no sandbox. */
-  sandbox?: Sandbox;
+  sandbox?: FileOperations;
   /** Unique ID for this tool call */
   toolCallId: string;
 }
@@ -169,7 +173,7 @@ export function createToolFromFunction(
   name: string,
   fn: Function,
   schema: z.ZodType,
-  sandbox?: Sandbox,
+  sandbox?: FileOperations,
   description?: string
 ): NamedTool {
   return {
@@ -209,7 +213,7 @@ export function createToolFromFunction(
 export async function loadCustomTools(
   modulePath: string,
   config: CustomToolsetConfig,
-  sandbox?: Sandbox
+  sandbox?: FileOperations
 ): Promise<NamedTool[]> {
   // Dynamic import the module
   let module: Record<string, unknown>;
@@ -285,7 +289,7 @@ export interface CustomToolsetOptions {
   /** Custom toolset configuration */
   config: CustomToolsetConfig;
   /** Optional sandbox for file operations */
-  sandbox?: Sandbox;
+  sandbox?: FileOperations;
 }
 
 /**

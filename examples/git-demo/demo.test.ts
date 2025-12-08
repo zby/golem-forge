@@ -10,9 +10,7 @@
  *
  * Run: npx vitest run examples/git-demo/demo.test.ts
  *
- * Note: Sandbox paths like /workspace/README.md become workspace/README.md
- * in the target git repo. This is expected behavior - the sandbox zone
- * prefix is preserved in the commit.
+ * Note: Sandbox paths map directly to the git repo root.
  */
 
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
@@ -146,7 +144,7 @@ describe("Git Toolset Demo", () => {
             toolCallId: "call_1",
             toolName: "write_file",
             args: {
-              path: "/workspace/README.md",
+              path: "/README.md",
               content: newContent,
             },
           },
@@ -162,7 +160,7 @@ describe("Git Toolset Demo", () => {
             toolCallId: "call_2",
             toolName: "git_stage",
             args: {
-              files: ["/workspace/README.md"],
+              files: ["/README.md"],
               message: "Add LLM-generated section to README",
             },
           },
@@ -194,12 +192,8 @@ describe("Git Toolset Demo", () => {
     const runtime = await createWorkerRuntime({
       worker,
       model: "anthropic:claude-haiku-4-5", // Model ID for validation (mocked anyway)
-      sandboxConfig: {
-        type: "local",
-        basePath: DEMO_REPO_PATH,
-        zones: {
-          workspace: { path: ".", writable: true },
-        },
+      mountSandboxConfig: {
+        root: DEMO_REPO_PATH,
       },
       approvalMode: "approve_all", // Auto-approve for testing
     });
@@ -216,7 +210,7 @@ describe("Git Toolset Demo", () => {
 
     // File should be modified in sandbox
     const sandbox = runtime.getSandbox()!;
-    const sandboxContent = await sandbox.read("/workspace/README.md");
+    const sandboxContent = await sandbox.read("/README.md");
     expect(sandboxContent).toContain("Added by LLM");
 
     // Staged commit should exist
@@ -262,8 +256,7 @@ describe("Git Toolset Demo", () => {
     expect(lastMessage).toBe("Add LLM-generated section to README");
 
     // Verify file content in actual repo
-    // Note: sandbox path /workspace/README.md becomes workspace/README.md in repo
-    const repoContent = await getFileContent("workspace/README.md");
+    const repoContent = await getFileContent("README.md");
     expect(repoContent).toContain("Added by LLM");
   });
 
@@ -309,12 +302,8 @@ describe("Git Toolset Demo", () => {
     const runtime = await createWorkerRuntime({
       worker,
       model: "anthropic:claude-haiku-4-5",
-      sandboxConfig: {
-        type: "local",
-        basePath: DEMO_REPO_PATH,
-        zones: {
-          workspace: { path: ".", writable: true },
-        },
+      mountSandboxConfig: {
+        root: DEMO_REPO_PATH,
       },
       approvalMode: "approve_all",
     });

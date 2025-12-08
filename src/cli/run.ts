@@ -14,7 +14,7 @@ import { createCLIApprovalCallback } from "./approval.js";
 import { getEffectiveConfig, findProjectRoot, resolveSandboxConfig } from "./project.js";
 import { createTraceFormatter } from "./trace.js";
 import type { ApprovalMode } from "../approval/index.js";
-import type { SandboxConfig } from "../sandbox/index.js";
+import type { MountSandboxConfig } from "../sandbox/index.js";
 
 /**
  * Trace levels control output verbosity.
@@ -426,15 +426,13 @@ async function executeWorker(
   // Read text input
   const textInput = await readInput(options, textArgs);
 
-  // Check if this is a sandbox-only worker (has sandbox zones declared)
-  // Support both the worker schema format (zones array) and project config format (zones object)
-  const hasSandboxZones = (workerDefinition.sandbox?.zones && workerDefinition.sandbox.zones.length > 0)
-    || (effectiveConfig.sandbox?.zones && Object.keys(effectiveConfig.sandbox.zones).length > 0);
+  // Check if this worker has sandbox configured (project-level or worker-level)
+  const hasSandbox = !!effectiveConfig.sandbox || !!workerDefinition.sandbox || workerDefinition.toolsets?.filesystem;
 
-  // Require either text input, attachments, or sandbox zones
-  // Sandbox-only workers can run without explicit input since they operate on sandbox contents
-  if (!textInput && !attachments?.length && !hasSandboxZones) {
-    throw new Error("No input provided. Use text arguments, --input, --file, file attachments, pipe to stdin, or define sandbox zones.");
+  // Require either text input, attachments, or sandbox
+  // Sandbox workers can run without explicit input since they operate on sandbox contents
+  if (!textInput && !attachments?.length && !hasSandbox) {
+    throw new Error("No input provided. Use text arguments, --input, --file, file attachments, or pipe to stdin.");
   }
 
   if (options.trace === 'debug') {
@@ -444,7 +442,7 @@ async function executeWorker(
     if (attachments && attachments.length > 0) {
       console.log(`Attachments: ${attachments.map(a => a.name).join(", ")}`);
     }
-    if (hasSandboxZones && !textInput && !attachments?.length) {
+    if (hasSandbox && !textInput && !attachments?.length) {
       console.log("Sandbox-only mode: worker will operate on sandbox contents");
     }
     console.log("");
@@ -455,30 +453,22 @@ async function executeWorker(
     ? createCLIApprovalCallback()
     : undefined;
 
-  // Build sandbox configuration from project config
-  let sandboxConfig: SandboxConfig | undefined;
+  // Build mount-based sandbox configuration from project config
+  let mountSandboxConfig: MountSandboxConfig | undefined;
   if (effectiveConfig.sandbox) {
     // Resolve sandbox config to absolute paths
     const resolved = resolveSandboxConfig(projectRoot, effectiveConfig.sandbox);
 
-    // Build zones record for SandboxConfig
-    const zones: Record<string, { path: string; mode: 'ro' | 'rw' }> = {};
-    for (const [name, zone] of resolved.zones) {
-      zones[name] = {
-        path: zone.absolutePath,
-        mode: zone.mode,
-      };
-    }
-
-    sandboxConfig = {
-      mode: resolved.mode,
+    mountSandboxConfig = {
       root: resolved.root,
-      zones,
+      readonly: resolved.readonly,
     };
 
     if (options.trace === 'debug') {
       console.log(`Sandbox root: ${resolved.root}`);
-      console.log(`Sandbox zones: ${Array.from(resolved.zones.keys()).join(', ')}`);
+      if (resolved.readonly) {
+        console.log(`Sandbox mode: read-only`);
+      }
     }
   }
 
@@ -495,7 +485,7 @@ async function executeWorker(
     approvalMode: effectiveConfig.approvalMode as ApprovalMode,
     approvalCallback,
     projectRoot,
-    sandboxConfig,
+    mountSandboxConfig,
     onEvent,
   };
 
@@ -508,7 +498,7 @@ async function executeWorker(
   if (!effectiveTextInput) {
     if (attachments && attachments.length > 0) {
       effectiveTextInput = "Please process the attached file(s).";
-    } else if (hasSandboxZones) {
+    } else if (hasSandbox) {
       effectiveTextInput = "Please proceed with your task using the sandbox contents.";
     }
   }

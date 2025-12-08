@@ -7,7 +7,7 @@
  */
 
 import type { NamedTool } from './filesystem.js';
-import type { Sandbox } from '../sandbox/interface.js';
+import type { FileOperations } from '../sandbox/index.js';
 import type { ApprovalController } from '../approval/index.js';
 
 /**
@@ -16,7 +16,7 @@ import type { ApprovalController } from '../approval/index.js';
  */
 export interface ToolsetContext {
   /** Sandbox for file operations. Undefined if worker has no sandbox. */
-  sandbox?: Sandbox;
+  sandbox?: FileOperations;
   /** Approval controller for tools requiring approval. */
   approvalController: ApprovalController;
   /** Path to the worker file (for resolving relative paths). */

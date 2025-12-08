@@ -173,12 +173,8 @@ async function main() {
   const runtime = await createWorkerRuntime({
     worker,
     model: "anthropic:claude-haiku-4-5",
-    sandboxConfig: {
-      type: "local",
-      basePath: SSH_REPO,
-      zones: {
-        workspace: { path: ".", writable: true },
-      },
+    mountSandboxConfig: {
+      root: SSH_REPO!,
     },
     approvalMode: "interactive",
     approvalCallback: createCLIApprovalCallback(),

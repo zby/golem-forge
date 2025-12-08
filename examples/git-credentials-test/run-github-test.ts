@@ -129,14 +129,15 @@ async function main() {
     },
   };
 
+  // Create a temp directory for sandbox (git tools don't need local files for API calls)
+  const { mkdtemp } = await import("fs/promises");
+  const tmpDir = await mkdtemp("/tmp/golem-github-test-");
+
   const runtime = await createWorkerRuntime({
     worker,
     model: "anthropic:claude-haiku-4-5",
-    sandboxConfig: {
-      type: "memory",
-      zones: {
-        workspace: { path: ".", writable: true },
-      },
+    mountSandboxConfig: {
+      root: tmpDir,
     },
     approvalMode: "interactive",
     approvalCallback: createCLIApprovalCallback(),

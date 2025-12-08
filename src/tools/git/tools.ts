@@ -7,7 +7,7 @@
 
 import type { ToolExecutionOptions } from 'ai';
 import type { NamedTool } from '../filesystem.js';
-import type { Sandbox } from '../../sandbox/interface.js';
+import type { FileOperations } from '../../sandbox/mount-types.js';
 import type { GitBackend } from './backend.js';
 import type {
   GitStatusInput,
@@ -40,8 +40,8 @@ import { merge } from './merge.js';
 export interface GitToolOptions {
   /** Git backend for operations */
   backend: GitBackend;
-  /** Sandbox for file operations */
-  sandbox?: Sandbox;
+  /** Sandbox for file operations (supports both zone-based and mount-based) */
+  sandbox?: FileOperations;
   /** Default git target (from worker config) */
   defaultTarget?: GitTarget;
 }

@@ -362,16 +362,15 @@ Test instructions
       }
     });
 
-    it("should allow running sandbox-only workers without input (worker-defined zones)", async () => {
-      // Create a worker with sandbox zones
+    it("should allow running sandbox-only workers without input (worker-defined sandbox)", async () => {
+      // Create a worker with sandbox configuration (mount-based)
       const sandboxWorker = `---
 name: sandbox-processor
 sandbox:
-  zones:
-    - name: workspace
-      mode: rw
+  restrict: /workspace
+  readonly: false
 ---
-Process files in the workspace zone.
+Process files in the workspace.
 `;
       await fs.writeFile(path.join(workerDir, "index.worker"), sandboxWorker);
 
@@ -391,8 +390,8 @@ Process files in the workspace zone.
       }
     });
 
-    it("should allow running sandbox-only workers without input (project-config zones)", async () => {
-      // Worker without sandbox zones
+    it("should allow running sandbox-only workers without input (project-config sandbox)", async () => {
+      // Worker without sandbox configuration
       const plainWorker = `---
 name: plain-worker
 ---
@@ -400,18 +399,15 @@ Process files.
 `;
       await fs.writeFile(path.join(workerDir, "index.worker"), plainWorker);
 
-      // Mock project config with sandbox zones
+      // Mock project config with sandbox (mount-based)
       vi.mocked(getEffectiveConfig).mockReturnValueOnce({
         model: "anthropic:claude-haiku-4-5",
         trustLevel: "session",
         approvalMode: "interactive",
         workerPaths: ["workers"],
         sandbox: {
-          mode: "sandboxed",
-          root: "sandbox",
-          zones: {
-            workspace: { path: "./workspace", mode: "rw" },
-          },
+          root: "./workspace",
+          readonly: false,
         },
       });
 

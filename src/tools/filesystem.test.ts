@@ -26,10 +26,10 @@ describe('Filesystem Tools', () => {
       const tool = createReadFileTool(sandbox);
 
       // Write a file first
-      await sandbox.write('/workspace/test.txt', 'hello world');
+      await sandbox.write('/test.txt', 'hello world');
 
       // Read it using the tool
-      const result = await tool.execute({ path: '/workspace/test.txt' });
+      const result = await tool.execute({ path: '/test.txt' });
 
       expect(result.success).toBe(true);
       expect(result.content).toBe('hello world');
@@ -39,7 +39,7 @@ describe('Filesystem Tools', () => {
     it('returns error for missing file', async () => {
       const tool = createReadFileTool(sandbox);
 
-      const result = await tool.execute({ path: '/workspace/nonexistent.txt' });
+      const result = await tool.execute({ path: '/nonexistent.txt' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
@@ -52,7 +52,7 @@ describe('Filesystem Tools', () => {
       const binaryExtensions = ['.pdf', '.png', '.jpg', '.zip', '.exe', '.mp3'];
 
       for (const ext of binaryExtensions) {
-        const result = await tool.execute({ path: `/workspace/file${ext}` });
+        const result = await tool.execute({ path: `/file${ext}` });
 
         expect(result.success).toBe(false);
         expect(result.error).toContain('Cannot read binary file');
@@ -66,9 +66,9 @@ describe('Filesystem Tools', () => {
 
       // Write a file with binary content (contains null bytes)
       const binaryContent = 'hello\x00world\x00binary';
-      await sandbox.write('/workspace/binary.dat', binaryContent);
+      await sandbox.write('/binary.dat', binaryContent);
 
-      const result = await tool.execute({ path: '/workspace/binary.dat' });
+      const result = await tool.execute({ path: '/binary.dat' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('appears to be binary');
@@ -80,9 +80,9 @@ describe('Filesystem Tools', () => {
 
       // Write a file with unicode and special characters (but valid text)
       const textContent = 'Hello 世界! Ümlauts and émojis 🎉\nTabs\there\nNewlines\n\n';
-      await sandbox.write('/workspace/unicode.txt', textContent);
+      await sandbox.write('/unicode.txt', textContent);
 
-      const result = await tool.execute({ path: '/workspace/unicode.txt' });
+      const result = await tool.execute({ path: '/unicode.txt' });
 
       expect(result.success).toBe(true);
       expect(result.content).toBe(textContent);
@@ -94,7 +94,7 @@ describe('Filesystem Tools', () => {
       const tool = createWriteFileTool(sandbox);
 
       const result = await tool.execute({
-        path: '/workspace/output.txt',
+        path: '/output.txt',
         content: 'new content',
       });
 
@@ -102,22 +102,22 @@ describe('Filesystem Tools', () => {
       expect(result.bytesWritten).toBe(11);
 
       // Verify file was written
-      const content = await sandbox.read('/workspace/output.txt');
+      const content = await sandbox.read('/output.txt');
       expect(content).toBe('new content');
     });
 
-    it('writes to cache zone', async () => {
+    it('writes to subdirectory', async () => {
       const tool = createWriteFileTool(sandbox);
 
       const result = await tool.execute({
-        path: '/cache/data.json',
+        path: '/subdir/data.json',
         content: '{"key": "value"}',
       });
 
       expect(result.success).toBe(true);
 
       // Verify file was written
-      const content = await sandbox.read('/cache/data.json');
+      const content = await sandbox.read('/subdir/data.json');
       expect(content).toBe('{"key": "value"}');
     });
   });
@@ -127,10 +127,10 @@ describe('Filesystem Tools', () => {
       const tool = createListFilesTool(sandbox);
 
       // Create some files
-      await sandbox.write('/workspace/a.txt', 'a');
-      await sandbox.write('/workspace/b.txt', 'b');
+      await sandbox.write('/a.txt', 'a');
+      await sandbox.write('/b.txt', 'b');
 
-      const result = await tool.execute({ path: '/workspace' });
+      const result = await tool.execute({ path: '/' });
 
       expect(result.success).toBe(true);
       expect(result.files).toContain('a.txt');
@@ -141,7 +141,7 @@ describe('Filesystem Tools', () => {
     it('returns error for missing directory', async () => {
       const tool = createListFilesTool(sandbox);
 
-      const result = await tool.execute({ path: '/workspace/nonexistent' });
+      const result = await tool.execute({ path: '/nonexistent' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
@@ -153,21 +153,21 @@ describe('Filesystem Tools', () => {
       const tool = createDeleteFileTool(sandbox);
 
       // Create a file
-      await sandbox.write('/workspace/temp.txt', 'temp');
-      expect(await sandbox.exists('/workspace/temp.txt')).toBe(true);
+      await sandbox.write('/temp.txt', 'temp');
+      expect(await sandbox.exists('/temp.txt')).toBe(true);
 
       // Delete it
-      const result = await tool.execute({ path: '/workspace/temp.txt' });
+      const result = await tool.execute({ path: '/temp.txt' });
 
       expect(result.success).toBe(true);
       expect(result.deleted).toBe(true);
-      expect(await sandbox.exists('/workspace/temp.txt')).toBe(false);
+      expect(await sandbox.exists('/temp.txt')).toBe(false);
     });
 
     it('returns error for missing file', async () => {
       const tool = createDeleteFileTool(sandbox);
 
-      const result = await tool.execute({ path: '/workspace/nonexistent.txt' });
+      const result = await tool.execute({ path: '/nonexistent.txt' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not found');
@@ -178,9 +178,9 @@ describe('Filesystem Tools', () => {
     it('returns true for existing file', async () => {
       const tool = createFileExistsTool(sandbox);
 
-      await sandbox.write('/workspace/exists.txt', 'content');
+      await sandbox.write('/exists.txt', 'content');
 
-      const result = await tool.execute({ path: '/workspace/exists.txt' });
+      const result = await tool.execute({ path: '/exists.txt' });
 
       expect(result.success).toBe(true);
       expect(result.exists).toBe(true);
@@ -189,7 +189,7 @@ describe('Filesystem Tools', () => {
     it('returns false for missing file', async () => {
       const tool = createFileExistsTool(sandbox);
 
-      const result = await tool.execute({ path: '/workspace/missing.txt' });
+      const result = await tool.execute({ path: '/missing.txt' });
 
       expect(result.success).toBe(true);
       expect(result.exists).toBe(false);
@@ -200,9 +200,9 @@ describe('Filesystem Tools', () => {
     it('returns file metadata', async () => {
       const tool = createFileInfoTool(sandbox);
 
-      await sandbox.write('/workspace/info.txt', 'hello');
+      await sandbox.write('/info.txt', 'hello');
 
-      const result = await tool.execute({ path: '/workspace/info.txt' });
+      const result = await tool.execute({ path: '/info.txt' });
 
       expect(result.success).toBe(true);
       expect(result.size).toBe(5);
@@ -305,168 +305,8 @@ describe('createFilesystemTools', () => {
   });
 });
 
-describe('Zone-aware approval', () => {
-  let sandbox: Sandbox;
-
-  beforeEach(async () => {
-    sandbox = await createTestSandbox();
-  });
-
-  describe('zoneApprovalConfig', () => {
-    it('uses function-based approval when zoneApprovalConfig is provided', () => {
-      const toolset = new FilesystemToolset({
-        sandbox,
-        zoneApprovalConfig: {
-          workspace: { write: 'preApproved', delete: 'ask' },
-        },
-      });
-
-      const tools = toolset.getTools();
-      const writeTool = tools.find(t => t.name === 'write_file');
-      const deleteTool = tools.find(t => t.name === 'delete_file');
-
-      // needsApproval should be a function, not a boolean
-      expect(typeof writeTool?.needsApproval).toBe('function');
-      expect(typeof deleteTool?.needsApproval).toBe('function');
-    });
-
-    it('preApproved zone returns false (no approval needed) for writes', async () => {
-      const toolset = new FilesystemToolset({
-        sandbox,
-        zoneApprovalConfig: {
-          workspace: { write: 'preApproved' },
-        },
-      });
-
-      const tools = toolset.getTools();
-      const writeTool = tools.find(t => t.name === 'write_file');
-
-      // Call the needsApproval function with a path in the preApproved zone
-      const needsApproval = writeTool?.needsApproval as (input: { path: string }) => boolean;
-      expect(needsApproval({ path: '/workspace/file.txt' })).toBe(false);
-    });
-
-    it('ask zone returns true (needs approval) for writes', async () => {
-      const toolset = new FilesystemToolset({
-        sandbox,
-        zoneApprovalConfig: {
-          workspace: { write: 'ask' },
-        },
-      });
-
-      const tools = toolset.getTools();
-      const writeTool = tools.find(t => t.name === 'write_file');
-
-      const needsApproval = writeTool?.needsApproval as (input: { path: string }) => boolean;
-      expect(needsApproval({ path: '/workspace/file.txt' })).toBe(true);
-    });
-
-    it('blocked zone returns true (needs approval - will be blocked at execution)', async () => {
-      const toolset = new FilesystemToolset({
-        sandbox,
-        zoneApprovalConfig: {
-          workspace: { write: 'blocked' },
-        },
-      });
-
-      const tools = toolset.getTools();
-      const writeTool = tools.find(t => t.name === 'write_file');
-
-      const needsApproval = writeTool?.needsApproval as (input: { path: string }) => boolean;
-      expect(needsApproval({ path: '/workspace/file.txt' })).toBe(true);
-    });
-
-    it('unknown zone returns true (needs approval - secure default)', async () => {
-      const toolset = new FilesystemToolset({
-        sandbox,
-        zoneApprovalConfig: {
-          scratch: { write: 'preApproved' }, // only scratch is configured
-        },
-      });
-
-      const tools = toolset.getTools();
-      const writeTool = tools.find(t => t.name === 'write_file');
-
-      const needsApproval = writeTool?.needsApproval as (input: { path: string }) => boolean;
-      // workspace is not in config, so should require approval
-      expect(needsApproval({ path: '/workspace/file.txt' })).toBe(true);
-    });
-
-    it('different zones can have different approval settings', async () => {
-      const toolset = new FilesystemToolset({
-        sandbox,
-        zoneApprovalConfig: {
-          workspace: { write: 'preApproved', delete: 'ask' },
-          cache: { write: 'ask', delete: 'preApproved' },
-        },
-      });
-
-      const tools = toolset.getTools();
-      const writeTool = tools.find(t => t.name === 'write_file');
-      const deleteTool = tools.find(t => t.name === 'delete_file');
-
-      const writeNeedsApproval = writeTool?.needsApproval as (input: { path: string }) => boolean;
-      const deleteNeedsApproval = deleteTool?.needsApproval as (input: { path: string }) => boolean;
-
-      // workspace: write preApproved, delete ask
-      expect(writeNeedsApproval({ path: '/workspace/file.txt' })).toBe(false);
-      expect(deleteNeedsApproval({ path: '/workspace/file.txt' })).toBe(true);
-
-      // cache: write ask, delete preApproved
-      expect(writeNeedsApproval({ path: '/cache/file.txt' })).toBe(true);
-      expect(deleteNeedsApproval({ path: '/cache/file.txt' })).toBe(false);
-    });
-
-    it('read operations still use static approval (not zone-aware)', () => {
-      const toolset = new FilesystemToolset({
-        sandbox,
-        zoneApprovalConfig: {
-          workspace: { write: 'preApproved' },
-        },
-      });
-
-      const tools = toolset.getTools();
-      const readTool = tools.find(t => t.name === 'read_file');
-      const listTool = tools.find(t => t.name === 'list_files');
-
-      // Read operations should still be static (falsy = no approval needed)
-      expect(readTool?.needsApproval).toBeFalsy();
-      expect(listTool?.needsApproval).toBeFalsy();
-    });
-  });
-});
-
 describe('Discoverable filesystem interface', () => {
-  it('list_files("/") should return available zones as directories', async () => {
-    // Create a sandbox with custom zones
-    const { createSandbox } = await import('../sandbox/index.js');
-    const sandbox = await createSandbox({
-      mode: 'sandboxed',
-      root: '/tmp/test-custom-zones',
-      zones: {
-        input: { path: './input', mode: 'ro' },
-        output: { path: './output', mode: 'rw' },
-      },
-    });
-
-    // Verify sandbox has custom zones
-    expect(sandbox.getAvailableZones()).toEqual(['input', 'output']);
-
-    // Create list_files tool
-    const listTool = createListFilesTool(sandbox);
-
-    // LLM should be able to discover available directories by listing root
-    const result = await listTool.execute({ path: '/' });
-
-    expect(result.success).toBe(true);
-    expect(result.files).toContain('input');
-    expect(result.files).toContain('output');
-    // Should NOT see default zones that weren't configured
-    expect(result.files).not.toContain('workspace');
-    expect(result.files).not.toContain('cache');
-  });
-
-  it('tool descriptions should be generic, not hardcode zone names', async () => {
+  it('tool descriptions should be generic, not hardcode directory names', async () => {
     const sandbox = await createTestSandbox();
     const toolset = new FilesystemToolset({ sandbox });
     const tools = toolset.getTools();
@@ -479,7 +319,6 @@ describe('Discoverable filesystem interface', () => {
     const pathDescription = schema.shape.path._def.description;
 
     // Description should guide LLM to discover directories, not hardcode them
-    // This test will fail with current implementation - that's the point
     expect(pathDescription).not.toContain('/workspace');
     expect(pathDescription).not.toContain('/cache');
   });

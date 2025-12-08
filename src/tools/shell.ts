@@ -18,7 +18,11 @@ import * as shlex from 'shlex';
 import type { ToolExecutionOptions } from 'ai';
 import { BlockedError, type ApprovalConfig } from '../approval/index.js';
 import type { NamedTool } from './filesystem.js';
-import type { ApprovalDecisionType } from '../sandbox/types.js';
+
+/**
+ * Approval decision type for shell commands.
+ */
+type ApprovalDecisionType = 'preApproved' | 'ask' | 'blocked';
 
 // ============================================================================
 // Types
@@ -386,7 +390,7 @@ export function createShellTool(options: ShellToolOptions = {}): NamedTool {
     inputSchema: shellToolSchema,
 
     // Dynamic approval check based on rules
-    needsApproval: (input: ShellToolInput) => {
+    needsApproval: (input: ShellToolInput): boolean => {
       const { command } = input;
 
       // Check metacharacters first - if blocked, let execute handle the error
@@ -409,6 +413,8 @@ export function createShellTool(options: ShellToolOptions = {}): NamedTool {
         case 'blocked':
           // Will be blocked in execute - require approval so we can block it properly
           return true;
+        default:
+          return true;   // Default: require approval
       }
     },
 

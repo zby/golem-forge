@@ -12,7 +12,7 @@
 import { z } from "zod";
 
 /**
- * Approval decision type for zone operations.
+ * Approval decision type for operations.
  * - 'preApproved': No user prompt needed
  * - 'ask': Prompt user for approval (default)
  * - 'blocked': Operation blocked entirely
@@ -20,46 +20,31 @@ import { z } from "zod";
 export const ApprovalDecisionTypeSchema = z.enum(["preApproved", "ask", "blocked"]);
 
 /**
- * Per-zone approval configuration.
+ * Per-path approval configuration.
  * Separate from mode (capability) - this controls consent/UX.
- *
- * TODO: Consider adding shorthand `preApproved: boolean` that expands to
- * `{ write: 'preApproved', delete: 'preApproved' }` for simpler configs.
  */
-export const ZoneApprovalConfigSchema = z.object({
+export const PathApprovalConfigSchema = z.object({
   /** Approval for write operations. Default: 'ask' */
   write: ApprovalDecisionTypeSchema.optional(),
   /** Approval for delete operations. Default: 'ask' */
   delete: ApprovalDecisionTypeSchema.optional(),
 }).strict();
 
-export type ZoneApprovalConfig = z.infer<typeof ZoneApprovalConfigSchema>;
+export type PathApprovalConfig = z.infer<typeof PathApprovalConfigSchema>;
 
 /**
- * Worker zone requirement - what this worker needs access to.
+ * Worker sandbox restriction - how to restrict parent's sandbox for this worker.
  *
- * Workers declare zone requirements by name. The actual zone paths
- * are defined in project config (golem-forge.config.yaml).
- */
-export const WorkerZoneRequirementSchema = z.object({
-  /** Name of the zone (must exist in project config) */
-  name: z.string(),
-  /** Access mode: ro (read-only) or rw (read-write). Default: rw */
-  mode: z.enum(["ro", "rw"]).optional(),
-  /** Approval config - consent layer (optional, defaults to 'ask' for write ops) */
-  approval: ZoneApprovalConfigSchema.optional(),
-}).strict();
-
-export type WorkerZoneRequirement = z.infer<typeof WorkerZoneRequirementSchema>;
-
-/**
- * Worker sandbox requirements - what zones this worker needs.
- *
- * Workers self-declare their sandbox needs. No sandbox declaration = pure function.
+ * Workers can declare sandbox restrictions that will be applied when called
+ * as a sub-worker. If no sandbox config, worker gets full parent sandbox access.
  */
 export const WorkerSandboxConfigSchema = z.object({
-  /** List of zones this worker needs access to */
-  zones: z.array(WorkerZoneRequirementSchema).optional(),
+  /** Restrict to subtree (e.g., "/src"). Omit for full access. */
+  restrict: z.string().startsWith("/").optional(),
+  /** Make read-only. Default: inherit from parent */
+  readonly: z.boolean().optional(),
+  /** Approval config - consent layer (optional, defaults to 'ask' for write ops) */
+  approval: PathApprovalConfigSchema.optional(),
 }).strict();
 
 export type WorkerSandboxConfig = z.infer<typeof WorkerSandboxConfigSchema>;

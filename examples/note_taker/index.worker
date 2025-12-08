@@ -4,9 +4,7 @@ description: Save timestamped notes to a log file with write approval
 toolsets:
   filesystem: {}
 sandbox:
-  zones:
-    - name: notes
-      mode: rw
+  restrict: /notes
 ---
 
 You are a note-taking assistant that maintains a log of timestamped notes.

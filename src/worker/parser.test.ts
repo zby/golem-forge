@@ -27,26 +27,20 @@ You are a friendly assistant.
 name: file_writer
 description: Writes files to sandbox
 sandbox:
-  zones:
-    - name: workspace
-      mode: rw
-    - name: cache
-      mode: ro
+  restrict: /src
+  readonly: true
 ---
 
-You write files to the workspace sandbox.
+You write files to the sandbox.
 `;
 
       const result = parseWorkerString(content);
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.worker.sandbox?.zones).toBeDefined();
-        expect(result.worker.sandbox?.zones?.length).toBe(2);
-        expect(result.worker.sandbox?.zones?.[0].name).toBe("workspace");
-        expect(result.worker.sandbox?.zones?.[0].mode).toBe("rw");
-        expect(result.worker.sandbox?.zones?.[1].name).toBe("cache");
-        expect(result.worker.sandbox?.zones?.[1].mode).toBe("ro");
+        expect(result.worker.sandbox).toBeDefined();
+        expect(result.worker.sandbox?.restrict).toBe("/src");
+        expect(result.worker.sandbox?.readonly).toBe(true);
       }
     });
 

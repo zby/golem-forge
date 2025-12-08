@@ -19,8 +19,8 @@ import { GitToolsetConfigSchema, type GitToolsetConfig, type GitCredentialsConfi
  * Options for creating a GitToolset.
  */
 export interface GitToolsetOptions {
-  /** Sandbox for file operations */
-  sandbox?: import('../../sandbox/interface.js').Sandbox;
+  /** Sandbox for file operations (supports both zone-based and mount-based) */
+  sandbox?: import('../../sandbox/mount-types.js').FileOperations;
   /** Project root directory */
   projectRoot?: string;
   /** Git toolset configuration */

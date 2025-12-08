@@ -1,25 +1,16 @@
 /**
  * Sandbox Module
  *
- * Simple filesystem abstraction with zone-based organization.
+ * Mount-based filesystem abstraction using Docker bind mount semantics.
+ * See docs/sandbox-design.md for design details.
  */
 
-// Types
-export { Zone } from './types.js';
+// Shared Types
 export type {
   Operation,
   FileStat,
   BackendFileStat,
-  SandboxConfig,
-  BackendConfig,
-  ZoneAccessMode,
-  ZoneConfig,
-  ZoneApprovalConfig,
-  ApprovalDecisionType,
 } from './types.js';
-
-// Interfaces
-export type { Sandbox, SandboxBackend } from './interface.js';
 
 // Errors
 export {
@@ -29,25 +20,27 @@ export {
   isSandboxError,
 } from './errors.js';
 
-// Zones
+// Mount-based Sandbox (Docker-style)
+export type {
+  FileOperations,
+  Mount,
+  MountSandboxConfig,
+  SubWorkerRestriction,
+  ResolvedMount,
+  ResolvedMountConfig,
+} from './mount-types.js';
 export {
-  getZoneFromPath,
-  getZoneNameFromPath,
-  getAllValidZones,
-  isValidZonePath,
-  registerCustomZones,
-  clearCustomZones,
-} from './zones.js';
-
-// Implementation
+  MountSchema,
+  MountSandboxConfigSchema,
+  SubWorkerRestrictionSchema,
+} from './mount-types.js';
+export type { MountSandbox } from './mount-sandbox.js';
 export {
-  SandboxImpl,
-  RestrictedSandbox,
-  createSandbox,
+  MountSandboxImpl,
+  createMountSandbox,
+  createMountSandboxAsync,
   createTestSandbox,
-  createRestrictedSandbox,
-} from './impl.js';
+} from './mount-sandbox.js';
 
-// Backends
-export { MemoryBackend } from './backends/memory.js';
-export { CLIBackend } from './backends/cli.js';
+// Re-export FileOperations as Sandbox for simpler imports
+export type { FileOperations as Sandbox } from './mount-types.js';

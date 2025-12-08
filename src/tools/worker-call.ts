@@ -9,8 +9,7 @@ import type { ToolExecutionOptions } from "ai";
 import type { NamedTool } from "./filesystem.js";
 import type { ApprovalCallback, ApprovalMode } from "../approval/index.js";
 import { ApprovalController } from "../approval/index.js";
-import type { Sandbox, ZoneAccessMode } from "../sandbox/index.js";
-import { createRestrictedSandbox } from "../sandbox/index.js";
+import type { FileOperations, MountSandbox } from "../sandbox/index.js";
 import { WorkerRegistry } from "../worker/registry.js";
 import type { WorkerDefinition, WorkerSandboxConfig } from "../worker/schema.js";
 import type { WorkerRunnerFactory } from "../runtime/interfaces.js";
@@ -27,7 +26,7 @@ export const NamedWorkerInputSchema = z.object({
     .string()
     .optional()
     .describe("Optional additional instructions for this call"),
-  /** Sandbox file paths to read and attach (e.g., ["/workspace/doc.pdf"]) */
+  /** Sandbox file paths to read and attach (e.g., ["/doc.pdf"]) */
   attachments: z
     .array(z.string())
     .optional()
@@ -53,7 +52,7 @@ export interface WorkerCallToolsetOptions {
   /** List of worker names this worker is allowed to call */
   allowedWorkers: string[];
   /** Shared sandbox for file access */
-  sandbox?: Sandbox;
+  sandbox?: FileOperations;
   /** Approval controller to share with child workers */
   approvalController: ApprovalController;
   /** Approval callback to share with child workers */
@@ -92,61 +91,53 @@ export interface CallWorkerResult {
 const DEFAULT_MAX_DELEGATION_DEPTH = 5;
 
 /**
- * Create a restricted sandbox for a child worker.
- *
- * Validates the child's sandbox requirements against the parent's access
- * and returns a sandbox that only allows what the child declared.
+ * Create a restricted sandbox for a child worker using mount-based restriction.
  *
  * @param parentSandbox - The parent worker's sandbox
- * @param childSandboxConfig - The child worker's sandbox declaration
+ * @param childSandboxConfig - The child worker's sandbox restriction config
  * @param childWorkerName - Name of the child worker (for error messages)
- * @returns A restricted sandbox or null (pure function)
+ * @returns A restricted sandbox or the parent sandbox (if no restrictions)
  */
 function createChildSandbox(
-  parentSandbox: Sandbox | undefined,
+  parentSandbox: FileOperations | undefined,
   childSandboxConfig: WorkerSandboxConfig | undefined,
   childWorkerName: string
-): Sandbox | null {
-  // No declaration = pure function (no sandbox)
-  if (!childSandboxConfig?.zones?.length) {
-    return null;
+): FileOperations | undefined {
+  // No parent sandbox = no child sandbox
+  if (!parentSandbox) {
+    if (childSandboxConfig?.restrict || childSandboxConfig?.readonly) {
+      throw new Error(
+        `Worker '${childWorkerName}' declares sandbox restrictions but parent has no sandbox`
+      );
+    }
+    return undefined;
   }
 
-  // Child declared zones but parent has no sandbox - error
-  if (!parentSandbox) {
+  // No restrictions = full parent sandbox access
+  if (!childSandboxConfig?.restrict && childSandboxConfig?.readonly === undefined) {
+    return parentSandbox;
+  }
+
+  // Check if parent sandbox supports restriction (MountSandbox)
+  const mountSandbox = parentSandbox as MountSandbox;
+  if (typeof mountSandbox.restrict !== 'function') {
+    // Parent sandbox doesn't support restriction - just pass it through
+    // This allows FileOperations implementations that don't support restriction
+    return parentSandbox;
+  }
+
+  // Apply restrictions using mount-based restrict()
+  try {
+    return mountSandbox.restrict({
+      restrict: childSandboxConfig.restrict,
+      readonly: childSandboxConfig.readonly,
+    });
+  } catch (error) {
     throw new Error(
-      `Worker '${childWorkerName}' declares sandbox requirements but parent has no sandbox`
+      `Failed to restrict sandbox for worker '${childWorkerName}': ` +
+      (error instanceof Error ? error.message : String(error))
     );
   }
-
-  // Build allowed zones map, validating against parent's access
-  const allowedZones = new Map<string, ZoneAccessMode>();
-
-  for (const zoneReq of childSandboxConfig.zones) {
-    const zoneName = zoneReq.name;
-    const requestedMode = zoneReq.mode ?? 'rw';
-    const parentAccess = parentSandbox.getZoneAccess(zoneName);
-
-    // Check that parent has access to this zone
-    if (!parentAccess) {
-      throw new Error(
-        `Worker '${childWorkerName}' requests zone '${zoneName}' but parent doesn't have it. ` +
-        `Available zones: ${parentSandbox.getAvailableZones().join(', ') || 'none'}`
-      );
-    }
-
-    // Check that child's requested mode doesn't exceed parent's access
-    if (requestedMode === 'rw' && parentAccess === 'ro') {
-      throw new Error(
-        `Worker '${childWorkerName}' requests 'rw' access to zone '${zoneName}' ` +
-        `but parent only has 'ro' access`
-      );
-    }
-
-    allowedZones.set(zoneName, requestedMode);
-  }
-
-  return createRestrictedSandbox(parentSandbox, allowedZones);
 }
 
 
@@ -181,7 +172,7 @@ interface ExecuteDelegationOptions {
   instructions?: string;
   attachments?: string[];
   registry: WorkerRegistry;
-  sandbox?: Sandbox;
+  sandbox?: FileOperations;
   approvalController: ApprovalController;
   approvalCallback?: ApprovalCallback;
   approvalMode: ApprovalMode;
@@ -274,8 +265,7 @@ async function executeWorkerDelegation(
     };
 
     // Create restricted sandbox for child worker
-    // This enforces the child worker's sandbox declaration
-    let childSandbox: Sandbox | null | undefined;
+    let childSandbox: FileOperations | undefined;
     try {
       childSandbox = createChildSandbox(
         sandbox,
@@ -312,7 +302,7 @@ async function executeWorkerDelegation(
       projectRoot: projectRoot,
       sharedApprovalController: approvalController,
       // Pass the restricted sandbox (or undefined for pure functions)
-      sharedSandbox: childSandbox ?? undefined,
+      sharedSandbox: childSandbox,
       delegationContext: childDelegationContext,
       registry: registry,
       // Propagate event callback to child workers for nested tracing
@@ -435,7 +425,7 @@ function isBinaryMimeType(mimeType: string): boolean {
  * Read attachments from sandbox paths.
  */
 async function readAttachments(
-  sandbox: Sandbox | undefined,
+  sandbox: FileOperations | undefined,
   paths: string[] | undefined
 ): Promise<Array<{ data: Buffer | string; mimeType: string }>> {
   if (!sandbox || !paths || paths.length === 0) {

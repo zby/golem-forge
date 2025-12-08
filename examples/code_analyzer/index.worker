@@ -4,14 +4,9 @@ description: Analyze codebases using filesystem tools to read and explore files
 toolsets:
   filesystem: {}
 sandbox:
-  zones:
-    - name: codebase
-      mode: ro
-    - name: reports
-      mode: rw
-      approval:
-        write: preApproved   # Reports can be written without prompts
-        delete: ask          # But deleting reports needs confirmation
+  approval:
+    write: preApproved
+    delete: ask
 ---
 
 You are a code analysis assistant that explores and analyzes codebases.
@@ -24,8 +19,8 @@ You are a code analysis assistant that explores and analyzes codebases.
 - `write_file`: Save analysis reports to `/reports`
 
 **Sandbox Access:**
-- `/codebase` - Read-only access to the code to analyze
-- `/reports` - Read-write access to save your analysis reports
+- Access to project files for analysis
+- Save reports to the working directory
 
 **Analysis Workflow:**
 

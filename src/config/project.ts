@@ -2,7 +2,7 @@
  * Project Configuration
  *
  * Schema and loader for golem-forge.config.yaml project configuration files.
- * This defines the project-level sandbox zones and other settings.
+ * This defines the project-level sandbox and other settings.
  */
 
 import { z } from "zod";
@@ -11,32 +11,14 @@ import * as path from "path";
 import * as yaml from "js-yaml";
 
 /**
- * Zone mode - read-only or read-write.
- */
-export type ZoneMode = "ro" | "rw";
-
-/**
- * Schema for a sandbox zone definition.
- */
-export const ZoneDefinitionSchema = z.object({
-  /** Relative path from sandbox root */
-  path: z.string(),
-  /** Access mode: ro (read-only) or rw (read-write) */
-  mode: z.enum(["ro", "rw"]).default("rw"),
-}).strict();
-
-export type ZoneDefinition = z.infer<typeof ZoneDefinitionSchema>;
-
-/**
  * Schema for sandbox configuration in project config.
+ * Uses mount-based model (Docker-style).
  */
 export const SandboxProjectConfigSchema = z.object({
-  /** Mode: sandboxed (all in sandbox/) or direct (custom paths) */
-  mode: z.enum(["sandboxed", "direct"]).default("sandboxed"),
-  /** Root directory for sandboxed mode */
-  root: z.string().default("sandbox"),
-  /** Zone definitions */
-  zones: z.record(z.string(), ZoneDefinitionSchema).default({}),
+  /** Root directory to mount at / (relative to project root) */
+  root: z.string().default("."),
+  /** Read-only mode */
+  readonly: z.boolean().optional(),
 }).strict();
 
 export type SandboxProjectConfig = z.infer<typeof SandboxProjectConfigSchema>;
@@ -80,29 +62,13 @@ export const ProjectConfigSchema = z.object({
 export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
 
 /**
- * Resolved zone with absolute path.
- */
-export interface ResolvedZone {
-  /** Zone name */
-  name: string;
-  /** Absolute path to the zone directory */
-  absolutePath: string;
-  /** Relative path from project root */
-  relativePath: string;
-  /** Access mode */
-  mode: ZoneMode;
-}
-
-/**
- * Resolved sandbox configuration with absolute paths.
+ * Resolved sandbox configuration with absolute path.
  */
 export interface ResolvedSandboxConfig {
-  /** Sandbox mode */
-  mode: "sandboxed" | "direct";
   /** Absolute path to sandbox root */
   root: string;
-  /** Resolved zones with absolute paths */
-  zones: Map<string, ResolvedZone>;
+  /** Read-only mode */
+  readonly?: boolean;
 }
 
 /**
@@ -179,59 +145,23 @@ export async function findProjectConfig(
 }
 
 /**
- * Resolve sandbox configuration to absolute paths.
- *
- * Converts relative zone paths to absolute paths based on project root.
+ * Resolve sandbox configuration to absolute path.
  *
  * @param projectRoot - Absolute path to project root
  * @param sandboxConfig - Sandbox configuration from project config
- * @returns Resolved sandbox config with absolute paths
+ * @returns Resolved sandbox config with absolute path
  */
 export function resolveSandboxConfig(
   projectRoot: string,
   sandboxConfig?: SandboxProjectConfig
 ): ResolvedSandboxConfig {
-  // Default config if none provided
-  const config = sandboxConfig ?? {
-    mode: "sandboxed" as const,
-    root: "sandbox",
-    zones: {
-      cache: { path: "./cache", mode: "rw" as const },
-      workspace: { path: "./workspace", mode: "rw" as const },
-    },
-  };
-
+  // Default: mount project root at /
+  const config = sandboxConfig ?? { root: "." };
   const sandboxRoot = path.resolve(projectRoot, config.root);
 
-  // Resolve zones
-  const zones = new Map<string, ResolvedZone>();
-
-  // If no zones defined, use defaults
-  const zoneDefs = Object.keys(config.zones).length > 0
-    ? config.zones
-    : {
-        cache: { path: "./cache", mode: "rw" as const },
-        workspace: { path: "./workspace", mode: "rw" as const },
-      };
-
-  for (const [name, zoneDef] of Object.entries(zoneDefs)) {
-    // In sandboxed mode, zone paths are relative to sandbox root
-    // In direct mode, zone paths are relative to project root
-    const basePath = config.mode === "sandboxed" ? sandboxRoot : projectRoot;
-    const absolutePath = path.resolve(basePath, zoneDef.path);
-
-    zones.set(name, {
-      name,
-      absolutePath,
-      relativePath: zoneDef.path,
-      mode: zoneDef.mode,
-    });
-  }
-
   return {
-    mode: config.mode,
     root: sandboxRoot,
-    zones,
+    readonly: config.readonly,
   };
 }
 
@@ -241,12 +171,7 @@ export function resolveSandboxConfig(
 export function getDefaultProjectConfig(): ProjectConfig {
   return {
     sandbox: {
-      mode: "sandboxed",
-      root: "sandbox",
-      zones: {
-        cache: { path: "./cache", mode: "rw" },
-        workspace: { path: "./workspace", mode: "rw" },
-      },
+      root: ".",
     },
     approval: {
       mode: "interactive",

@@ -149,12 +149,8 @@ async function main() {
   const runtime = await createWorkerRuntime({
     worker,
     model: "anthropic:claude-haiku-4-5", // Not actually used - we call tools directly
-    sandboxConfig: {
-      type: "local",
-      basePath: DEMO_REPO_PATH,
-      zones: {
-        workspace: { path: ".", writable: true },
-      },
+    mountSandboxConfig: {
+      root: DEMO_REPO_PATH,
     },
     approvalMode: "interactive",
     approvalCallback: createCLIApprovalCallback(),
@@ -195,12 +191,12 @@ It demonstrates how the LLM can modify files in the sandbox.
 `;
 
   const writeResult = await tools.write_file.execute(
-    { path: "/workspace/README.md", content: newContent },
+    { path: "/README.md", content: newContent },
     { toolCallId: "demo_1", messages: [] }
   );
 
   print("Tool: write_file");
-  print("Args: { path: '/workspace/README.md', content: '...' }");
+  print("Args: { path: '/README.md', content: '...' }");
   print("\nResult: " + JSON.stringify(writeResult, null, 2));
 
   // ========================================================================
@@ -217,7 +213,7 @@ It demonstrates how the LLM can modify files in the sandbox.
       toolCallId: "demo_2",
       toolName: "git_stage",
       toolArgs: {
-        files: ["/workspace/README.md"],
+        files: ["/README.md"],
         message: "Add LLM-generated section to README",
       },
     },
@@ -313,10 +309,10 @@ It demonstrates how the LLM can modify files in the sandbox.
     print("  " + line);
   }
 
-  print("\nFile content (workspace/README.md in repo):");
+  print("\nFile content (README.md in repo):");
   try {
     const content = await fs.readFile(
-      path.join(DEMO_REPO_PATH, "workspace", "README.md"),
+      path.join(DEMO_REPO_PATH, "README.md"),
       "utf-8"
     );
     for (const line of content.split("\n")) {

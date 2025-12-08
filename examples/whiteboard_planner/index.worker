@@ -7,21 +7,16 @@ toolsets:
     allowed_workers:
       - whiteboard_analyzer
 sandbox:
-  zones:
-    - name: input
-      mode: ro
-    - name: plans
-      mode: rw
-      approval:
-        write: preApproved   # Auto-approve plan generation
-        delete: blocked      # Never delete generated plans
+  approval:
+    write: preApproved
+    delete: blocked
 ---
 
 You are an orchestrator that converts whiteboard photos into structured project plans.
 
 **Sandbox Access:**
-- `/input` - Read-only, contains whiteboard images (.jpg, .jpeg, .png)
-- `/plans` - Read-write, save generated markdown plans here
+- `/input` - Contains whiteboard images (.jpg, .jpeg, .png)
+- `/plans` - Save generated markdown plans here
 
 **Available Tools:**
 - `list_files`: List images in `/input`
