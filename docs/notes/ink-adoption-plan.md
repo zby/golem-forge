@@ -2,6 +2,69 @@
 
 Plan for adopting [Ink](https://github.com/vadimdemedes/ink) as the terminal UI framework for golem-forge.
 
+## Current Implementation Status
+
+> **Important for implementers**: This section documents what already exists. The `UIAdapter` interface and types are stable. The `CLIAdapter` is the reference implementation but will be superseded by `InkAdapter`.
+
+### Stable Interfaces (Preserve)
+
+| Module | Status | Notes |
+|--------|--------|-------|
+| `src/ui/adapter.ts` | ✅ Stable | `UIAdapter` interface - the contract |
+| `src/ui/types.ts` | ✅ Stable | All types used by UIAdapter |
+| `src/tools/filesystem.ts` | ✅ Stable | `ExecutionMode`, `ManualExecutionConfig` |
+
+### Implemented Logic (Reuse)
+
+| Module | What It Does | Reuse In Ink? |
+|--------|--------------|---------------|
+| `src/ui/tool-info.ts` | `extractManualToolInfo()`, `getManualTools()`, `isManualTool()`, `isLLMTool()` | ✅ Yes - pure logic |
+| `src/ui/schema-to-fields.ts` | `deriveFieldsFromSchema()` - Zod → form fields | ✅ Yes - pure logic |
+| `src/ui/diff-renderer.ts` | `renderDiff()`, `renderDiffSummary()` - diff formatting | ⚠️ Partial - output is ANSI strings, may need Ink components |
+| `src/ui/result-utils.ts` | `toTypedToolResult()` - converts tool results | ✅ Yes - pure logic |
+| `src/ui/command-parser.ts` | `/command` parsing with completion | ✅ Yes - pure logic |
+
+### CLIAdapter Methods → Ink Components
+
+The `CLIAdapter` (`src/ui/cli-adapter.ts`) implements `UIAdapter` imperatively. Here's how each method should map to Ink:
+
+| UIAdapter Method | CLIAdapter Impl | Ink Equivalent |
+|------------------|-----------------|----------------|
+| `displayMessage()` | `console.log` with formatting | `<Message>` component in MessagesContext |
+| `getUserInput()` | `readline.question()` | `<TextInput>` + InputContext |
+| `requestApproval()` | Multi-select with readline | `<ApprovalDialog>` + ApprovalContext |
+| `displayManualTools()` | Table output | `<ManualToolList>` component |
+| `onManualToolRequest()` | Handler registration | ManualToolContext action |
+| `onInterrupt()` | `SIGINT` handler | `useKeypress('escape')` |
+| `showProgress()` | Status line updates | `<Footer>` with WorkerContext |
+| `updateStatus()` | Colored output | `<StatusMessage>` component |
+| `displayDiff()` | `renderDiff()` output | `<DiffView>` component |
+| `displayDiffSummary()` | `renderDiffSummary()` output | `<DiffSummary>` component |
+| `displayToolResult()` | Type-specific rendering | `<ToolResult>` component |
+
+### Manual Tool System (Fully Implemented)
+
+The clearance/manual tool system is complete:
+
+```
+src/tools/filesystem.ts    → ExecutionMode type, ManualExecutionConfig
+src/tools/git/tools.ts     → git_push is mode:'manual' (clearance boundary)
+src/ui/tool-info.ts        → Extract ManualToolInfo from NamedTool
+src/ui/schema-to-fields.ts → Derive form fields from Zod schemas
+src/ui/types.ts            → ManualToolInfo, ManualToolField, ManualToolHandler
+src/ui/cli-adapter.ts      → displayManualTools(), executeManualTool()
+```
+
+**For Ink**: Need `<ManualToolDialog>` component that renders fields from `ManualToolInfo.fields` and collects user input.
+
+### Not Yet Implemented (From ui-clearance-requirements.md)
+
+| Feature | Description | Priority |
+|---------|-------------|----------|
+| Clearance Dashboard | List pending clearance items (staged commits) | Phase 3 |
+| Diff Viewer | Full-screen diff review with navigation | Phase 3 |
+| Status Bar Notifications | Badge for pending clearance items | Phase 2 |
+
 ## Architecture Context
 
 The `UIAdapter` interface (`src/ui/adapter.ts`) provides platform-independent UI abstraction:
@@ -223,7 +286,8 @@ Current interface methods map cleanly to context actions:
 ## References
 
 - Prototype v2: `experiments/ink-ui-prototype/` (context-based)
-- Gemini CLI analysis: `docs/notes/gemini-cli-alignment.md`
+- Gemini CLI analysis: `docs/notes/archive/gemini-cli-alignment.md` (archived)
+- Clearance UI requirements: `docs/notes/archive/ui-clearance-requirements.md` (archived, key items above)
 - Ink docs: https://github.com/vadimdemedes/ink
 - Ink UI components: https://github.com/vadimdemedes/ink-ui
 - Current CLIAdapter: `src/ui/cli-adapter.ts`
