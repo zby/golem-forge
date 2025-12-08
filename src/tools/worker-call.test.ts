@@ -1,11 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   WorkerCallToolset,
-  createCallWorkerTool,
   createNamedWorkerTool,
   checkToolNameConflict,
   type DelegationContext,
-  type WorkerCallToolsetOptions,
   _internal,
 } from "./worker-call.js";
 import { ApprovalController } from "../approval/index.js";
@@ -73,123 +71,6 @@ describe("WorkerCallToolset", () => {
       expect(tools.map(t => t.name).sort()).toEqual(["analyzer", "greeter"]);
     });
 
-    it("createSync only returns call_worker (legacy behavior)", () => {
-      const toolset = WorkerCallToolset.createSync({
-        registry,
-        allowedWorkers: ["test"],
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-      });
-
-      const tools = toolset.getTools();
-      expect(tools).toHaveLength(1);
-      expect(tools[0].name).toBe("call_worker");
-    });
-  });
-
-  describe("createCallWorkerTool", () => {
-    it("has correct name and description with allowed workers", () => {
-      const tool = createCallWorkerTool({
-        registry,
-        allowedWorkers: ["greeter", "analyzer"],
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-      });
-
-      expect(tool.name).toBe("call_worker");
-      expect(tool.description).toContain("Call another worker");
-      expect(tool.description).toContain("greeter");
-      expect(tool.description).toContain("analyzer");
-    });
-
-    it("returns error for worker not in allowed list", async () => {
-      const tool = createCallWorkerTool({
-        registry,
-        allowedWorkers: ["allowed-worker"],
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-      });
-
-      const result = await tool.execute(
-        { worker: "not-allowed", input: "test" },
-        { toolCallId: "test-1", messages: [] }
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("not in the allowed workers list");
-      expect(result.error).toContain("allowed-worker");
-      expect(result.workerName).toBe("not-allowed");
-    });
-
-    it("returns error for worker not found in registry", async () => {
-      const tool = createCallWorkerTool({
-        registry,
-        allowedWorkers: ["nonexistent"],
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-      });
-
-      const result = await tool.execute(
-        { worker: "nonexistent", input: "test" },
-        { toolCallId: "test-1", messages: [] }
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("not found");
-      expect(result.workerName).toBe("nonexistent");
-    });
-
-    it("detects circular delegation", async () => {
-      const delegationContext: DelegationContext = {
-        delegationPath: ["orchestrator", "analyzer"],
-      };
-
-      const tool = createCallWorkerTool({
-        registry,
-        allowedWorkers: ["orchestrator"],
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-        delegationContext,
-      });
-
-      // Try to call a worker that's already in the path
-      const result = await tool.execute(
-        { worker: "orchestrator", input: "test" },
-        { toolCallId: "test-1", messages: [] }
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("Circular delegation");
-    });
-
-    it("enforces max delegation depth", async () => {
-      const delegationContext: DelegationContext = {
-        delegationPath: ["a", "b", "c", "d", "e"],
-      };
-
-      const tool = createCallWorkerTool({
-        registry,
-        allowedWorkers: ["f"],
-        sandbox,
-        approvalController,
-        approvalMode: "approve_all",
-        delegationContext,
-        maxDelegationDepth: 5,
-      });
-
-      const result = await tool.execute(
-        { worker: "f", input: "test" },
-        { toolCallId: "test-1", messages: [] }
-      );
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("Maximum delegation depth");
-    });
   });
 
   describe("createNamedWorkerTool", () => {
@@ -354,7 +235,6 @@ describe("checkToolNameConflict", () => {
     expect(checkToolNameConflict("read_file")).toBe(true);
     expect(checkToolNameConflict("write_file")).toBe(true);
     expect(checkToolNameConflict("list_files")).toBe(true);
-    expect(checkToolNameConflict("call_worker")).toBe(true);
     expect(checkToolNameConflict("bash")).toBe(true);
   });
 

@@ -17,30 +17,6 @@ import type { WorkerRunnerFactory } from "../runtime/interfaces.js";
 import type { RuntimeEventCallback } from "../runtime/events.js";
 
 /**
- * Schema for call_worker tool input (generic fallback).
- */
-export const CallWorkerInputSchema = z.object({
-  /** Worker name (must be in the allowed_workers list) */
-  worker: z
-    .string()
-    .describe("Name of the worker to invoke (must be in allowed_workers list)"),
-  /** Input text for the worker */
-  input: z.string().describe("Input text to send to the worker"),
-  /** Optional additional instructions to extend worker's base instructions */
-  instructions: z
-    .string()
-    .optional()
-    .describe("Optional additional instructions for this call"),
-  /** Sandbox file paths to read and attach (e.g., ["/workspace/doc.pdf"]) */
-  attachments: z
-    .array(z.string())
-    .optional()
-    .describe("Sandbox paths to attach as files"),
-});
-
-export type CallWorkerInput = z.infer<typeof CallWorkerInputSchema>;
-
-/**
  * Schema for named worker tool input (worker name is the tool name).
  */
 export const NamedWorkerInputSchema = z.object({
@@ -183,9 +159,6 @@ const RESERVED_TOOL_NAMES = new Set([
   "write_file",
   "list_files",
   "create_directory",
-  // Worker tools
-  "call_worker",
-  "worker_create",
   // Common system tools
   "execute",
   "shell",
@@ -225,9 +198,6 @@ interface ExecuteDelegationOptions {
 
 /**
  * Shared logic for executing worker delegation.
- *
- * Used by both createCallWorkerTool and createNamedWorkerTool to ensure
- * consistent behavior across both delegation patterns.
  */
 async function executeWorkerDelegation(
   options: ExecuteDelegationOptions
@@ -380,77 +350,6 @@ async function executeWorkerDelegation(
 }
 
 /**
- * Create the call_worker tool.
- *
- * This tool enables workers to delegate to other workers.
- * It handles:
- * - Worker lookup by name (must be in allowed_workers list)
- * - Model configuration passing to child workers
- * - Attachment passing from sandbox
- * - Shared approval controller
- */
-export function createCallWorkerTool(
-  options: WorkerCallToolsetOptions
-): NamedTool {
-  const {
-    registry,
-    allowedWorkers,
-    sandbox,
-    approvalController,
-    approvalCallback,
-    approvalMode,
-    delegationContext,
-    projectRoot,
-    maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
-    model,
-    workerRunnerFactory,
-    onEvent,
-  } = options;
-
-  return {
-    name: "call_worker",
-    description:
-      `Call another worker to perform a task. Allowed workers: ${allowedWorkers.join(", ")}`,
-    inputSchema: CallWorkerInputSchema,
-    needsApproval: true, // Worker calls always require approval
-    execute: async (
-      args: CallWorkerInput,
-      _options: ToolExecutionOptions
-    ): Promise<CallWorkerResult> => {
-      const { worker: workerName, input, instructions, attachments } = args;
-
-      // Validate worker is in allowed list
-      if (!allowedWorkers.includes(workerName)) {
-        return {
-          success: false,
-          error: `Worker '${workerName}' is not in the allowed workers list. Allowed: ${allowedWorkers.join(", ")}`,
-          workerName,
-          toolCallCount: 0,
-        };
-      }
-
-      return executeWorkerDelegation({
-        workerName,
-        input,
-        instructions,
-        attachments,
-        registry,
-        sandbox,
-        approvalController,
-        approvalCallback,
-        approvalMode,
-        delegationContext,
-        projectRoot,
-        maxDelegationDepth,
-        model,
-        workerRunnerFactory,
-        onEvent,
-      });
-    },
-  };
-}
-
-/**
  * Options for creating a named worker tool.
  */
 export interface NamedWorkerToolOptions extends Omit<WorkerCallToolsetOptions, 'allowedWorkers'> {
@@ -463,12 +362,10 @@ export interface NamedWorkerToolOptions extends Omit<WorkerCallToolsetOptions, '
 /**
  * Create a named worker tool.
  *
- * Unlike call_worker, this tool is named after the worker itself.
  * The tool name IS the worker name, making it a first-class tool.
  *
  * @example
- * // Instead of: call_worker({ worker: "greeter", input: "Hello" })
- * // The LLM calls: greeter({ input: "Hello" })
+ * // greeter({ input: "Hello" })
  */
 export function createNamedWorkerTool(
   options: NamedWorkerToolOptions
@@ -605,9 +502,7 @@ function getMediaType(path: string): string {
 /**
  * Toolset for worker delegation.
  *
- * Creates named tools for each allowed worker (e.g., `greeter`, `analyzer`)
- * plus keeps `call_worker` as a fallback for dynamic cases.
- *
+ * Creates named tools for each allowed worker (e.g., `greeter`, `analyzer`).
  * Worker calls ALWAYS require approval since they execute arbitrary worker code.
  */
 export class WorkerCallToolset {
@@ -624,11 +519,10 @@ export class WorkerCallToolset {
    * Create a WorkerCallToolset with named tools for each allowed worker.
    *
    * This async factory method looks up each worker in the registry to get
-   * its description, then creates a named tool for it. The `call_worker`
-   * tool is also included as a fallback for dynamic worker discovery.
+   * its description, then creates a named tool for it.
    *
    * @example
-   * // Creates tools: greeter, analyzer, call_worker
+   * // Creates tools: greeter, analyzer
    * const toolset = await WorkerCallToolset.create({
    *   registry,
    *   allowedWorkers: ["greeter", "analyzer"],
@@ -676,20 +570,7 @@ export class WorkerCallToolset {
       }));
     }
 
-    // Note: call_worker is NOT added here - named tools are the primary interface.
-    // The call_worker tool was a legacy fallback that confused LLMs by offering
-    // two ways to call the same worker.
-
     return new WorkerCallToolset(tools);
-  }
-
-  /**
-   * Create a WorkerCallToolset synchronously (legacy, only includes call_worker).
-   *
-   * @deprecated Use `WorkerCallToolset.create()` instead for named worker tools.
-   */
-  static createSync(options: WorkerCallToolsetOptions): WorkerCallToolset {
-    return new WorkerCallToolset([createCallWorkerTool(options)]);
   }
 
   /**
