@@ -82,6 +82,21 @@ describe('MountSandbox', () => {
       // /cache/other should match /cache mount
       expect(sandbox.resolve('/cache/other')).toBe(path.join(cacheDir, 'other'));
     });
+
+    it('should normalize trailing slashes in mount targets', async () => {
+      const cacheDir = path.join(tempDir, 'cache-source');
+      await fs.mkdir(cacheDir, { recursive: true });
+
+      // Mount with trailing slash should still work
+      const sandbox = createMountSandbox({
+        root: tempDir,
+        mounts: [{ source: cacheDir, target: '/cache/' }],
+      });
+
+      // Should match even though target had trailing slash
+      expect(sandbox.resolve('/cache')).toBe(cacheDir);
+      expect(sandbox.resolve('/cache/pkg.tar')).toBe(path.join(cacheDir, 'pkg.tar'));
+    });
   });
 
   describe('file operations', () => {
@@ -121,6 +136,16 @@ describe('MountSandbox', () => {
 
       expect(await sandbox.exists('/exists.txt')).toBe(true);
       expect(await sandbox.exists('/not-exists.txt')).toBe(false);
+    });
+
+    it('should throw for invalid paths in exists()', async () => {
+      const sandbox = await createMountSandboxAsync({ root: tempDir });
+
+      // Relative paths should throw, not return false
+      await expect(sandbox.exists('relative.txt')).rejects.toThrow('absolute');
+
+      // Path traversal should throw, not return false
+      await expect(sandbox.exists('/../escape')).rejects.toThrow('escape');
     });
 
     it('should delete files', async () => {
@@ -274,6 +299,37 @@ describe('MountSandbox', () => {
 
       // Vendor mount should now be at /vendor
       expect(await restricted.read('/vendor/lib.js')).toBe('vendor code');
+    });
+
+    it('should not mutate parent sandbox when restricting with readonly', async () => {
+      const cacheDir = path.join(tempDir, 'cache');
+      await fs.mkdir(cacheDir, { recursive: true });
+
+      const sandbox = createMountSandbox({
+        root: tempDir,
+        mounts: [{ source: cacheDir, target: '/cache' }],
+      });
+
+      // Get parent config before restriction
+      const parentConfigBefore = sandbox.getConfig();
+      expect(parentConfigBefore.readonly).toBe(false);
+      expect(parentConfigBefore.mounts[0].readonly).toBe(false);
+
+      // Create restricted sandbox with readonly
+      const restricted = sandbox.restrict({ readonly: true });
+
+      // Verify restricted sandbox is readonly
+      expect(restricted.getConfig().readonly).toBe(true);
+      expect(restricted.getConfig().mounts[0].readonly).toBe(true);
+
+      // Verify parent is NOT mutated
+      const parentConfigAfter = sandbox.getConfig();
+      expect(parentConfigAfter.readonly).toBe(false);
+      expect(parentConfigAfter.mounts[0].readonly).toBe(false);
+
+      // Verify parent can still write
+      await sandbox.write('/file.txt', 'content');
+      expect(await sandbox.read('/file.txt')).toBe('content');
     });
   });
 

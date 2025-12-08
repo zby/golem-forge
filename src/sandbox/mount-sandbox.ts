@@ -141,12 +141,17 @@ export class MountSandboxImpl implements MountSandbox {
   }
 
   async exists(path: string): Promise<boolean> {
+    // resolve() can throw InvalidPathError - let those propagate
+    const realPath = this.resolve(path);
     try {
-      const realPath = this.resolve(path);
       await fs.access(realPath);
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      // Only return false for "not found" errors, rethrow others
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return false;
+      }
+      throw error;
     }
   }
 
@@ -240,6 +245,15 @@ export class MountSandboxImpl implements MountSandbox {
   // ─────────────────────────────────────────────────────────────────────────
 
   restrict(restriction: SubWorkerRestriction): MountSandbox {
+    // Validate permissions FIRST - cannot upgrade readonly to read-write
+    if (restriction.readonly === false && this.config.readonly) {
+      throw new SandboxError(
+        'PERMISSION_ESCALATION',
+        'Cannot upgrade read-only sandbox to read-write',
+        restriction.restrict || '/'
+      );
+    }
+
     // Start with current config
     let newRoot = this.config.root;
     let newReadonly = this.config.readonly;
@@ -279,26 +293,19 @@ export class MountSandboxImpl implements MountSandbox {
         }
       }
     } else {
-      // No path restriction - copy all mounts
-      newMounts.push(...this.config.mounts);
+      // No path restriction - clone all mounts (don't mutate originals!)
+      for (const mount of this.config.mounts) {
+        newMounts.push({ ...mount });
+      }
     }
 
     // Apply readonly if requested (can only make more restrictive)
     if (restriction.readonly) {
       newReadonly = true;
-      // Also make all mounts readonly
+      // Also make all mounts readonly (safe - we cloned them above)
       for (const mount of newMounts) {
         mount.readonly = true;
       }
-    }
-
-    // Validate: cannot upgrade permissions
-    if (!restriction.readonly && this.config.readonly) {
-      throw new SandboxError(
-        'PERMISSION_ESCALATION',
-        'Cannot upgrade read-only sandbox to read-write',
-        restriction.restrict || '/'
-      );
     }
 
     return new MountSandboxImpl({
@@ -432,9 +439,14 @@ export function createMountSandbox(config: MountSandboxConfig): MountSandbox {
   const resolvedMounts: ResolvedMount[] = [];
   if (parsed.mounts) {
     for (const mount of parsed.mounts) {
+      // Normalize target: remove trailing slashes (except for root "/")
+      let normalizedTarget = mount.target;
+      while (normalizedTarget.length > 1 && normalizedTarget.endsWith('/')) {
+        normalizedTarget = normalizedTarget.slice(0, -1);
+      }
       resolvedMounts.push({
         source: nodePath.resolve(mount.source),
-        target: mount.target,
+        target: normalizedTarget,
         readonly: mount.readonly ?? false,
       });
     }

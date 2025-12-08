@@ -14,8 +14,7 @@ import type { FileStat } from './types.js';
 
 /**
  * Common file operations interface.
- * Both zone-based Sandbox and mount-based MountSandbox implement this.
- * Use this type when you only need file operations without zone/mount specifics.
+ * Use this type when you only need file operations without mount specifics.
  */
 export interface FileOperations {
   /** Read file content */
