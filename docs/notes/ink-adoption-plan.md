@@ -14,14 +14,14 @@ Plan for adopting [Ink](https://github.com/vadimdemedes/ink) as the terminal UI 
 
 ## Current Implementation Status
 
-> **Important for implementers**: This section documents what already exists. The `UIAdapter` interface and types are stable. The `CLIAdapter` is the reference implementation but will be superseded by `InkAdapter`.
+> **Important for implementers**: This section documents what already exists. The `UIAdapter` interface is frozen during Ink integration. The `CLIAdapter` is the reference implementation but will be superseded by `InkAdapter`.
 
-### Stable Interfaces (Preserve)
+### Interfaces (Frozen for Ink Integration)
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| `packages/cli/src/ui/adapter.ts` | ✅ Stable | `UIAdapter` interface - the contract |
-| `packages/cli/src/ui/types.ts` | ✅ Stable | All types used by UIAdapter |
+| `packages/cli/src/ui/adapter.ts` | 🔒 Frozen | `UIAdapter` interface - frozen during Ink integration |
+| `packages/cli/src/ui/types.ts` | 🔒 Frozen | Types used by UIAdapter |
 | `packages/cli/src/tools/filesystem.ts` | ✅ Stable | `ExecutionMode`, `ManualExecutionConfig` |
 
 ### Implemented Logic (Reuse)
@@ -296,7 +296,7 @@ packages/
 
 ## UIAdapter Interface
 
-**No changes needed.** The interface defines the contract; internal architecture is implementation-specific.
+**Frozen during Ink integration.** The interface defines the contract and will remain stable while we implement `InkAdapter` and `HeadlessAdapter`.
 
 Current interface methods map cleanly to context actions:
 
@@ -309,16 +309,54 @@ Current interface methods map cleanly to context actions:
 | `updateStatus` | `messages.addStatus()` |
 | `displayToolResult` | `messages.addToolResult()` |
 
-## Open Questions (Updated)
+## Dependencies
+
+Versions validated in prototype (`experiments/ink-ui-prototype/package.json`):
+
+```json
+{
+  "ink": "^6.0.0",
+  "@inkjs/ui": "^2.0.0",
+  "react": "^19.0.0"
+}
+```
+
+Dev dependencies:
+```json
+{
+  "@types/react": "^19.0.0",
+  "tsx": "^4.19.0"
+}
+```
+
+## Clarifications
+
+### Bundle Size
+
+**What it is**: Bundle size refers to the total JavaScript code added to the CLI package when Ink is included as a dependency. Ink 6.0 + React 19 + @inkjs/ui adds approximately 500KB of minified code.
+
+**Why it matters**: Larger bundles mean slower CLI startup time and more disk space. For a CLI tool, startup latency is noticeable to users.
+
+**Decision**: 500KB is acceptable for a rich TUI. The tradeoff is worth it for the improved user experience. If needed later, dynamic import (`await import('ink')`) can defer loading until the UI is actually rendered.
+
+### Ink Rendering Failures
+
+**When Ink fails to render**:
+1. **Non-TTY environment**: When stdout is not a terminal (pipes, CI logs, redirected output). Ink requires a TTY to render its React components.
+2. **Terminal capability issues**: Very old terminals or minimal environments (e.g., some Docker containers) may lack required ANSI escape sequence support.
+3. **Memory constraints**: Extremely limited environments might fail to load React.
+
+**Fallback strategy**: Out of scope. A `HeadlessAdapter` for non-TTY/CI environments will be addressed in a separate plan.
+
+## Open Questions
 
 1. ~~**Streaming output**: How does Ink handle streaming LLM responses?~~
    **Resolved**: Use `setStreaming()` / `appendStreaming()` / `commitStreaming()` pattern in MessagesContext.
 
-2. **Bundle size**: Is ~500KB acceptable? Consider dynamic import.
+2. ~~**Bundle size**: Is ~500KB acceptable?~~
+   **Resolved**: Yes, acceptable. Dynamic import available if needed.
 
-3. **Testing**: Ink provides `render()` for testing. Need strategy for CI.
-
-4. **Shared logic granularity**: How much logic to extract vs keep platform-specific?
+3. **Testing**: Ink provides `render()` for testing. Need strategy for CI (likely use ink-testing-library).
 
 ## References
 
