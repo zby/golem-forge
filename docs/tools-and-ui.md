@@ -388,7 +388,22 @@ const fields = deriveFieldsFromSchema(schema);
 
 ## Interruption
 
-Gracefully interrupt execution:
+### CLI Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| **Ctrl+C** | Interrupt execution, return to prompt |
+
+When interrupted:
+- Current tool completes (or aborts)
+- All pending tools return `{ type: 'interrupted' }`
+- LLM sees the interruption and can summarize partial progress
+
+> **Future:** Esc key support is planned. This would allow interrupting without the terminal's SIGINT handling, providing a smoother experience. Currently requires terminal raw mode which adds complexity.
+
+### Programmatic API
+
+Interrupt execution from code:
 
 ```typescript
 import { createInterruptSignal } from '@anthropic/golem-forge';
@@ -400,7 +415,7 @@ const runtime = new WorkerRuntime({
   interruptSignal: signal,
 });
 
-// In UI handler (e.g., Esc key)
+// Trigger interrupt (called by UI on Ctrl+C)
 signal.interrupt();
 
 // Runtime checks signal each iteration
