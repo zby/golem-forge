@@ -5,27 +5,56 @@
 
 This plan outlines the steps to build the Golem Forge browser extension, focusing on the "Project" based workflow and GitHub integration.
 
-## Phase 0: Validation
+## Phase 0: Validation ✅ COMPLETE
 
 **Goal:** Validate key technical assumptions before full implementation.
 
-### 0.1 AI SDK Browser Compatibility
+### 0.1 AI SDK Browser Compatibility ✅
 
-**Prerequisite for Phase 1.4.** Validate that Vercel AI SDK works in Chrome extension context.
-
-See: [AI SDK Browser Validation Experiment](./ai-sdk-browser-validation.md)
+**Status:** Validated successfully. See [AI SDK Browser Lessons](./ai-sdk-browser-lessons.md).
 
 Key validations:
-- [ ] `streamText()` works from extension sidepanel
-- [ ] `host_permissions` bypasses CORS for LLM APIs
-- [ ] Bundle size is acceptable (< 500KB gzipped)
-- [ ] No Node.js polyfills required
+- [x] `streamText()` works from extension sidepanel
+- [x] `host_permissions` bypasses CORS for LLM APIs
+- [x] Bundle size is acceptable (~140KB gzipped including React)
+- [x] No Node.js polyfills required
 
-**Architecture Decision:** Based on [Delight extension](./delight.md) analysis, the browser extension will use **user-provided API keys** with direct LLM API calls (no backend proxy required).
+**Architecture Decision:** The browser extension will use **user-provided API keys** with direct LLM API calls (no backend proxy required).
+
+**Required Configuration (from validation):**
+
+```typescript
+// Anthropic - requires dangerous browser access header
+createAnthropic({
+  apiKey,
+  headers: { 'anthropic-dangerous-direct-browser-access': 'true' }
+})
+
+// OpenAI - requires dangerouslyAllowBrowser flag
+createOpenAI({
+  apiKey,
+  dangerouslyAllowBrowser: true
+})
+```
+
+**Build Configuration:** Use flattened Vite config to avoid manifest path issues:
+```typescript
+export default defineConfig({
+  root: 'src',
+  build: {
+    outDir: '../dist',
+    emptyOutDir: true,
+  }
+});
+```
 
 ## Phase 1: Core Foundation
 
 Goal: Establish the storage structure (OPFS), worker management, and sandbox.
+
+**Recommended order:** 1.1 (storage) → 1.3 (sandbox) → 1.2 (workers) → 1.4 (runtime)
+
+The sandbox depends on storage structure, workers need sandbox for file access, and runtime ties everything together.
 
 ### 1.1 Project & Worker Storage
 
@@ -86,7 +115,7 @@ The browser sandbox implements the same mount-based model as CLI (Docker-style b
 
 ### 1.4 Basic Worker Runtime
 
-**Depends on:** Phase 0.1 validation success
+**Depends on:** Phase 0.1 validation ✅ (complete)
 
 The browser runtime uses the same Vercel AI SDK as CLI, with user-provided API keys.
 
@@ -94,6 +123,9 @@ The browser runtime uses the same Vercel AI SDK as CLI, with user-provided API k
   - [ ] Replace Node.js-specific imports
   - [ ] Upgrade from `generateText()` to `streamText()` for real-time responses
   - [ ] Create `BrowserAIService` wrapper for provider management
+    - Use `createAnthropic()` with `anthropic-dangerous-direct-browser-access` header
+    - Use `createOpenAI()` with `dangerouslyAllowBrowser: true`
+    - Use `maxOutputTokens` (not deprecated `maxTokens`) for `streamText()`
 - [ ] Implement API key management
   - [ ] Settings UI for entering API keys per provider
   - [ ] Secure storage in `chrome.storage.local`
@@ -106,6 +138,10 @@ The browser runtime uses the same Vercel AI SDK as CLI, with user-provided API k
     "https://generativelanguage.googleapis.com/*"
   ]
   ```
+- [ ] Configure Vite build for extension (see Phase 0 config)
+  - [ ] `root: 'src'` to flatten output structure
+  - [ ] `outDir: '../dist'` for correct manifest paths
+  - [ ] Add `@types/chrome` as dev dependency
 - [ ] Implement tool execution for browser
   - [ ] File tools using OPFS sandbox
   - [ ] Web fetch tool (with CORS handling)
@@ -242,6 +278,5 @@ These are fundamentally different operations that happen to have the same *outpu
 - [Browser Extension Architecture](../browser-extension-architecture.md) - System architecture
 - [Sandbox Design](../sandbox-design.md) - Zone model and clearance protocol
 - [AI SDK Browser Validation](./ai-sdk-browser-validation.md) - Phase 0 validation experiment
-- [Delight Extension Analysis](./delight.md) - Reference Chrome extension using AI SDK
+- [AI SDK Browser Lessons](./ai-sdk-browser-lessons.md) - Lessons learned from validation
 - [Container Isolation Options](./container-isolation-options.md) - WASM and other isolation strategies
-- [UI Clearance Requirements](./ui-clearance-requirements.md) - Clearance UI design
