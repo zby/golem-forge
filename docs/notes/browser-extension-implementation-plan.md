@@ -5,6 +5,24 @@
 
 This plan outlines the steps to build the Golem Forge browser extension, focusing on the "Project" based workflow and GitHub integration.
 
+## Phase 0: Validation
+
+**Goal:** Validate key technical assumptions before full implementation.
+
+### 0.1 AI SDK Browser Compatibility
+
+**Prerequisite for Phase 1.4.** Validate that Vercel AI SDK works in Chrome extension context.
+
+See: [AI SDK Browser Validation Experiment](./ai-sdk-browser-validation.md)
+
+Key validations:
+- [ ] `streamText()` works from extension sidepanel
+- [ ] `host_permissions` bypasses CORS for LLM APIs
+- [ ] Bundle size is acceptable (< 500KB gzipped)
+- [ ] No Node.js polyfills required
+
+**Architecture Decision:** Based on [Delight extension](./delight.md) analysis, the browser extension will use **user-provided API keys** with direct LLM API calls (no backend proxy required).
+
 ## Phase 1: Core Foundation
 
 Goal: Establish the storage structure (OPFS), worker management, and sandbox.
@@ -51,23 +69,43 @@ Implementation:
 
 ### 1.3 OPFS Sandbox
 
-The browser sandbox implements the same zone model as CLI, backed by OPFS instead of Node.js fs.
+The browser sandbox implements the same mount-based model as CLI (Docker-style bind mounts), backed by OPFS instead of Node.js fs.
 
-- [ ] Implement `SandboxBackend` interface for OPFS
+- [ ] Implement `MountSandbox` interface for OPFS
   - [ ] `read(path)`, `write(path, content)`, `list(path)`, `delete(path)`
-  - [ ] Path mapping: `/projects/{id}/...`
-- [ ] Implement zone access control
-  - [ ] `ro` vs `rw` mode enforcement
-  - [ ] Zone boundary validation
+  - [ ] `resolve(path)` - map virtual paths to OPFS paths
+  - [ ] `restrict(config)` - create restricted sandbox for sub-workers
+  - [ ] `canWrite(path)` - check write permissions
+- [ ] Implement mount configuration
+  - [ ] Root mount: `/projects/{id}/` as sandbox root
+  - [ ] `readonly` mode enforcement
+  - [ ] Path boundary validation (no escape via `..`)
 - [ ] Implement session isolation
   - [ ] Create unique `/working/{session-id}` directories
   - [ ] Session cleanup on completion
 
 ### 1.4 Basic Worker Runtime
 
+**Depends on:** Phase 0.1 validation success
+
+The browser runtime uses the same Vercel AI SDK as CLI, with user-provided API keys.
+
 - [ ] Port core `WorkerRuntime` to browser environment
   - [ ] Replace Node.js-specific imports
-  - [ ] Use browser-compatible fetch for LLM APIs
+  - [ ] Upgrade from `generateText()` to `streamText()` for real-time responses
+  - [ ] Create `BrowserAIService` wrapper for provider management
+- [ ] Implement API key management
+  - [ ] Settings UI for entering API keys per provider
+  - [ ] Secure storage in `chrome.storage.local`
+  - [ ] Validation on key entry
+- [ ] Add manifest permissions for LLM APIs:
+  ```json
+  "host_permissions": [
+    "https://api.anthropic.com/*",
+    "https://api.openai.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ]
+  ```
 - [ ] Implement tool execution for browser
   - [ ] File tools using OPFS sandbox
   - [ ] Web fetch tool (with CORS handling)
@@ -98,7 +136,8 @@ Goal: Enable synchronization between OPFS projects and GitHub repositories.
 Implement the clearance protocol for browser (see [Sandbox Design](../sandbox-design.md#clearance-protocol)).
 
 - [ ] Implement `stageFiles(files)` in `GitSync`
-  - [ ] Write files to `/staged/{commit-id}/`
+  - [ ] Read files from sandbox using `sandbox.read(path)`
+  - [ ] Write to `/staged/{commit-id}/` staging area
   - [ ] Generate `manifest.json` for the commit
 - [ ] Implement staging status API for UI
 - [ ] Push remains user-initiated (clearance boundary)
@@ -162,10 +201,11 @@ See [Container Isolation Options](./container-isolation-options.md) for research
 | `WorkerDefinition` schema | ✓ | Core data model |
 | `parseWorkerString()` | ✓ | Parser is pure JS |
 | `WorkerRuntime` logic | Partial | Core loop shared, tools differ |
-| Zone model concepts | ✓ | Same mental model |
+| `MountSandbox` interface | ✓ | Same API: `read`, `write`, `resolve`, `restrict` |
+| `FileOperations` interface | ✓ | Common file ops abstraction |
 | Clearance protocol | ✓ | Same design |
 | `WorkerRegistry` | ✗ | CLI-only, uses Node.js fs |
-| `Sandbox` implementation | ✗ | Node fs vs OPFS backends |
+| `MountSandboxImpl` | ✗ | Node fs vs OPFS backends |
 | Tool implementations | ✗ | Platform-specific |
 
 ### Why Not a Shared WorkerRegistry Interface?
@@ -201,5 +241,7 @@ These are fundamentally different operations that happen to have the same *outpu
 
 - [Browser Extension Architecture](../browser-extension-architecture.md) - System architecture
 - [Sandbox Design](../sandbox-design.md) - Zone model and clearance protocol
+- [AI SDK Browser Validation](./ai-sdk-browser-validation.md) - Phase 0 validation experiment
+- [Delight Extension Analysis](./delight.md) - Reference Chrome extension using AI SDK
 - [Container Isolation Options](./container-isolation-options.md) - WASM and other isolation strategies
 - [UI Clearance Requirements](./ui-clearance-requirements.md) - Clearance UI design
