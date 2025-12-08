@@ -21,6 +21,7 @@ import { ToolExecutor } from "../../src/runtime/tool-executor.js";
 import type { WorkerDefinition } from "../../src/worker/index.js";
 import { createCLIApprovalCallback } from "../../src/cli/approval.js";
 import { ApprovalController } from "../../src/approval/index.js";
+import type { MountSandboxConfig } from "../../src/sandbox/index.js";
 
 // ============================================================================
 // Configuration
@@ -126,27 +127,24 @@ async function main() {
       git: {
         default_target: {
           type: "local",
-          path: TEST_DIR,  // Parent dir - git_push writes zone prefix as subdir
+          path: REPO_DIR,  // Git operations happen in the repo directory
         },
         // credentials not specified = inherit mode (uses host git config)
       },
     },
   };
 
-  // Sandbox config: basePath is parent, zone "repo" points to the git repo
-  // When we write /repo/file.txt:
-  //   - Sandbox stores at: TEST_DIR/repo/file.txt
-  //   - git_push writes to: TEST_DIR/repo/file.txt (same location!)
+  // Mount-based sandbox config (Docker-style)
+  // Much simpler: mount the repo directory at /
+  // Paths in sandbox = paths in repo: /credential-test.md -> REPO_DIR/credential-test.md
+  const mountSandboxConfig: MountSandboxConfig = {
+    root: REPO_DIR,  // Mount the repo at /
+  };
+
   const runtime = await createWorkerRuntime({
     worker,
     model: "anthropic:claude-haiku-4-5", // Not actually used - we call tools directly
-    sandboxConfig: {
-      type: "local",
-      basePath: TEST_DIR,
-      zones: {
-        repo: { path: "repo", writable: true },
-      },
-    },
+    mountSandboxConfig,
     approvalMode: "interactive",
     approvalCallback: createCLIApprovalCallback(),
   });
@@ -182,9 +180,10 @@ If you see this in git log, credentials are working!
 `;
 
   print("\nWriting test file to sandbox...");
+  print("(Mount-based sandbox: /credential-test.md -> " + REPO_DIR + "/credential-test.md)");
 
   const writeResult = await tools.write_file.execute(
-    { path: "/repo/credential-test.md", content: testContent },
+    { path: "/credential-test.md", content: testContent },
     { toolCallId: "test_1", messages: [] }
   );
 
@@ -213,7 +212,7 @@ If you see this in git log, credentials are working!
       toolCallId: "test_2",
       toolName: "git_stage",
       toolArgs: {
-        files: ["/repo/credential-test.md"],
+        files: ["/credential-test.md"],  // Simple path - no zone prefix needed
         message: `Test credential inheritance - ${timestamp}`,
       },
     },
@@ -259,7 +258,7 @@ If you see this in git log, credentials are working!
       toolName: "git_push",
       toolArgs: {
         commitId,
-        target: { type: "local", path: TEST_DIR },
+        target: { type: "local", path: REPO_DIR },  // Push to the repo directory
       },
     },
     { messages: [], iteration: 1 }
