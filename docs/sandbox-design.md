@@ -395,6 +395,83 @@ User: golem tool git_push --branch main      # Manual clearance into trusted zon
 
 See [notes/git-integration-design.md](notes/git-integration-design.md) for implementation details.
 
+### Git Credential Inheritance
+
+For clearance operations like `git_push`, the worker needs access to git credentials. We support **credential inheritance**—using the host's existing git authentication setup.
+
+#### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Host Environment                         │
+│                                                                  │
+│  SSH Agent ($SSH_AUTH_SOCK)    Git Config (credential.helper)   │
+│  GitHub CLI (gh auth token)    Environment (GITHUB_TOKEN)       │
+│                                                                  │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ Inherited by git commands
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         Git Toolset                              │
+│                                                                  │
+│  execGit() inherits process.env → uses host credentials         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Default behavior** (no configuration needed):
+- SSH keys work via `$SSH_AUTH_SOCK`
+- Credential helpers work via git config
+- `GITHUB_TOKEN` env var for GitHub API
+- `gh auth token` as fallback for GitHub
+
+#### Configuration
+
+Workers can configure credential handling in their toolset config:
+
+```yaml
+# worker.yaml
+toolsets:
+  git:
+    default_target:
+      type: local
+      path: "."
+    credentials:
+      mode: inherit        # Default: use host credentials
+      env:                 # Optional: override specific env vars
+        GIT_AUTHOR_NAME: "Golem Worker"
+        GIT_AUTHOR_EMAIL: "worker@example.com"
+```
+
+**Credential modes:**
+
+| Mode | Behavior | Use Case |
+|------|----------|----------|
+| `inherit` (default) | Merge explicit env with `process.env` | Normal operation |
+| `explicit` | Only use explicitly provided env vars | Container isolation |
+
+**Common environment overrides:**
+
+| Variable | Purpose |
+|----------|---------|
+| `GIT_AUTHOR_NAME` | Override commit author name |
+| `GIT_AUTHOR_EMAIL` | Override commit author email |
+| `GIT_SSH_COMMAND` | Custom SSH command/options |
+| `GIT_TERMINAL_PROMPT=0` | Disable prompts in automation |
+| `GITHUB_TOKEN` | GitHub API authentication |
+
+#### Security Considerations
+
+**Current model** (v1):
+- Credentials are inherited from host—simple, works with existing setup
+- The manual-only `git_push` tool ensures user controls when pushing happens
+- User approval is still required before push executes
+
+**Future model** (with container isolation):
+- Use `explicit` mode to prevent credential leakage
+- Inject scoped, short-lived tokens at manual tool invocation
+- Container cannot access host's SSH agent or credential helpers
+
 ### Future Clearance Tools
 
 | Tool | Description | Execution Mode |

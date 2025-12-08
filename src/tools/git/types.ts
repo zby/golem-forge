@@ -263,6 +263,38 @@ export interface GitToolResult {
 // ============================================================================
 
 /**
+ * Git credential configuration.
+ *
+ * Controls how git credentials are obtained for push/pull operations.
+ */
+export interface GitCredentialsConfig {
+  /**
+   * Credential mode:
+   * - 'inherit': Use host's git credentials (SSH agent, credential helpers, env vars).
+   *              This is the default and works with existing user setup.
+   * - 'explicit': Only use explicitly provided environment variables.
+   */
+  mode?: 'inherit' | 'explicit';
+
+  /**
+   * Additional environment variables to pass to git commands.
+   * Merged with process.env (explicit vars take precedence).
+   *
+   * Common variables:
+   * - GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL: Override committer identity
+   * - GIT_SSH_COMMAND: Custom SSH configuration
+   * - GIT_TERMINAL_PROMPT=0: Disable prompts in automation
+   * - GITHUB_TOKEN: GitHub API authentication
+   */
+  env?: Record<string, string>;
+}
+
+export const GitCredentialsConfigSchema = z.object({
+  mode: z.enum(['inherit', 'explicit']).optional().default('inherit'),
+  env: z.record(z.string()).optional(),
+});
+
+/**
  * Git toolset configuration from worker YAML.
  */
 export interface GitToolsetConfig {
@@ -273,6 +305,11 @@ export interface GitToolsetConfig {
     path: string;
     source: GitTarget;
   }>;
+  /**
+   * Credential configuration for git operations.
+   * Defaults to 'inherit' mode which uses host credentials.
+   */
+  credentials?: GitCredentialsConfig;
 }
 
 export const GitToolsetConfigSchema = z.object({
@@ -281,6 +318,7 @@ export const GitToolsetConfigSchema = z.object({
     path: z.string(),
     source: GitTargetSchema,
   })).optional(),
+  credentials: GitCredentialsConfigSchema.optional(),
 });
 
 // ============================================================================

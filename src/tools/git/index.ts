@@ -9,7 +9,7 @@ import { ToolsetRegistry, type ToolsetContext } from '../registry.js';
 import type { NamedTool } from '../filesystem.js';
 import { createCLIGitBackend } from './cli-backend.js';
 import { createGitTools } from './tools.js';
-import { GitToolsetConfigSchema, type GitToolsetConfig } from './types.js';
+import { GitToolsetConfigSchema, type GitToolsetConfig, type GitCredentialsConfig } from './types.js';
 
 // ============================================================================
 // GitToolset Class
@@ -28,14 +28,41 @@ export interface GitToolsetOptions {
 }
 
 /**
+ * Build environment variables from credentials config.
+ *
+ * In 'inherit' mode (default), we pass through any explicit env vars
+ * but otherwise let git inherit from process.env naturally.
+ *
+ * In 'explicit' mode, we only use the provided env vars (future use case
+ * for container isolation where we don't want credential leakage).
+ */
+function buildCredentialEnv(credentials?: GitCredentialsConfig): Record<string, string> | undefined {
+  if (!credentials) {
+    // Default: inherit mode with no overrides
+    return undefined;
+  }
+
+  if (credentials.mode === 'explicit') {
+    // Only use explicitly provided vars
+    return credentials.env ?? {};
+  }
+
+  // Inherit mode: return env overrides if any (they'll be merged with process.env)
+  return credentials.env;
+}
+
+/**
  * Toolset that provides git tools.
  */
 export class GitToolset {
   private tools: NamedTool[];
 
   constructor(options: GitToolsetOptions) {
+    const credentialEnv = buildCredentialEnv(options.config?.credentials);
+
     const backend = createCLIGitBackend({
       projectRoot: options.projectRoot,
+      env: credentialEnv,
     });
 
     this.tools = createGitTools({
@@ -107,6 +134,7 @@ export type {
   PushConflict,
   BranchListResult,
   GitToolsetConfig,
+  GitCredentialsConfig,
   GitToolResult,
 } from './types.js';
 
@@ -115,10 +143,12 @@ export {
   GitAuthError,
   GitTargetSchema,
   GitToolsetConfigSchema,
+  GitCredentialsConfigSchema,
 } from './types.js';
 
 // Backend
 export type { GitBackend, CreateStagedCommitInput, PushInput, PullInput } from './backend.js';
+export type { CLIGitBackendOptions } from './cli-backend.js';
 export { CLIGitBackend, createCLIGitBackend } from './cli-backend.js';
 
 // Auth

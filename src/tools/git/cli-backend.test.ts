@@ -149,4 +149,22 @@ describe('createCLIGitBackend', () => {
     const backend = createCLIGitBackend({ projectRoot: '/test/project' });
     expect(backend).toBeInstanceOf(CLIGitBackend);
   });
+
+  it('accepts env option for credential inheritance', () => {
+    const backend = createCLIGitBackend({
+      projectRoot: '/test/project',
+      env: {
+        GIT_AUTHOR_NAME: 'Test Author',
+        GIT_AUTHOR_EMAIL: 'test@example.com',
+      },
+    });
+    expect(backend).toBeInstanceOf(CLIGitBackend);
+  });
+
+  it('accepts empty env for explicit mode', () => {
+    const backend = createCLIGitBackend({
+      env: {},
+    });
+    expect(backend).toBeInstanceOf(CLIGitBackend);
+  });
 });

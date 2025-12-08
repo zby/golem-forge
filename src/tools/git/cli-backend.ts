@@ -28,14 +28,29 @@ import { generateNewFilePatch, generateDeleteFilePatch, computeDiffStats } from 
 import type { DiffSummary } from '../../ui/types.js';
 
 /**
+ * Options for git command execution.
+ */
+interface ExecGitOptions {
+  /** Working directory for the git command */
+  cwd: string;
+  /** Additional environment variables to pass to git */
+  env?: Record<string, string>;
+}
+
+/**
  * Safely execute a git command with array arguments.
  * Prevents command injection by not using shell interpolation.
+ *
+ * Environment variables are inherited from process.env by default.
+ * Additional env vars can be passed via options.env to override or extend.
  */
-function execGit(args: string[], options: { cwd: string }): string {
+function execGit(args: string[], options: ExecGitOptions): string {
   const result = spawnSync('git', args, {
     cwd: options.cwd,
     encoding: 'utf8',
     stdio: ['pipe', 'pipe', 'pipe'],
+    // Inherit process.env, overlay with any explicit env vars
+    env: options.env ? { ...process.env, ...options.env } : undefined,
   });
 
   if (result.error) {
@@ -78,18 +93,49 @@ function resolveTargetPath(targetPath: string, projectRoot?: string): string {
 }
 
 /**
+ * Options for creating a CLI git backend.
+ */
+export interface CLIGitBackendOptions {
+  /** Project root directory for resolving relative paths */
+  projectRoot?: string;
+  /**
+   * Additional environment variables to pass to git commands.
+   * These are merged with process.env (explicit vars take precedence).
+   * Useful for:
+   * - GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL (override committer identity)
+   * - GIT_SSH_COMMAND (custom SSH configuration)
+   * - GIT_TERMINAL_PROMPT=0 (disable prompts in automation)
+   */
+  env?: Record<string, string>;
+}
+
+/**
  * CLI implementation of GitBackend.
  *
  * Stores staged commits in memory with file contents.
  * Pushes to local repos via git CLI or isomorphic-git.
  * Pushes to GitHub via Octokit API.
+ *
+ * Credential inheritance:
+ * - SSH keys: Inherited from SSH agent ($SSH_AUTH_SOCK)
+ * - Credential helpers: Inherited from git config (credential.helper)
+ * - GitHub tokens: Via GITHUB_TOKEN env var or `gh auth token`
  */
 export class CLIGitBackend implements GitBackend {
   private stagedCommits: Map<string, StagedCommitData> = new Map();
   private projectRoot?: string;
+  private env?: Record<string, string>;
 
-  constructor(options: { projectRoot?: string } = {}) {
+  constructor(options: CLIGitBackendOptions = {}) {
     this.projectRoot = options.projectRoot;
+    this.env = options.env;
+  }
+
+  /**
+   * Execute a git command with inherited environment.
+   */
+  private execGit(args: string[], cwd: string): string {
+    return execGit(args, { cwd, env: this.env });
   }
 
   // ============================================================================
@@ -215,7 +261,7 @@ export class CLIGitBackend implements GitBackend {
     const relativePaths = staged.files.map(f => f.sandboxPath.replace(/^\//, ''));
     try {
       // Use '--' to separate paths from flags, preventing flag injection
-      execGit(['add', '--', ...relativePaths], { cwd: repoPath });
+      this.execGit(['add', '--', ...relativePaths], repoPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new GitError(`Failed to stage files: ${message}`);
@@ -223,7 +269,7 @@ export class CLIGitBackend implements GitBackend {
 
     // Check if there's anything to commit
     try {
-      const status = execGit(['status', '--porcelain'], { cwd: repoPath });
+      const status = this.execGit(['status', '--porcelain'], repoPath);
       if (!status.trim()) {
         // Nothing to commit
         return {
@@ -241,10 +287,10 @@ export class CLIGitBackend implements GitBackend {
     let commitSha: string;
     try {
       // Use '-m' with the message as a separate argument - safe from injection
-      execGit(['commit', '-m', staged.message], { cwd: repoPath });
+      this.execGit(['commit', '-m', staged.message], repoPath);
 
       // Get the commit SHA
-      commitSha = execGit(['rev-parse', 'HEAD'], { cwd: repoPath }).trim();
+      commitSha = this.execGit(['rev-parse', 'HEAD'], repoPath).trim();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new GitError(`Failed to commit: ${message}`);
@@ -254,7 +300,7 @@ export class CLIGitBackend implements GitBackend {
     // Note: We do NOT checkout branches automatically - that would be a surprising side effect
     if (target.branch) {
       try {
-        const currentBranch = execGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoPath }).trim();
+        const currentBranch = this.execGit(['rev-parse', '--abbrev-ref', 'HEAD'], repoPath).trim();
 
         if (currentBranch !== target.branch) {
           throw new GitError(
@@ -612,7 +658,7 @@ export class CLIGitBackend implements GitBackend {
 
     try {
       // Get all branches using safe array args
-      const branchOutput = execGit(['branch', '--list'], { cwd: repoPath });
+      const branchOutput = this.execGit(['branch', '--list'], repoPath);
 
       const branches = branchOutput
         .split('\n')
@@ -620,7 +666,7 @@ export class CLIGitBackend implements GitBackend {
         .filter(Boolean);
 
       // Get current branch using safe array args
-      const current = execGit(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoPath }).trim();
+      const current = this.execGit(['rev-parse', '--abbrev-ref', 'HEAD'], repoPath).trim();
 
       return { branches, current };
     } catch (error) {
@@ -672,6 +718,6 @@ export class CLIGitBackend implements GitBackend {
 /**
  * Create a CLI git backend.
  */
-export function createCLIGitBackend(options: { projectRoot?: string } = {}): CLIGitBackend {
+export function createCLIGitBackend(options: CLIGitBackendOptions = {}): CLIGitBackend {
   return new CLIGitBackend(options);
 }
