@@ -116,4 +116,4 @@ npm run test:live
 
 - [Main README](../../README.md) - Project overview and concepts
 - [@golem-forge/core](../core/) - Shared types and utilities
-- [@golem-forge/extension](../extension/) - Browser extension
+- [@golem-forge/browser](../browser/) - Browser extension

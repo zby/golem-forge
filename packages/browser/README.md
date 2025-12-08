@@ -1,4 +1,4 @@
-# @golem-forge/extension
+# @golem-forge/browser
 
 Chrome browser extension for golem-forge - AI-powered workflow automation in the browser.
 
@@ -26,7 +26,7 @@ The browser extension brings golem-forge workflows to web browsers. It uses OPFS
 ```bash
 # From monorepo root
 npm install
-npm run build -w @golem-forge/extension
+npm run build -w @golem-forge/browser
 
 # Or from this directory
 npm run build
@@ -45,12 +45,12 @@ npm run dev
 2. Open Chrome and go to `chrome://extensions/`
 3. Enable "Developer mode" (toggle in top right)
 4. Click "Load unpacked"
-5. Select the `packages/extension/dist` directory
+5. Select the `packages/browser/dist` directory
 
 ### Package Structure
 
 ```
-packages/extension/
+packages/browser/
 ├── src/
 │   ├── background.ts      # Service worker (extension lifecycle)
 │   ├── popup.tsx          # Popup UI (click extension icon)

@@ -6,7 +6,7 @@ Platform-agnostic types and utilities shared between golem-forge implementations
 
 This package contains types that are used by both:
 - **CLI** (`@golem-forge/cli`): Node.js-based implementation
-- **Browser Extension** (`@golem-forge/extension`): OPFS-based implementation
+- **Browser Extension** (`@golem-forge/browser`): OPFS-based implementation
 
 By extracting shared types here, we avoid duplication and ensure consistency across platforms.
 
@@ -67,4 +67,4 @@ As golem-forge evolves, this package will include:
 
 - [Main README](../../README.md) - Project overview and concepts
 - [@golem-forge/cli](../cli/) - CLI tool and Node.js runtime
-- [@golem-forge/extension](../extension/) - Browser extension
+- [@golem-forge/browser](../browser/) - Browser extension

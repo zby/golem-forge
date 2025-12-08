@@ -8,7 +8,7 @@ golem-forge is organized as a monorepo with three packages:
 |---------|-------------|
 | [`@golem-forge/core`](../packages/core/) | Shared types and utilities |
 | [`@golem-forge/cli`](../packages/cli/) | CLI tool and Node.js runtime |
-| [`@golem-forge/extension`](../packages/extension/) | Chrome browser extension |
+| [`@golem-forge/browser`](../packages/browser/) | Chrome browser extension |
 
 ---
 
@@ -34,7 +34,7 @@ The CLI is the **proving ground** - we validate the core abstractions (sandbox, 
            │                                         │
            ▼                                         ▼
     ┌─────────────────────┐              ┌─────────────────────────┐
-    │  @golem-forge/cli   │              │ @golem-forge/extension  │
+    │  @golem-forge/cli   │              │  @golem-forge/browser   │
     │                     │              │                         │
     │  • Node.js fs       │              │  • OPFS storage         │
     │  • Terminal UI      │              │  • Popup/sidebar UI     │

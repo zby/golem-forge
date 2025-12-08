@@ -270,7 +270,7 @@ golem-forge is organized as a monorepo with three packages:
 |---------|-------------|
 | [`@golem-forge/core`](packages/core/) | Shared types and utilities (sandbox types, error classes) |
 | [`@golem-forge/cli`](packages/cli/) | CLI tool and Node.js runtime (worker execution, filesystem sandbox) |
-| [`@golem-forge/extension`](packages/extension/) | Chrome browser extension (OPFS storage, web UI) |
+| [`@golem-forge/browser`](packages/browser/) | Chrome browser extension (OPFS storage, web UI) |
 
 ### Development
 
