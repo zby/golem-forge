@@ -1,32 +1,51 @@
 /**
- * Mount-based Sandbox Types
+ * Shared Sandbox Types
  *
- * Docker-style bind mount model for sandboxing.
- * See docs/notes/sandbox-mount-model.md for design details.
+ * Platform-agnostic type definitions for sandbox implementations.
+ * Used by both CLI (Node.js fs) and browser (OPFS) implementations.
+ *
+ * @module shared/sandbox-types
  */
 
-import { z } from 'zod';
-import type { FileStat } from './types.js';
+// ─────────────────────────────────────────────────────────────────────────────
+// File Metadata
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * File metadata returned by stat operations.
+ */
+export interface FileStat {
+  path: string;
+  size: number;
+  createdAt: Date;
+  modifiedAt: Date;
+  isDirectory: boolean;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Common Interface for File Operations
+// File Operations Interface
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Common file operations interface.
+ *
+ * This is the core abstraction that allows different backends:
+ * - CLI: Node.js fs-based MountSandboxImpl
+ * - Browser: OPFS-based OPFSSandbox
+ *
  * Use this type when you only need file operations without mount specifics.
  */
 export interface FileOperations {
-  /** Read file content */
+  /** Read file content as UTF-8 string */
   read(path: string): Promise<string>;
 
   /** Read file as binary */
   readBinary(path: string): Promise<Uint8Array>;
 
-  /** Write content to file */
+  /** Write string content to file (creates parent directories) */
   write(path: string, content: string): Promise<void>;
 
-  /** Write binary content */
+  /** Write binary content to file */
   writeBinary(path: string, content: Uint8Array): Promise<void>;
 
   /** Delete file */
@@ -35,7 +54,7 @@ export interface FileOperations {
   /** Check if path exists */
   exists(path: string): Promise<boolean>;
 
-  /** List directory contents */
+  /** List directory contents (returns entry names, not full paths) */
   list(path: string): Promise<string[]>;
 
   /** Get file metadata */
@@ -44,9 +63,13 @@ export interface FileOperations {
   /** Resolve virtual path to real filesystem path */
   resolve(path: string): string;
 
-  /** Check if path is valid */
+  /** Check if path is valid (absolute, no escape attempts) */
   isValidPath(path: string): boolean;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mount Configuration
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * A mount point that maps a real filesystem path to a virtual path.
@@ -90,36 +113,7 @@ export interface SubWorkerRestriction {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Zod Schemas
-// ─────────────────────────────────────────────────────────────────────────────
-
-export const MountSchema = z.object({
-  source: z.string().min(1),
-  target: z.string().startsWith('/'),
-  readonly: z.boolean().optional().default(false),
-});
-
-export const MountSandboxConfigSchema = z.object({
-  root: z.string().min(1),
-  readonly: z.boolean().optional().default(false),
-  mounts: z.array(MountSchema).optional(),
-});
-
-export const SubWorkerRestrictionSchema = z.object({
-  restrict: z.string().startsWith('/').optional(),
-  readonly: z.boolean().optional(),
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Types derived from schemas
-// ─────────────────────────────────────────────────────────────────────────────
-
-export type MountInput = z.input<typeof MountSchema>;
-export type MountSandboxConfigInput = z.input<typeof MountSandboxConfigSchema>;
-export type SubWorkerRestrictionInput = z.input<typeof SubWorkerRestrictionSchema>;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Resolved Mount (internal use)
+// Resolved Configuration (Internal)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -148,4 +142,26 @@ export interface ResolvedMountConfig {
 
   /** Additional mounts, sorted by target path length (longest first for matching) */
   mounts: ResolvedMount[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MountSandbox Interface
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Extended sandbox interface with mount-specific operations.
+ *
+ * Implementations:
+ * - CLI: MountSandboxImpl (src/sandbox/mount-sandbox.ts)
+ * - Browser: OPFSSandbox (browser-extension/src/services/opfs-sandbox.ts)
+ */
+export interface MountSandbox extends FileOperations {
+  /** Check if path is writable (not in readonly mount) */
+  canWrite(path: string): boolean;
+
+  /** Create a restricted sandbox for a sub-worker */
+  restrict(config: SubWorkerRestriction): MountSandbox;
+
+  /** Get the resolved configuration */
+  getConfig(): ResolvedMountConfig;
 }

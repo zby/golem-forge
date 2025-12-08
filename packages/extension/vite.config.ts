@@ -58,7 +58,9 @@ export default defineConfig({
   // Ensure we don't use Node.js built-ins
   resolve: {
     alias: {
-      // Map any Node.js imports that might sneak in
+      // Link to local @golem-forge/core package (npm workspaces handles this,
+      // but Vite needs explicit alias for bundling)
+      '@golem-forge/core': resolve(__dirname, '../core/src'),
     },
   },
   define: {

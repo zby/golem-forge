@@ -12,109 +12,41 @@
  */
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Types (duplicated from CLI to avoid Node.js dependencies)
+// Types and Errors (imported from @golem-forge/core)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface FileStat {
-  path: string;
-  size: number;
-  createdAt: Date;
-  modifiedAt: Date;
-  isDirectory: boolean;
-}
+import type {
+  FileStat,
+  FileOperations,
+  MountSandboxConfig,
+  SubWorkerRestriction,
+  ResolvedMount,
+  ResolvedMountConfig,
+  MountSandbox,
+} from '@golem-forge/core';
 
-export interface FileOperations {
-  read(path: string): Promise<string>;
-  readBinary(path: string): Promise<Uint8Array>;
-  write(path: string, content: string): Promise<void>;
-  writeBinary(path: string, content: Uint8Array): Promise<void>;
-  delete(path: string): Promise<void>;
-  exists(path: string): Promise<boolean>;
-  list(path: string): Promise<string[]>;
-  stat(path: string): Promise<FileStat>;
-  resolve(path: string): string;
-  isValidPath(path: string): boolean;
-}
+import {
+  SandboxError,
+  NotFoundError,
+  InvalidPathError,
+} from '@golem-forge/core';
 
-export interface Mount {
-  source: string;
-  target: string;
-  readonly?: boolean;
-}
+// Re-export for consumers within browser extension
+export type {
+  FileStat,
+  FileOperations,
+  MountSandboxConfig,
+  SubWorkerRestriction,
+  ResolvedMount,
+  ResolvedMountConfig,
+  MountSandbox,
+};
 
-export interface MountSandboxConfig {
-  root: string;
-  readonly?: boolean;
-  mounts?: Mount[];
-}
-
-export interface SubWorkerRestriction {
-  restrict?: string;
-  readonly?: boolean;
-}
-
-export interface ResolvedMount {
-  source: string;
-  target: string;
-  readonly: boolean;
-}
-
-export interface ResolvedMountConfig {
-  root: string;
-  readonly: boolean;
-  mounts: ResolvedMount[];
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Errors
-// ─────────────────────────────────────────────────────────────────────────────
-
-export class SandboxError extends Error {
-  constructor(
-    public readonly code: string,
-    message: string,
-    public readonly path?: string
-  ) {
-    super(message);
-    this.name = 'SandboxError';
-  }
-
-  toLLMMessage(): string {
-    return this.message;
-  }
-}
-
-export class NotFoundError extends SandboxError {
-  constructor(path: string) {
-    super('NOT_FOUND', `File or directory not found: ${path}`, path);
-    this.name = 'NotFoundError';
-  }
-
-  toLLMMessage(): string {
-    return `File not found: ${this.path}. Please check the path and try again.`;
-  }
-}
-
-export class InvalidPathError extends SandboxError {
-  constructor(message: string, path?: string) {
-    super('INVALID_PATH', message, path);
-    this.name = 'InvalidPathError';
-  }
-
-  toLLMMessage(): string {
-    return `Invalid path${this.path ? ` "${this.path}"` : ''}: ${this.message}`;
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MountSandbox Interface
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface MountSandbox extends FileOperations {
-  canWrite(path: string): boolean;
-  restrict(config: SubWorkerRestriction): MountSandbox;
-  getConfig(): ResolvedMountConfig;
-}
+export {
+  SandboxError,
+  NotFoundError,
+  InvalidPathError,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OPFS Implementation

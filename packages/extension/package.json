@@ -1,5 +1,5 @@
 {
-  "name": "@anthropic/golem-forge-extension",
+  "name": "@golem-forge/extension",
   "version": "0.1.0",
   "description": "Golem Forge browser extension - AI-powered workflow automation",
   "type": "module",
@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@golem-forge/core": "^0.1.0",
     "@ai-sdk/anthropic": "^3.0.0-beta.74",
     "@ai-sdk/google": "^3.0.0-beta.65",
     "@ai-sdk/openai": "^3.0.0-beta.84",

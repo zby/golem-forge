@@ -29,7 +29,8 @@ vi.mock("ai", async (importOriginal) => {
 // Import after mock is set up
 import { createWorkerRuntime } from "./runtime/worker.js";
 
-const EXAMPLES_DIR = path.join(__dirname, "..", "examples");
+// Examples are at the repo root, not in the cli package
+const EXAMPLES_DIR = path.join(__dirname, "..", "..", "..", "examples");
 
 // Default model for tests
 const TEST_MODEL = "anthropic:claude-haiku-4-5";

@@ -1,0 +1,84 @@
+{
+  "name": "@golem-forge/cli",
+  "version": "0.1.0",
+  "description": "Build composable LLM workflows using workers - focused, reusable prompt execution units with sandboxed security",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "bin": {
+    "golem-forge": "./dist/cli/run.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/index.d.ts",
+      "import": "./dist/cli/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:live": "RUN_LIVE_TESTS=1 vitest run --config vitest.integration.config.ts",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist/"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "keywords": [
+    "llm",
+    "ai",
+    "workflow",
+    "agents",
+    "workers",
+    "typescript",
+    "claude",
+    "openai",
+    "gemini"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@golem-forge/core": "^0.1.0",
+    "@ai-sdk/anthropic": "^3.0.0-beta.74",
+    "@ai-sdk/google": "^3.0.0-beta.65",
+    "@ai-sdk/openai": "^3.0.0-beta.84",
+    "@octokit/rest": "^22.0.1",
+    "ai": "^6.0.0-beta.134",
+    "boxen": "^8.0.1",
+    "commander": "^14.0.2",
+    "diff": "^8.0.2",
+    "gray-matter": "^4.0.3",
+    "isomorphic-git": "^1.35.1",
+    "js-yaml": "^4.1.1",
+    "picocolors": "^1.1.1",
+    "shlex": "^3.0.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/diff": "^7.0.2",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.39.1",
+    "msw": "^2.12.4",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.48.1",
+    "vitest": "^4.0.15"
+  }
+}
