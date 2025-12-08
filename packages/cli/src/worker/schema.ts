@@ -1,130 +1,35 @@
 /**
  * Worker Definition Schema
  *
- * Zod schemas for validating .worker file frontmatter.
- * Matches the Python WorkerDefinition structure.
+ * Re-exports from @golem-forge/core for backwards compatibility.
+ * The canonical definitions are now in the core package.
  *
- * Note on optional arrays vs default([]):
- * - `.optional()` is used when undefined has semantic meaning (e.g., "no restriction")
- * - `.default([])` is used when we always want an array for easier iteration
+ * @module worker/schema
  */
 
-import { z } from "zod";
+// Re-export everything from core
+export {
+  ApprovalDecisionTypeSchema,
+  PathApprovalConfigSchema,
+  WorkerSandboxConfigSchema,
+  AttachmentPolicySchema,
+  ServerSideToolConfigSchema,
+  ToolsetsConfigSchema,
+  WorkerFrontmatterSchema,
+  WorkerDefinitionSchema,
+  formatParseError,
+} from '@golem-forge/core';
 
-/**
- * Approval decision type for operations.
- * - 'preApproved': No user prompt needed
- * - 'ask': Prompt user for approval (default)
- * - 'blocked': Operation blocked entirely
- */
-export const ApprovalDecisionTypeSchema = z.enum(["preApproved", "ask", "blocked"]);
-
-/**
- * Per-path approval configuration.
- * Separate from mode (capability) - this controls consent/UX.
- */
-export const PathApprovalConfigSchema = z.object({
-  /** Approval for write operations. Default: 'ask' */
-  write: ApprovalDecisionTypeSchema.optional(),
-  /** Approval for delete operations. Default: 'ask' */
-  delete: ApprovalDecisionTypeSchema.optional(),
-}).strict();
-
-export type PathApprovalConfig = z.infer<typeof PathApprovalConfigSchema>;
-
-/**
- * Worker sandbox restriction - how to restrict parent's sandbox for this worker.
- *
- * Workers can declare sandbox restrictions that will be applied when called
- * as a sub-worker. If no sandbox config, worker gets full parent sandbox access.
- */
-export const WorkerSandboxConfigSchema = z.object({
-  /** Restrict to subtree (e.g., "/src"). Omit for full access. */
-  restrict: z.string().startsWith("/").optional(),
-  /** Make read-only. Default: inherit from parent */
-  readonly: z.boolean().optional(),
-  /** Approval config - consent layer (optional, defaults to 'ask' for write ops) */
-  approval: PathApprovalConfigSchema.optional(),
-}).strict();
-
-export type WorkerSandboxConfig = z.infer<typeof WorkerSandboxConfigSchema>;
-
-/**
- * Attachment policy
- */
-export const AttachmentPolicySchema = z.object({
-  max_attachments: z.number().nonnegative().default(4),
-  max_total_bytes: z.number().positive().default(10_000_000),
-  allowed_suffixes: z.array(z.string()).default([]),
-  denied_suffixes: z.array(z.string()).default([]),
-}).strict();
-
-export type AttachmentPolicy = z.infer<typeof AttachmentPolicySchema>;
-
-/**
- * Server-side tool configuration
- */
-export const ServerSideToolConfigSchema = z.object({
-  name: z.string(),
-  config: z.record(z.unknown()).optional(),
-}).strict();
-
-export type ServerSideToolConfig = z.infer<typeof ServerSideToolConfigSchema>;
-
-/**
- * Toolset configuration - maps toolset names/aliases to their configs
- */
-export const ToolsetsConfigSchema = z.record(
-  z.string(),
-  z.record(z.unknown()).optional().default({})
-);
-
-export type ToolsetsConfig = z.infer<typeof ToolsetsConfigSchema>;
-
-/**
- * Worker frontmatter configuration
- * This is what appears in the YAML section of a .worker file
- */
-export const WorkerFrontmatterSchema = z.object({
-  name: z.string(),
-  description: z.string().optional(),
-  /**
-   * Model compatibility constraints. Supports wildcards like "anthropic:*".
-   * If undefined, any model is compatible.
-   * To require a specific model, use a single exact entry: ["anthropic:claude-sonnet-4"]
-   */
-  compatible_models: z.array(z.string()).optional(),
-  output_schema_ref: z.string().optional(),
-  sandbox: WorkerSandboxConfigSchema.optional(),
-  toolsets: ToolsetsConfigSchema.optional(),
-  attachment_policy: AttachmentPolicySchema.optional(),
-  server_side_tools: z.array(ServerSideToolConfigSchema).default([]),
-  locked: z.boolean().default(false),
-}).strict();
-
-export type WorkerFrontmatter = z.infer<typeof WorkerFrontmatterSchema>;
-
-/**
- * Complete worker definition including parsed instructions
- */
-export const WorkerDefinitionSchema = WorkerFrontmatterSchema.extend({
-  instructions: z.string(),
-});
-
-export type WorkerDefinition = z.infer<typeof WorkerDefinitionSchema>;
-
-/**
- * Result of parsing a .worker file
- */
-export interface ParseResult {
-  success: true;
-  worker: WorkerDefinition;
-}
-
-export interface ParseError {
-  success: false;
-  error: string;
-  details?: z.ZodError;
-}
-
-export type ParseWorkerResult = ParseResult | ParseError;
+export type {
+  ApprovalDecisionType,
+  PathApprovalConfig,
+  WorkerSandboxConfig,
+  AttachmentPolicy,
+  ServerSideToolConfig,
+  ToolsetsConfig,
+  WorkerFrontmatter,
+  WorkerDefinition,
+  ParseResult,
+  ParseError,
+  ParseWorkerResult,
+} from '@golem-forge/core';

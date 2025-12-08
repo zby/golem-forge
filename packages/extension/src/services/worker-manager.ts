@@ -9,7 +9,13 @@
  * The output is the same WorkerDefinition type, but discovery is different.
  */
 
-import { z } from 'zod';
+import {
+  WorkerDefinitionSchema,
+  type WorkerDefinition,
+  type ParseResult,
+  type ParseError,
+  type ParseWorkerResult,
+} from '@golem-forge/core';
 import type { WorkerSource, GitHubWorkerSource } from '../storage/types';
 import { projectManager } from '../storage/project-manager';
 import { settingsManager } from '../storage/settings-manager';
@@ -161,70 +167,8 @@ function parseFrontmatter(content: string): { data: Record<string, unknown>; con
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Worker Schema (duplicated from CLI to avoid Node.js dependencies)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const ApprovalDecisionTypeSchema = z.enum(['preApproved', 'ask', 'blocked']);
-
-const PathApprovalConfigSchema = z.object({
-  write: ApprovalDecisionTypeSchema.optional(),
-  delete: ApprovalDecisionTypeSchema.optional(),
-}).strict();
-
-const WorkerSandboxConfigSchema = z.object({
-  restrict: z.string().startsWith('/').optional(),
-  readonly: z.boolean().optional(),
-  approval: PathApprovalConfigSchema.optional(),
-}).strict();
-
-const AttachmentPolicySchema = z.object({
-  max_attachments: z.number().nonnegative().default(4),
-  max_total_bytes: z.number().positive().default(10_000_000),
-  allowed_suffixes: z.array(z.string()).default([]),
-  denied_suffixes: z.array(z.string()).default([]),
-}).strict();
-
-const ServerSideToolConfigSchema = z.object({
-  name: z.string(),
-  config: z.record(z.unknown()).optional(),
-}).strict();
-
-const ToolsetsConfigSchema = z.record(
-  z.string(),
-  z.record(z.unknown()).optional().default({})
-);
-
-const WorkerFrontmatterSchema = z.object({
-  name: z.string(),
-  description: z.string().optional(),
-  compatible_models: z.array(z.string()).optional(),
-  output_schema_ref: z.string().optional(),
-  sandbox: WorkerSandboxConfigSchema.optional(),
-  toolsets: ToolsetsConfigSchema.optional(),
-  attachment_policy: AttachmentPolicySchema.optional(),
-  server_side_tools: z.array(ServerSideToolConfigSchema).default([]),
-  locked: z.boolean().default(false),
-}).strict();
-
-const WorkerDefinitionSchema = WorkerFrontmatterSchema.extend({
-  instructions: z.string(),
-});
-
-export type WorkerDefinition = z.infer<typeof WorkerDefinitionSchema>;
-
-export interface ParseResult {
-  success: true;
-  worker: WorkerDefinition;
-}
-
-export interface ParseError {
-  success: false;
-  error: string;
-  details?: z.ZodError;
-}
-
-export type ParseWorkerResult = ParseResult | ParseError;
+// Re-export types for convenience
+export type { WorkerDefinition, ParseResult, ParseError, ParseWorkerResult };
 
 /**
  * Parse a .worker file from a string.

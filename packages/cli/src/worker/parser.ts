@@ -15,6 +15,9 @@ import {
   type ParseWorkerResult,
 } from "./schema.js";
 
+// Re-export formatParseError from schema (which gets it from core)
+export { formatParseError } from "./schema.js";
+
 /**
  * Parse a .worker file from a string.
  *
@@ -53,25 +56,4 @@ export function parseWorkerString(content: string, filePath?: string): ParseWork
       error: `Failed to parse worker file${fileContext}: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
-}
-
-/**
- * Format a parse error for display.
- */
-export function formatParseError(result: ParseWorkerResult): string {
-  if (result.success) {
-    return "No error";
-  }
-
-  let message = result.error;
-
-  if (result.details) {
-    const issues = result.details.issues.map((issue) => {
-      const path = issue.path.join(".");
-      return `  - ${path ? `${path}: ` : ""}${issue.message}`;
-    });
-    message += "\n" + issues.join("\n");
-  }
-
-  return message;
 }

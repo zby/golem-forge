@@ -28,3 +28,30 @@ export {
   PermissionEscalationError,
   isSandboxError,
 } from './sandbox-errors.js';
+
+// Worker schema
+export {
+  ApprovalDecisionTypeSchema,
+  PathApprovalConfigSchema,
+  WorkerSandboxConfigSchema,
+  AttachmentPolicySchema,
+  ServerSideToolConfigSchema,
+  ToolsetsConfigSchema,
+  WorkerFrontmatterSchema,
+  WorkerDefinitionSchema,
+  formatParseError,
+} from './worker-schema.js';
+
+export type {
+  ApprovalDecisionType,
+  PathApprovalConfig,
+  WorkerSandboxConfig,
+  AttachmentPolicy,
+  ServerSideToolConfig,
+  ToolsetsConfig,
+  WorkerFrontmatter,
+  WorkerDefinition,
+  ParseResult,
+  ParseError,
+  ParseWorkerResult,
+} from './worker-schema.js';

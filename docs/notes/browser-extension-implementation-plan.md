@@ -1,7 +1,8 @@
 # Browser Extension Implementation Plan
 
-**Status:** Draft
+**Status:** Phase 1 Complete, Phase 2-3 Next
 **Based on:** [Browser Extension Architecture](../browser-extension-architecture.md), [Sandbox Design](../sandbox-design.md)
+**Implementation:** `packages/extension/`
 
 This plan outlines the steps to build the Golem Forge browser extension, focusing on the "Project" based workflow and GitHub integration.
 
@@ -19,137 +20,62 @@ Key validations:
 - [x] Bundle size is acceptable (~140KB gzipped including React)
 - [x] No Node.js polyfills required
 
-**Architecture Decision:** The browser extension will use **user-provided API keys** with direct LLM API calls (no backend proxy required).
+**Architecture Decision:** The browser extension uses **user-provided API keys** with direct LLM API calls (no backend proxy required).
 
-**Required Configuration (from validation):**
+## Phase 1: Core Foundation ✅ COMPLETE
 
-```typescript
-// Anthropic - requires dangerous browser access header
-createAnthropic({
-  apiKey,
-  headers: { 'anthropic-dangerous-direct-browser-access': 'true' }
-})
+**Goal:** Establish the storage structure (OPFS), worker management, and sandbox.
 
-// OpenAI - requires dangerouslyAllowBrowser flag
-createOpenAI({
-  apiKey,
-  dangerouslyAllowBrowser: true
-})
-```
+### 1.1 Project & Worker Storage ✅
 
-**Build Configuration:** Use flattened Vite config to avoid manifest path issues:
-```typescript
-export default defineConfig({
-  root: 'src',
-  build: {
-    outDir: '../dist',
-    emptyOutDir: true,
-  }
-});
-```
+- [x] Implement `ProjectManager` service (`services/project-manager.ts`)
+  - [x] CRUD operations for Projects in `chrome.storage.local`
+  - [x] OPFS cleanup on project deletion
+- [x] Define data models (`storage/types.ts`)
 
-## Phase 1: Core Foundation
+### 1.2 Worker Management ✅
 
-Goal: Establish the storage structure (OPFS), worker management, and sandbox.
+- [x] Create `WorkerManager` for browser (`services/worker-manager.ts`)
+- [x] Implement bundled worker loading (from extension bundle)
+- [x] Custom YAML parser for worker definitions
+- [ ] ~~Implement GitHub worker syncing~~ (moved to Phase 2)
 
-**Recommended order:** 1.1 (storage) → 1.3 (sandbox) → 1.2 (workers) → 1.4 (runtime)
+### 1.3 OPFS Sandbox ✅
 
-The sandbox depends on storage structure, workers need sandbox for file access, and runtime ties everything together.
+- [x] Implement `OPFSSandbox` (`services/opfs-sandbox.ts`)
+  - [x] `read(path)`, `write(path, content)`, `list(path)`, `delete(path)`
+  - [x] `resolve(path)` - map virtual paths to OPFS paths
+  - [x] Mount configuration with readonly mode enforcement
+  - [x] Path boundary validation (no escape via `..`)
 
-### 1.1 Project & Worker Storage
+### 1.4 Basic Worker Runtime ✅
 
-- [ ] Implement `ProjectManager` service
-  - [ ] CRUD operations for Projects in `chrome.storage.local`
-  - [ ] `WorkerSource` management (bundled vs github)
-- [ ] Define data models (`Project`, `WorkerRef`, `SiteTrigger`)
+- [x] Implement `BrowserRuntime` (`services/browser-runtime.ts`)
+  - [x] `streamText()` for real-time responses
+  - [x] AI SDK v6 property names (`textDelta`, `args`)
+- [x] Implement `AIService` (`services/ai-service.ts`)
+  - [x] `createAnthropic()` with `anthropic-dangerous-direct-browser-access` header
+  - [x] `createOpenAI()` with `dangerouslyAllowBrowser: true`
+  - [x] Provider validation
+- [x] Implement API key management
+  - [x] Settings UI for entering API keys per provider (`sidepanel.tsx`)
+  - [x] Secure storage in `chrome.storage.local` (`storage/settings-manager.ts`)
+  - [x] Masked key display with edit tracking
+- [x] Configure Vite build for extension (`vite.config.ts`)
+  - [x] Flattened output structure for manifest paths
+- [x] Implement tool execution for browser
+  - [x] File tools using OPFS sandbox
 
-### 1.2 Worker Management
+### 1.5 UI Foundation ✅
 
-The browser extension uses a fundamentally different approach to worker discovery than the CLI.
-
-**CLI vs Browser Worker Loading:**
-
-| Aspect | CLI (`WorkerRegistry`) | Browser (`WorkerManager`) |
-|--------|------------------------|---------------------------|
-| Discovery | Scans filesystem at runtime | Workers known at build/sync time |
-| Loading | Reads `.worker` files from disk | Bundled or fetched from GitHub |
-| Caching | File mtime-based | Static manifest or GitHub sync |
-| Configuration | `LLM_DO_PATH` env var | Extension settings |
-
-**Decision:** Do not abstract `WorkerRegistry` into a shared interface. Instead:
-
-1. **Keep `WorkerRegistry` as CLI-only** - Node.js filesystem scanning is CLI infrastructure
-2. **Create `WorkerManager` for browser** - Different mental model (sources, not paths)
-3. **Share `WorkerDefinition` schema and `parseWorkerString()`** - The parser is already portable
-
-Implementation:
-
-- [ ] Create `WorkerManager` interface for browser
-  ```typescript
-  interface WorkerManager {
-    getSources(): Promise<WorkerSource[]>;
-    getWorker(sourceId: string, workerId: string): Promise<WorkerDefinition>;
-    syncGitHubSource(repo: string): Promise<void>;
-  }
-  ```
-- [ ] Implement bundled worker loading (from extension bundle)
-- [ ] Implement GitHub worker syncing (fetch and cache in OPFS)
-- [ ] Create initial bundled worker definitions (e.g., `pitchdeck-analyzer.worker`)
-
-### 1.3 OPFS Sandbox
-
-The browser sandbox implements the same mount-based model as CLI (Docker-style bind mounts), backed by OPFS instead of Node.js fs.
-
-- [ ] Implement `MountSandbox` interface for OPFS
-  - [ ] `read(path)`, `write(path, content)`, `list(path)`, `delete(path)`
-  - [ ] `resolve(path)` - map virtual paths to OPFS paths
-  - [ ] `restrict(config)` - create restricted sandbox for sub-workers
-  - [ ] `canWrite(path)` - check write permissions
-- [ ] Implement mount configuration
-  - [ ] Root mount: `/projects/{id}/` as sandbox root
-  - [ ] `readonly` mode enforcement
-  - [ ] Path boundary validation (no escape via `..`)
-- [ ] Implement session isolation
-  - [ ] Create unique `/working/{session-id}` directories
-  - [ ] Session cleanup on completion
-
-### 1.4 Basic Worker Runtime
-
-**Depends on:** Phase 0.1 validation ✅ (complete)
-
-The browser runtime uses the same Vercel AI SDK as CLI, with user-provided API keys.
-
-- [ ] Port core `WorkerRuntime` to browser environment
-  - [ ] Replace Node.js-specific imports
-  - [ ] Upgrade from `generateText()` to `streamText()` for real-time responses
-  - [ ] Create `BrowserAIService` wrapper for provider management
-    - Use `createAnthropic()` with `anthropic-dangerous-direct-browser-access` header
-    - Use `createOpenAI()` with `dangerouslyAllowBrowser: true`
-    - Use `maxOutputTokens` (not deprecated `maxTokens`) for `streamText()`
-- [ ] Implement API key management
-  - [ ] Settings UI for entering API keys per provider
-  - [ ] Secure storage in `chrome.storage.local`
-  - [ ] Validation on key entry
-- [ ] Add manifest permissions for LLM APIs:
-  ```json
-  "host_permissions": [
-    "https://api.anthropic.com/*",
-    "https://api.openai.com/*",
-    "https://generativelanguage.googleapis.com/*"
-  ]
-  ```
-- [ ] Configure Vite build for extension (see Phase 0 config)
-  - [ ] `root: 'src'` to flatten output structure
-  - [ ] `outDir: '../dist'` for correct manifest paths
-  - [ ] Add `@types/chrome` as dev dependency
-- [ ] Implement tool execution for browser
-  - [ ] File tools using OPFS sandbox
-  - [ ] Web fetch tool (with CORS handling)
-- [ ] Mock advanced tools for initial testing (before WASM)
+- [x] Extension popup (`popup.tsx`)
+- [x] Side panel with settings tab (`sidepanel.tsx`)
+- [x] Message display with unique IDs
+- [x] Settings navigation from popup
 
 ## Phase 2: GitHub Integration
 
-Goal: Enable synchronization between OPFS projects and GitHub repositories.
+**Goal:** Enable synchronization between OPFS projects and GitHub repositories.
 
 ### 2.1 Authentication
 
@@ -178,9 +104,15 @@ Implement the clearance protocol for browser (see [Sandbox Design](../sandbox-de
 - [ ] Implement staging status API for UI
 - [ ] Push remains user-initiated (clearance boundary)
 
+### 2.4 GitHub Worker Sources
+
+- [ ] Implement GitHub worker syncing in `WorkerManager`
+- [ ] Fetch and cache worker definitions in OPFS
+- [ ] HTTP-style cache invalidation
+
 ## Phase 3: UI & Triggers
 
-Goal: User-facing interface for managing projects and triggering workers from websites.
+**Goal:** User-facing interface for managing projects and triggering workers from websites.
 
 ### 3.1 Extension Popup / Options
 
@@ -211,7 +143,7 @@ Goal: User-facing interface for managing projects and triggering workers from we
 
 ## Phase 4: Advanced Security (Future)
 
-Goal: Harden isolation for untrusted content.
+**Goal:** Harden isolation for untrusted content.
 
 ### 4.1 WASM Runtime
 
@@ -227,6 +159,17 @@ See [Container Isolation Options](./container-isolation-options.md) for research
 - [ ] Fine-grained permission UI (e.g., "Allow network access to *.google.com")
 - [ ] Audit log viewer
 - [ ] Scanner integration for binary content
+
+## Known Issues / Tech Debt
+
+From `REVIEW-NOTES.md`:
+
+| Issue | Priority | Status |
+|-------|----------|--------|
+| Custom YAML parser (~140 lines) | Low | Works correctly |
+| Unused mount system features | Low | May be needed later |
+| Inline styles (~250 lines) | Low | Cosmetic |
+| No icon PNGs | Low | Cosmetic |
 
 ## Architecture Notes
 
@@ -266,17 +209,18 @@ These are fundamentally different operations that happen to have the same *outpu
 
 ## Milestones
 
-| Milestone | Deliverable |
-|-----------|-------------|
-| **M1: MVP Core** | Project creation, OPFS storage, local worker execution |
-| **M2: Sync** | GitHub Auth, Pull/Push, Staging UI |
-| **M3: Integration** | Hey.com Pitch Deck Analyzer demo (End-to-End) |
-| **M4: Security** | WASM isolation, audit logging |
+| Milestone | Deliverable | Status |
+|-----------|-------------|--------|
+| **M1: MVP Core** | Project creation, OPFS storage, local worker execution | ✅ Complete |
+| **M2: Sync** | GitHub Auth, Pull/Push, Staging UI | Not started |
+| **M3: Integration** | Hey.com Pitch Deck Analyzer demo (End-to-End) | Not started |
+| **M4: Security** | WASM isolation, audit logging | Not started |
 
 ## Related Documents
 
 - [Browser Extension Architecture](../browser-extension-architecture.md) - System architecture
 - [Sandbox Design](../sandbox-design.md) - Zone model and clearance protocol
-- [AI SDK Browser Validation](./ai-sdk-browser-validation.md) - Phase 0 validation experiment
 - [AI SDK Browser Lessons](./ai-sdk-browser-lessons.md) - Lessons learned from validation
 - [Container Isolation Options](./container-isolation-options.md) - WASM and other isolation strategies
+- [Extension README](../../packages/extension/README.md) - Development setup
+- [Extension Review Notes](../../packages/extension/REVIEW-NOTES.md) - Recent fixes
