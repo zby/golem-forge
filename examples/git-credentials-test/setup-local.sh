@@ -6,7 +6,7 @@ set -e
 
 TEST_DIR="/tmp/golem-git-test"
 REMOTE_DIR="$TEST_DIR/remote.git"
-WORKSPACE_DIR="$TEST_DIR/workspace"
+REPO_DIR="$TEST_DIR/repo"
 
 echo "Setting up git credential test environment..."
 
@@ -19,9 +19,9 @@ echo "Creating bare repo at $REMOTE_DIR..."
 git init --bare "$REMOTE_DIR"
 
 # Create working repo
-echo "Creating workspace at $WORKSPACE_DIR..."
-mkdir -p "$WORKSPACE_DIR"
-cd "$WORKSPACE_DIR"
+echo "Creating repo at $REPO_DIR..."
+mkdir -p "$REPO_DIR"
+cd "$REPO_DIR"
 git init -b main  # Use 'main' as branch name
 
 # Configure repo
@@ -41,14 +41,11 @@ git commit -m "Initial commit"
 # Push to establish the branch
 git push -u origin main
 
-# Create workspace subdirectory (sandbox zone target)
-mkdir -p workspace
-
 echo ""
 echo "Setup complete!"
 echo ""
 echo "  Remote (bare): $REMOTE_DIR"
-echo "  Workspace:     $WORKSPACE_DIR"
+echo "  Repo:          $REPO_DIR"
 echo ""
 echo "Run the test with:"
 echo "  npx tsx examples/git-credentials-test/run-local-test.ts"

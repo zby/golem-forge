@@ -16,7 +16,7 @@ npx tsx examples/git-credentials-test/run-local-test.ts
 
 This creates:
 - `/tmp/golem-git-test/remote.git` - bare repo acting as remote
-- `/tmp/golem-git-test/workspace` - working repo with SSH-style remote
+- `/tmp/golem-git-test/repo` - working repo that pushes to the bare repo
 
 ## Test Scenarios
 

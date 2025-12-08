@@ -27,7 +27,7 @@ import { ApprovalController } from "../../src/approval/index.js";
 // ============================================================================
 
 const TEST_DIR = "/tmp/golem-git-test";
-const WORKSPACE_DIR = path.join(TEST_DIR, "workspace");
+const REPO_DIR = path.join(TEST_DIR, "repo");
 const REMOTE_DIR = path.join(TEST_DIR, "remote.git");
 
 // ============================================================================
@@ -36,7 +36,7 @@ const REMOTE_DIR = path.join(TEST_DIR, "remote.git");
 
 function git(...args: string[]): { success: boolean; output: string } {
   const result = spawnSync("git", args, {
-    cwd: WORKSPACE_DIR,
+    cwd: REPO_DIR,
     encoding: "utf-8",
   });
   return {
@@ -86,7 +86,7 @@ async function main() {
   // Check if setup was run
   try {
     await fs.access(REMOTE_DIR);
-    await fs.access(WORKSPACE_DIR);
+    await fs.access(REPO_DIR);
   } catch {
     console.error("\n❌ Test repos not found. Run setup first:");
     console.error("   ./examples/git-credentials-test/setup-local.sh");
@@ -101,8 +101,8 @@ async function main() {
 
   step(1, "Current Repository State");
 
-  print("\nWorkspace: " + WORKSPACE_DIR);
-  print("Remote:    " + REMOTE_DIR);
+  print("\nRepo:   " + REPO_DIR);
+  print("Remote: " + REMOTE_DIR);
   print("\nCurrent commits:");
   print(git("log", "--oneline", "-5").output);
   print("Git config (author):");
@@ -126,21 +126,25 @@ async function main() {
       git: {
         default_target: {
           type: "local",
-          path: WORKSPACE_DIR,
+          path: TEST_DIR,  // Parent dir - git_push writes zone prefix as subdir
         },
         // credentials not specified = inherit mode (uses host git config)
       },
     },
   };
 
+  // Sandbox config: basePath is parent, zone "repo" points to the git repo
+  // When we write /repo/file.txt:
+  //   - Sandbox stores at: TEST_DIR/repo/file.txt
+  //   - git_push writes to: TEST_DIR/repo/file.txt (same location!)
   const runtime = await createWorkerRuntime({
     worker,
     model: "anthropic:claude-haiku-4-5", // Not actually used - we call tools directly
     sandboxConfig: {
       type: "local",
-      basePath: WORKSPACE_DIR,
+      basePath: TEST_DIR,
       zones: {
-        workspace: { path: ".", writable: true },
+        repo: { path: "repo", writable: true },
       },
     },
     approvalMode: "interactive",
@@ -180,11 +184,20 @@ If you see this in git log, credentials are working!
   print("\nWriting test file to sandbox...");
 
   const writeResult = await tools.write_file.execute(
-    { path: "/workspace/credential-test.md", content: testContent },
+    { path: "/repo/credential-test.md", content: testContent },
     { toolCallId: "test_1", messages: [] }
   );
 
   print("Result: " + JSON.stringify(writeResult, null, 2));
+
+  // Verify the file was written to the right place
+  const realPath = path.join(REPO_DIR, "credential-test.md");
+  try {
+    await fs.access(realPath);
+    print(`\n✓ File exists at: ${realPath}`);
+  } catch {
+    print(`\n❌ File NOT found at: ${realPath}`);
+  }
 
   // ========================================================================
   // Step 4: Stage the file
@@ -200,7 +213,7 @@ If you see this in git log, credentials are working!
       toolCallId: "test_2",
       toolName: "git_stage",
       toolArgs: {
-        files: ["/workspace/credential-test.md"],
+        files: ["/repo/credential-test.md"],
         message: `Test credential inheritance - ${timestamp}`,
       },
     },
@@ -232,12 +245,12 @@ If you see this in git log, credentials are working!
   print((diffResult as { diff: string }).diff);
 
   // ========================================================================
-  // Step 6: Push to remote
+  // Step 6: Push to local repo
   // ========================================================================
 
-  step(6, "Push to Remote (requires approval)");
+  step(6, "Push (requires approval)");
 
-  print("\nPushing to local bare repo...");
+  print("\nPushing staged commit to local repo...");
   print("This tests that credentials (git config) are inherited.\n");
 
   const pushExecResult = await toolExecutor.execute(
@@ -246,7 +259,7 @@ If you see this in git log, credentials are working!
       toolName: "git_push",
       toolArgs: {
         commitId,
-        target: { type: "local", path: WORKSPACE_DIR },
+        target: { type: "local", path: TEST_DIR },
       },
     },
     { messages: [], iteration: 1 }
@@ -266,7 +279,7 @@ If you see this in git log, credentials are working!
 
   step(7, "Verify Results");
 
-  print("\nChecking git log in workspace:");
+  print("\nChecking git log in repo:");
   print(git("log", "--oneline", "-3").output);
 
   print("Checking git log in remote (bare repo):");
@@ -279,6 +292,10 @@ If you see this in git log, credentials are working!
   print("Checking commit author:");
   print(git("log", "-1", "--format=Author: %an <%ae>").output);
 
+  print("Checking file location:");
+  const files = await fs.readdir(REPO_DIR);
+  print("  Files in repo: " + files.join(", "));
+
   // ========================================================================
   // Done
   // ========================================================================
@@ -289,7 +306,7 @@ If you see this in git log, credentials are working!
   print("\nWhat was tested:");
   print("  - Sandbox file writing");
   print("  - Git staging with approval");
-  print("  - Git push to local remote");
+  print("  - Git push to local repo");
   print("  - Author identity from git config");
   print("\nThe commit was pushed using your inherited git configuration.");
 
