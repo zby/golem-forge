@@ -25,7 +25,7 @@ A **worker** is the smallest executable unit - a prompt template + configuration
 
 ### Program (Runnable Unit)
 
-A **program** is a directory with an `index.worker` entry point that implements a user-facing capability.
+A **program** is a directory with a `main.worker` entry point that implements a user-facing capability.
 
 - What users execute via `golem-forge <program-dir> ...`
 - Composes one or more workers
@@ -47,7 +47,7 @@ The current golem-forge implementation primarily supports the first two levels:
 
 ```
 my-program/
-├── index.worker              # Entry point (program level)
+├── main.worker               # Entry point (program level)
 ├── golem-forge.config.yaml   # Program config
 ├── workers/                  # Helper workers
 │   ├── analyzer.worker
@@ -99,7 +99,7 @@ If golem-forge ever needs true autonomous loops (goals, memory, planning), the t
 
 | File | Purpose |
 |------|---------|
-| `index.worker` | Entry point of a program (required) |
+| `main.worker` | Entry point of a program (required) |
 | `*.worker` | Worker definition files |
 | `golem-forge.config.yaml` | Program/project configuration |
 | `tools.ts` | Custom TypeScript tools |
@@ -107,7 +107,7 @@ If golem-forge ever needs true autonomous loops (goals, memory, planning), the t
 ## CLI Conventions
 
 ```bash
-# Run a program (finds index.worker in directory)
+# Run a program (finds main.worker in directory)
 npx golem-forge ./my-program "input"
 
 # List available workers in a program

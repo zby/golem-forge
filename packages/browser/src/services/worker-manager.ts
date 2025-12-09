@@ -229,18 +229,18 @@ export interface WorkerInfo {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * A bundled project with its index worker.
+ * A bundled project with its main worker.
  */
 export interface BundledProject {
   id: string;
   name: string;
   description: string;
-  /** The index.worker content */
-  indexWorker: string;
+  /** The main.worker content */
+  mainWorker: string;
 }
 
 /**
- * Bundled projects - each project has its index.worker.
+ * Bundled projects - each project has its main.worker.
  * Projects are derived from examples in the main golem-forge repo.
  */
 export const BUNDLED_PROJECTS: BundledProject[] = [
@@ -248,7 +248,7 @@ export const BUNDLED_PROJECTS: BundledProject[] = [
     id: 'greeter',
     name: 'Greeter',
     description: 'A friendly assistant that greets users',
-    indexWorker: `---
+    mainWorker: `---
 name: greeter
 description: A friendly assistant that greets users and responds to messages
 ---
@@ -267,7 +267,7 @@ Keep your responses brief and conversational.
     id: 'calculator',
     name: 'Calculator',
     description: 'Mathematical calculator with scratch space',
-    indexWorker: `---
+    mainWorker: `---
 name: calculator
 description: Mathematical calculator assistant that performs calculations and explains results
 toolsets:
@@ -311,7 +311,7 @@ Be precise with calculations. For very large numbers, explain any limitations.
     id: 'note-taker',
     name: 'Note Taker',
     description: 'Save timestamped notes to a log file',
-    indexWorker: `---
+    mainWorker: `---
 name: note_taker
 description: Save timestamped notes to a log file with write approval
 toolsets:
@@ -346,7 +346,7 @@ Guidelines:
     id: 'file-manager',
     name: 'File Manager',
     description: 'Manage files in a sandboxed workspace',
-    indexWorker: `---
+    mainWorker: `---
 name: file_manager
 description: Manage files in a sandboxed workspace directory
 toolsets:
@@ -378,7 +378,7 @@ Guidelines:
     id: 'code-reviewer',
     name: 'Code Reviewer',
     description: 'Reviews code and provides feedback',
-    indexWorker: `---
+    mainWorker: `---
 name: code-reviewer
 description: Reviews code snippets and provides feedback
 toolsets:
@@ -437,7 +437,7 @@ export class WorkerManager {
       throw new Error(`Bundled project not found: ${projectId}`);
     }
 
-    const result = parseWorkerString(project.indexWorker, `${projectId}/index.worker`);
+    const result = parseWorkerString(project.mainWorker, `${projectId}/main.worker`);
     if (!result.success) {
       throw new Error(result.error);
     }
@@ -475,13 +475,13 @@ export class WorkerManager {
   async listWorkers(sourceId: string): Promise<WorkerInfo[]> {
     if (sourceId === 'bundled') {
       return BUNDLED_PROJECTS.map((project) => {
-        const result = parseWorkerString(project.indexWorker);
+        const result = parseWorkerString(project.mainWorker);
         return {
           name: project.id,
           description: result.success ? result.worker.description : project.description,
           sourceId: 'bundled',
           sourceType: 'bundled' as const,
-          path: 'index.worker',
+          path: 'main.worker',
         };
       });
     }
@@ -530,7 +530,7 @@ export class WorkerManager {
       if (!project) {
         throw new Error(`Bundled project not found: ${workerId}`);
       }
-      content = project.indexWorker;
+      content = project.mainWorker;
     } else {
       // GitHub source
       const githubContent = this.githubWorkerCache.get(cacheKey);

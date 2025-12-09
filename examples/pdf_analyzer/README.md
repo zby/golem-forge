@@ -29,7 +29,7 @@ export GOLEM_FORGE_MODEL="google:gemini-2.0-flash"
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    pdf_orchestrator                          │
-│                    (index.worker)                            │
+│                    (main.worker)                             │
 │                                                              │
 │  1. List PDFs in input/                                      │
 │  2. Classify document type                                   │
@@ -61,7 +61,7 @@ export GOLEM_FORGE_MODEL="google:gemini-2.0-flash"
 
 ```
 pdf_analyzer/
-├── index.worker      # Orchestrator
+├── main.worker       # Orchestrator
 ├── analyzer.worker   # Analyzer with dynamic instructions
 ├── input/            # Place PDFs here (read-only)
 │   ├── startup-pitch.pdf

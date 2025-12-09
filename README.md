@@ -27,12 +27,12 @@ Workers are platform-agnostic. The same `.worker` files run in both environments
 
 ## The Model
 
-A **program** is a directory with an `index.worker` entry point. Workers are focused prompt units that compose like functions:
+A **program** is a directory with a `main.worker` entry point. Workers are focused prompt units that compose like functions:
 
 | Programming | golem-forge |
 |-------------|-------------|
 | Program | Program directory |
-| `main()` | `index.worker` |
+| `main()` | `main.worker` |
 | Function | `.worker` file |
 | Function call | Worker as tool (e.g., `greeter`, `analyzer`) |
 | Arguments | Input payload |
@@ -57,7 +57,7 @@ npx golem-forge ./examples/greeter "Tell me a joke"
 npx golem-forge ./examples/greeter "Tell me a joke" --model anthropic:claude-haiku-4-5
 ```
 
-That's it. The CLI finds `index.worker` in the program directory and runs it.
+That's it. The CLI finds `main.worker` in the program directory and runs it.
 
 ### Attach files
 
@@ -76,13 +76,13 @@ Programs grow organically from simple to complex:
 **Minimal** - just an entry point:
 ```
 my-program/
-└── index.worker
+└── main.worker
 ```
 
 **With helpers** - main delegates to focused workers:
 ```
 my-program/
-├── index.worker              # Orchestrator
+├── main.worker               # Orchestrator
 ├── golem-forge.config.yaml   # Program config (model, sandbox zones)
 └── workers/
     ├── analyzer.worker       # Focused worker
@@ -92,7 +92,7 @@ my-program/
 **With hardened operations** - extract reliable logic to TypeScript:
 ```
 my-program/
-├── index.worker
+├── main.worker
 ├── golem-forge.config.yaml
 ├── tools.ts              # Deterministic operations as functions
 ├── workers/
@@ -109,7 +109,7 @@ This progression reflects **progressive hardening**: initially you might prompt 
 ## Running Programs
 
 ```bash
-# Run program (finds index.worker)
+# Run program (finds main.worker)
 npx golem-forge ./my-program "input message" --model anthropic:claude-haiku-4-5
 
 # Run with different entry point

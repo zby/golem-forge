@@ -46,7 +46,7 @@ Options:
 
 ## Worker Definition
 
-See `index.worker`:
+See `main.worker`:
 
 ```yaml
 name: note_taker

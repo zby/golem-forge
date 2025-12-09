@@ -48,44 +48,44 @@ const EXAMPLES: ExampleConfig[] = [
   {
     name: "greeter",
     dir: "greeter",
-    mainWorker: "index.worker",
+    mainWorker: "main.worker",
     needsSandbox: false,
   },
   {
     name: "file_manager",
     dir: "file_manager",
-    mainWorker: "index.worker",
+    mainWorker: "main.worker",
     needsSandbox: true,
   },
   {
     name: "note_taker",
     dir: "note_taker",
-    mainWorker: "index.worker",
+    mainWorker: "main.worker",
     needsSandbox: true,
   },
   {
     name: "calculator",
     dir: "calculator",
-    mainWorker: "index.worker",
+    mainWorker: "main.worker",
     needsSandbox: true,
   },
   {
     name: "code_analyzer",
     dir: "code_analyzer",
-    mainWorker: "index.worker",
+    mainWorker: "main.worker",
     needsSandbox: true,
   },
   {
     name: "whiteboard_planner",
     dir: "whiteboard_planner",
-    mainWorker: "index.worker",
+    mainWorker: "main.worker",
     subWorkers: ["workers/whiteboard_analyzer.worker"],
     needsSandbox: true,
   },
   {
     name: "orchestrator",
     dir: "orchestrator",
-    mainWorker: "index.worker",
+    mainWorker: "main.worker",
     needsSandbox: false,
   },
   // pdf_analyzer has complex setup, skip for now
@@ -106,7 +106,7 @@ describe("Example Workers Smoke Tests", () => {
 
   describe("worker parsing", () => {
     for (const example of EXAMPLES) {
-      it(`parses ${example.name}/index.worker`, async () => {
+      it(`parses ${example.name}/main.worker`, async () => {
         const workerPath = path.join(EXAMPLES_DIR, example.dir, example.mainWorker);
         const content = await fs.readFile(workerPath, "utf-8");
         const result = parseWorkerString(content, workerPath);
@@ -203,7 +203,7 @@ describe("Example Workers Smoke Tests", () => {
 
   describe("tool execution", () => {
     it("file_manager can execute filesystem tools", async () => {
-      const workerPath = path.join(EXAMPLES_DIR, "file_manager", "index.worker");
+      const workerPath = path.join(EXAMPLES_DIR, "file_manager", "main.worker");
       const content = await fs.readFile(workerPath, "utf-8");
       const parseResult = parseWorkerString(content, workerPath);
 
@@ -246,7 +246,7 @@ describe("Example Workers Smoke Tests", () => {
     });
 
     it("calculator can use sandbox for scratch work", async () => {
-      const workerPath = path.join(EXAMPLES_DIR, "calculator", "index.worker");
+      const workerPath = path.join(EXAMPLES_DIR, "calculator", "main.worker");
       const content = await fs.readFile(workerPath, "utf-8");
       const parseResult = parseWorkerString(content, workerPath);
 

@@ -77,16 +77,16 @@ async function readInput(options: CLIOptions, textArgs: string[]): Promise<strin
 }
 
 /**
- * Find index.worker file in directory.
+ * Find main.worker file in directory.
  */
-async function findIndexWorker(workerDir: string): Promise<string> {
-  const indexWorkerPath = path.join(workerDir, "index.worker");
+async function findMainWorker(workerDir: string): Promise<string> {
+  const mainWorkerPath = path.join(workerDir, "main.worker");
 
   try {
-    await fs.access(indexWorkerPath);
-    return indexWorkerPath;
+    await fs.access(mainWorkerPath);
+    return mainWorkerPath;
   } catch {
-    throw new Error(`No index.worker file found in ${workerDir}`);
+    throw new Error(`No main.worker file found in ${workerDir}`);
   }
 }
 
@@ -343,7 +343,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .name("golem-forge")
     .description("Run LLM workers with tool support and approval")
     .version("0.1.0")
-    .argument("[dir]", "Worker directory containing index.worker", ".")
+    .argument("[dir]", "Worker directory containing main.worker", ".")
     .argument("[input...]", "Input text or files (images/PDFs auto-detected as attachments)")
     .option("-m, --model <model>", "Model to use (e.g., anthropic:claude-haiku-4-5)")
     .option("-a, --approval <mode>", "Approval mode: interactive, approve_all, auto_deny", parseApprovalMode, "interactive")
@@ -375,8 +375,8 @@ async function executeWorker(
   // Resolve worker directory to absolute path
   const workerDir = path.resolve(dirArg);
 
-  // Find index.worker in directory
-  const workerFilePath = await findIndexWorker(workerDir);
+  // Find main.worker in directory
+  const workerFilePath = await findMainWorker(workerDir);
 
   // Read and parse worker file
   const workerContent = await fs.readFile(workerFilePath, "utf-8");

@@ -19,7 +19,7 @@ npx golem-forge ./my-program "input message"
 ### Running Programs
 
 ```bash
-# Run a program (finds index.worker in directory)
+# Run a program (finds main.worker in directory)
 npx golem-forge ./my-program "input message" --model anthropic:claude-haiku-4-5
 
 # Run with different entry point

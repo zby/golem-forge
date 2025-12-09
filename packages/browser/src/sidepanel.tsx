@@ -754,7 +754,7 @@ function ChatTab() {
     setIsRunning(true);
 
     try {
-      // Get worker definition from the bundled project's index.worker
+      // Get worker definition from the bundled project's main.worker
       const worker = workerManager.getBundledProjectWorker(selectedProjectId);
 
       // Create runtime - use projectId for sandbox

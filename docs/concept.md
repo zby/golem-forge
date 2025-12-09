@@ -9,11 +9,11 @@ Just like programs compose focused functions, LLM workflows compose focused work
 | Programming | golem-forge |
 |-------------|-------------|
 | Program | Program directory |
-| `main()` | `index.worker` |
+| `main()` | `main.worker` |
 | Function | `.worker` file |
 | Function call | Worker as tool (e.g., `greeter(input: "...")`) |
 
-A **program** is a directory with an `index.worker` entry point. A **worker** is a prompt template + configuration + tools, packaged as an executable unit that the LLM interprets.
+A **program** is a directory with a `main.worker` entry point. A **worker** is a prompt template + configuration + tools, packaged as an executable unit that the LLM interprets.
 
 ## Terminology
 
@@ -65,7 +65,7 @@ A **program** is a directory that packages workers together:
 
 ```
 my-program/
-├── index.worker          # Entry point (required)
+├── main.worker           # Entry point (required)
 ├── golem-forge.config.yaml  # Shared config (optional)
 ├── tools.ts              # Program-wide TypeScript tools (optional)
 ├── templates/            # Shared templates (optional)
@@ -190,7 +190,7 @@ Workers start flexible, then harden as patterns stabilize:
 
 ## Design Principles
 
-1. **Programs as executables** — A program directory is the executable unit, `index.worker` is the entry point
+1. **Programs as executables** — A program directory is the executable unit, `main.worker` is the entry point
 
 2. **Workers as functions** — Focused, composable units that do one thing well
 
