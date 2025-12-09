@@ -54,6 +54,13 @@ export {
   type HeadlessAdapterOptions,
 } from "./headless-adapter.js";
 
+// Ink-based terminal UI
+export {
+  InkAdapter,
+  createInkAdapter,
+  type InkAdapterOptions,
+} from "./ink/index.js";
+
 // Interrupt handling
 export {
   createInterruptSignal,

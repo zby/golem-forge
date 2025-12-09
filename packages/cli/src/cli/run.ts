@@ -17,6 +17,14 @@ import type { MountSandboxConfig } from "../sandbox/index.js";
 import { createUIEventBus, createRuntimeUI } from "@golem-forge/core";
 import { createEventCLIAdapter, type TraceLevel as AdapterTraceLevel } from "../ui/event-cli-adapter.js";
 import { createHeadlessAdapter, type HeadlessAdapterOptions } from "../ui/headless-adapter.js";
+import { createInkAdapter } from "../ui/ink/index.js";
+
+/**
+ * Available UI modes for the CLI.
+ * - event: Traditional event-based CLI output (default)
+ * - ink: Rich terminal UI using Ink (React for CLI)
+ */
+export type UIMode = 'event' | 'ink';
 
 /**
  * Trace levels control output verbosity.
@@ -40,6 +48,8 @@ interface CLIOptions {
   program?: string;
   trace: TraceLevel;
   attach?: string[];
+  // UI mode selection
+  ui?: UIMode;
   // Headless mode options
   headless?: boolean;
   autoManual?: string;
@@ -340,6 +350,21 @@ function parseTraceLevel(value: string): TraceLevel {
 }
 
 /**
+ * Valid UI modes.
+ */
+const VALID_UI_MODES: UIMode[] = ['event', 'ink'];
+
+/**
+ * Parse and validate UI mode option.
+ */
+function parseUIMode(value: string): UIMode {
+  if (!VALID_UI_MODES.includes(value as UIMode)) {
+    throw new Error(`Invalid UI mode: ${value}. Must be one of: ${VALID_UI_MODES.join(", ")}`);
+  }
+  return value as UIMode;
+}
+
+/**
  * Parse auto-approve option.
  * Accepts: true (or no value), false, session
  */
@@ -375,6 +400,7 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .option("-A, --attach <file>", "Attach file explicitly (can be used multiple times)", collectAttachments, [])
     .option("-p, --program <path>", "Program root directory (auto-detected if not specified)")
     .option("-t, --trace <level>", "Trace level: quiet, summary, full, debug", parseTraceLevel, "debug")
+    .option("-u, --ui <mode>", "UI mode: event, ink", parseUIMode, "event")
     .option("--headless", "Run in headless mode (no interactive UI)")
     .option("--auto-manual <tool>", "Auto-invoke this manual tool when available (headless mode)")
     .option("--auto-approve [mode]", "Auto-approve all approvals in headless mode (true/false/session)", parseAutoApprove)
@@ -498,6 +524,7 @@ async function executeWorker(
   const runtimeUI = createRuntimeUI(eventBus);
 
   // Create appropriate adapter based on mode
+  // Priority: --headless > --ui ink > default (event)
   const adapter = options.headless
     ? createHeadlessAdapter(eventBus, {
         autoManualTool: options.autoManual,
@@ -506,6 +533,13 @@ async function executeWorker(
           ? (event, data) => console.log(`[${event}]`, JSON.stringify(data))
           : undefined,
       } satisfies HeadlessAdapterOptions)
+    : options.ui === "ink"
+    ? createInkAdapter(eventBus, {
+        cwd: workerDir,
+        branch: undefined, // Could be populated from git if desired
+        showHeader: true,
+        showFooter: true,
+      })
     : createEventCLIAdapter(eventBus, {
         traceLevel: options.trace as AdapterTraceLevel,
       });
