@@ -1,29 +1,19 @@
 /**
  * Filesystem Tools
  *
- * LLM tools for file operations using the sandbox interface.
+ * Platform-agnostic LLM tools for file operations using the sandbox interface.
  * Uses AI SDK's native needsApproval for tool approval.
+ *
+ * Works in both Node.js (CLI) and browser (Chrome extension with OPFS).
  */
 
 import { z } from 'zod';
 import type { ToolExecutionOptions } from 'ai';
-import {
-  type FileOperations,
-  NotFoundError,
-  isSandboxError,
-  type ApprovalConfig,
-  type NamedTool,
-  type ExecutionMode,
-  type ManualExecutionConfig,
-} from '@golem-forge/core';
-
-// Re-export for backwards compatibility
-export type { NamedTool, ExecutionMode, ManualExecutionConfig };
-
-/**
- * Sandbox type for filesystem tools.
- */
-type FilesystemSandbox = FileOperations;
+import type { FileOperations } from '../sandbox-types.js';
+import { NotFoundError, isSandboxError } from '../sandbox-errors.js';
+import type { NamedTool, ToolsetContext } from './base.js';
+import type { ApprovalConfig } from '../approval/index.js';
+import { ToolsetRegistry } from './registry.js';
 
 /**
  * Result returned by filesystem tools.
@@ -105,11 +95,19 @@ function getExtension(filePath: string): string {
 }
 
 /**
+ * Get byte length of a string in UTF-8.
+ * Uses TextEncoder for browser compatibility (instead of Node's Buffer.byteLength).
+ */
+function getByteLength(str: string): number {
+  return new TextEncoder().encode(str).length;
+}
+
+/**
  * Create a read_file tool.
  *
  * Returns a structured FileContentResultValue for UI rendering.
  */
-export function createReadFileTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
+export function createReadFileTool(sandbox: FileOperations, options?: ToolOptions): NamedTool {
   return {
     name: 'read_file',
     description: 'Read the contents of a text file from the sandbox filesystem. Cannot read binary files (images, PDFs, etc.).',
@@ -140,7 +138,7 @@ export function createReadFileTool(sandbox: FilesystemSandbox, options?: ToolOpt
           };
         }
 
-        const size = Buffer.byteLength(content, "utf8");
+        const size = getByteLength(content);
         // Return structured file_content result for UI rendering
         return {
           kind: "file_content" as const,
@@ -168,7 +166,7 @@ type WriteFileInput = z.infer<typeof writeFileSchema>;
  *
  * Returns a structured DiffResultValue for UI rendering.
  */
-export function createWriteFileTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
+export function createWriteFileTool(sandbox: FileOperations, options?: ToolOptions): NamedTool {
   return {
     name: 'write_file',
     description: 'Write content to a file in the sandbox filesystem',
@@ -196,7 +194,7 @@ export function createWriteFileTool(sandbox: FilesystemSandbox, options?: ToolOp
 
         await sandbox.write(path, content);
 
-        const bytesWritten = Buffer.byteLength(content, "utf8");
+        const bytesWritten = getByteLength(content);
         const operation = isNew ? "Created" : "Modified";
         // Return structured diff result for UI rendering
         // Maintains backward compatibility with success/path/bytesWritten fields
@@ -227,7 +225,7 @@ type ListFilesInput = z.infer<typeof listFilesSchema>;
  *
  * Returns a structured FileListResultValue for UI rendering.
  */
-export function createListFilesTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
+export function createListFilesTool(sandbox: FileOperations, options?: ToolOptions): NamedTool {
   return {
     name: 'list_files',
     description: 'List files and directories in a sandbox directory',
@@ -261,7 +259,7 @@ type DeleteFileInput = z.infer<typeof deleteFileSchema>;
 /**
  * Create a delete_file tool.
  */
-export function createDeleteFileTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
+export function createDeleteFileTool(sandbox: FileOperations, options?: ToolOptions): NamedTool {
   return {
     name: 'delete_file',
     description: 'Delete a file from the sandbox filesystem',
@@ -290,7 +288,7 @@ type FileExistsInput = z.infer<typeof fileExistsSchema>;
 /**
  * Create a file_exists tool.
  */
-export function createFileExistsTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
+export function createFileExistsTool(sandbox: FileOperations, options?: ToolOptions): NamedTool {
   return {
     name: 'file_exists',
     description: 'Check if a file or directory exists in the sandbox',
@@ -319,7 +317,7 @@ type FileInfoInput = z.infer<typeof fileInfoSchema>;
 /**
  * Create a file_info tool.
  */
-export function createFileInfoTool(sandbox: FilesystemSandbox, options?: ToolOptions): NamedTool {
+export function createFileInfoTool(sandbox: FileOperations, options?: ToolOptions): NamedTool {
   return {
     name: 'file_info',
     description: 'Get metadata about a file (size, dates, type)',
@@ -377,7 +375,7 @@ function handleError(error: unknown, path?: string): FilesystemToolResult {
  * Options for creating a FilesystemToolset.
  */
 export interface FilesystemToolsetOptions {
-  sandbox: FilesystemSandbox;
+  sandbox: FileOperations;
   /**
    * Approval configuration for filesystem tools (static, per-tool).
    * If not provided, uses secure defaults:
@@ -419,8 +417,8 @@ function configToNeedsApproval(config: ApprovalConfig, toolName: string): boolea
 export class FilesystemToolset {
   private tools: NamedTool[];
 
-  constructor(sandboxOrOptions: FilesystemSandbox | FilesystemToolsetOptions) {
-    let sandbox: FilesystemSandbox;
+  constructor(sandboxOrOptions: FileOperations | FilesystemToolsetOptions) {
+    let sandbox: FileOperations;
     let approvalConfig: ApprovalConfig;
 
     // Support both old (Sandbox) and new (options) constructor signatures
@@ -460,6 +458,27 @@ export class FilesystemToolset {
  * Create all filesystem tools for a sandbox.
  * Convenience function that returns individual tools.
  */
-export function createFilesystemTools(sandbox: FilesystemSandbox): NamedTool[] {
+export function createFilesystemTools(sandbox: FileOperations): NamedTool[] {
   return new FilesystemToolset(sandbox).getTools();
 }
+
+/**
+ * Factory function for ToolsetRegistry.
+ * Creates filesystem tools from context.
+ */
+export function filesystemToolsetFactory(ctx: ToolsetContext): NamedTool[] {
+  if (!ctx.sandbox) {
+    throw new Error('Filesystem toolset requires a sandbox in context');
+  }
+
+  // Convert ToolsetContext config to FilesystemToolsetOptions if needed
+  const approvalConfig = ctx.config?.approvalConfig as ApprovalConfig | undefined;
+
+  return new FilesystemToolset({
+    sandbox: ctx.sandbox,
+    approvalConfig,
+  }).getTools();
+}
+
+// Self-register with ToolsetRegistry
+ToolsetRegistry.register('filesystem', filesystemToolsetFactory);

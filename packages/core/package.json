@@ -1,7 +1,7 @@
 {
   "name": "@golem-forge/core",
   "version": "0.1.0",
-  "description": "Shared types and utilities for golem-forge",
+  "description": "Shared runtime and utilities for golem-forge",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -9,6 +9,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./approval": {
+      "types": "./dist/approval/index.d.ts",
+      "import": "./dist/approval/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
+    },
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "import": "./dist/tools/index.js"
     }
   },
   "files": [
@@ -23,10 +35,15 @@
   "keywords": [
     "golem-forge",
     "types",
-    "sandbox"
+    "sandbox",
+    "runtime"
   ],
   "license": "MIT",
   "dependencies": {
+    "ai": "^6.0.0-beta.134",
+    "@ai-sdk/anthropic": "^3.0.0-beta.74",
+    "@ai-sdk/google": "^3.0.0-beta.65",
+    "@ai-sdk/openai": "^3.0.0-beta.84",
     "yaml": "^2.8.2",
     "zod": "^3.25.0"
   },

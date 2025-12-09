@@ -1,0 +1,29 @@
+/**
+ * Approval System Core
+ *
+ * Runtime-agnostic approval system for LLM tool execution.
+ * This package provides the core types and logic for approval handling,
+ * without any dependency on specific runtimes (CLI, browser, VS Code).
+ */
+
+// Types
+export {
+  BlockedError,
+  type ApprovalRequest,
+  type ApprovalDecision,
+  type RememberOption,
+  type ApprovalCallback,
+  type SecurityContext,
+  type ToolApprovalConfig,
+  type ApprovalConfig,
+} from "./types.js";
+
+// Memory
+export { ApprovalMemory } from "./memory.js";
+
+// Controller
+export {
+  ApprovalController,
+  type ApprovalMode,
+  type ApprovalControllerOptions,
+} from "./controller.js";

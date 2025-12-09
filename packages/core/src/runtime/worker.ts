@@ -1,57 +1,32 @@
 /**
  * Worker Execution Runtime
  *
- * Executes workers with tool support and approval checking.
- * Manages the LLM conversation loop with tool calls.
+ * Core implementation for executing workers with tool support and approval checking.
+ * This is the platform-agnostic runtime that both CLI and browser can use.
+ *
+ * NOTE: This file contains the WorkerRuntime class which requires tools to be
+ * injected by the platform. The CLI and Chrome packages provide their own
+ * factory functions that inject platform-specific tools (filesystem, shell, etc.).
  */
 
-import * as path from "path";
 import { generateText, type ModelMessage, type Tool, type LanguageModel } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { openai } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
-import type { WorkerDefinition } from "../worker/schema.js";
+import type { WorkerDefinition } from "../worker-schema.js";
+import type { FileOperations } from "../sandbox-types.js";
+import type { RuntimeUI } from "../runtime-ui.js";
 import { ApprovalController } from "../approval/index.js";
-import {
-  FilesystemToolset,
-  WorkerCallToolset,
-  createCustomToolset,
-  CustomToolsetConfigSchema,
-  ToolsetRegistry,
-  type CustomToolsetConfig,
-} from "../tools/index.js";
-import { WorkerRegistry } from "../worker/registry.js";
-import {
-  createMountSandbox,
-  createMountSandboxAsync,
-  createTestSandbox,
-  type FileOperations,
-} from "../sandbox/index.js";
-import type { Attachment } from "../ai/types.js";
-import type { RuntimeEventCallback, RuntimeEventData } from "@golem-forge/core";
-import { ToolExecutor, type ToolCall as ToolExecutorCall } from "./tool-executor.js";
+import { ToolExecutor } from "./tool-executor.js";
+import type { RuntimeEventCallback, RuntimeEventData } from "./events.js";
 import type {
-  WorkerRunner,
-  WorkerRunnerFactory,
-  WorkerRunnerOptions,
   WorkerResult,
   RunInput,
-} from "./interfaces.js";
-import type { RuntimeUI } from "@golem-forge/core";
-
-// Re-export types from interfaces.ts
-export type { WorkerResult, RunInput, WorkerRunner, WorkerRunnerFactory, WorkerRunnerOptions } from "./interfaces.js";
-
-/**
- * Options for creating a WorkerRuntime.
- * Alias for WorkerRunnerOptions - single source of truth in interfaces.ts.
- */
-export type WorkerRuntimeOptions = WorkerRunnerOptions;
-
-/**
- * Re-export Attachment type for convenience.
- */
-export type { Attachment };
+  WorkerRunner,
+  WorkerRunnerOptions,
+  WorkerRunnerFactory,
+  ToolCall,
+} from "./types.js";
 
 /**
  * Parses a model identifier like "anthropic:claude-3-5-sonnet-20241022"
@@ -179,13 +154,27 @@ function createModel(modelId: string): LanguageModel {
 }
 
 /**
+ * Extended options for WorkerRuntime that includes injected tools.
+ * Tools are injected by platform-specific factories (CLI, Chrome).
+ */
+export interface WorkerRuntimeOptionsWithTools extends WorkerRunnerOptions {
+  /** Pre-created tools to use (injected by platform) */
+  tools?: Record<string, Tool>;
+  /** Pre-created sandbox (injected by platform) */
+  sandbox?: FileOperations;
+}
+
+/**
  * Runtime for executing workers.
  * Uses AI SDK's native needsApproval for tool approval.
  * Implements WorkerRunner interface for dependency inversion.
+ *
+ * NOTE: Tools must be injected via options.tools. This allows platforms
+ * (CLI, Chrome) to provide their own toolsets (filesystem, shell, git, OPFS, etc.).
  */
 export class WorkerRuntime implements WorkerRunner {
   private worker: WorkerDefinition;
-  private options: WorkerRuntimeOptions;
+  private options: WorkerRuntimeOptionsWithTools;
   private model: LanguageModel;
   private resolvedModelId: string;
   private tools: Record<string, Tool> = {};
@@ -199,7 +188,7 @@ export class WorkerRuntime implements WorkerRunner {
   private workerId: string;
   private uiSubscriptions: Array<() => void> = [];
 
-  constructor(options: WorkerRuntimeOptions) {
+  constructor(options: WorkerRuntimeOptionsWithTools) {
     this.worker = options.worker;
     this.options = options;
 
@@ -247,6 +236,14 @@ export class WorkerRuntime implements WorkerRunner {
     // Store RuntimeUI for UI events
     this.runtimeUI = options.runtimeUI;
 
+    // Use injected sandbox if provided
+    this.sandbox = options.sandbox;
+
+    // Use injected tools if provided
+    if (options.tools) {
+      this.tools = { ...options.tools };
+    }
+
     // Generate worker ID for UI tracking
     this.workerId = `worker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
@@ -268,33 +265,16 @@ export class WorkerRuntime implements WorkerRunner {
   }
 
   /**
-   * Initialize the runtime (creates sandbox and registers tools).
+   * Initialize the runtime.
+   * If tools were injected, uses those. Otherwise expects platform to inject them.
    */
   async initialize(): Promise<void> {
-    // Use shared sandbox (for delegation) or create new one
-    if (this.options.sharedSandbox) {
-      this.sandbox = this.options.sharedSandbox;
-    } else if (this.options.mountSandboxConfig) {
-      // Mount-based sandbox (Docker-style)
-      this.sandbox = await createMountSandboxAsync(this.options.mountSandboxConfig);
-    } else if (this.options.useTestSandbox) {
-      // Create temp sandbox for testing
-      this.sandbox = await createTestSandbox();
-    } else if (this.options.programRoot) {
-      // Default: mount program root at /
-      this.sandbox = createMountSandbox({ root: this.options.programRoot });
-    }
-
-    // Register tools based on worker config
-    // Tools have needsApproval set directly, SDK handles approval flow
-    await this.registerTools();
-
     // Create tool executor with registered tools
     this.toolExecutor = new ToolExecutor({
       tools: this.tools,
       approvalController: this.approvalController,
       onEvent: this.onEvent,
-      runtimeUI: this.options.runtimeUI,
+      runtimeUI: this.runtimeUI,
     });
 
     // Set up UI subscriptions for manual tool invocation and diff drill-down
@@ -375,147 +355,6 @@ export class WorkerRuntime implements WorkerRunner {
   }
 
   /**
-   * Register tools based on worker configuration.
-   * Tools have needsApproval set directly - SDK handles approval flow.
-   */
-  private async registerTools(): Promise<void> {
-    const toolsetsConfig = this.worker.toolsets || {};
-
-    for (const [toolsetName, toolsetConfig] of Object.entries(toolsetsConfig)) {
-      switch (toolsetName) {
-        case "filesystem": {
-          if (!this.sandbox) {
-            throw new Error("Filesystem toolset requires a sandbox. Set programRoot or mountSandboxConfig.");
-          }
-
-          // FilesystemToolset creates tools with needsApproval set based on config
-          const fsToolset = new FilesystemToolset({
-            sandbox: this.sandbox,
-          });
-          // Register each tool by its name property
-          for (const tool of fsToolset.getTools()) {
-            this.tools[tool.name] = tool;
-          }
-          break;
-        }
-
-        case "workers": {
-          // Worker delegation toolset - requires allowed_workers list
-          const workersConfig = toolsetConfig as { allowed_workers?: string[] } | undefined;
-          const allowedWorkers = workersConfig?.allowed_workers || [];
-
-          if (allowedWorkers.length === 0) {
-            throw new Error("Workers toolset requires 'allowed_workers' list in config.");
-          }
-
-          const registry = this.options.registry || new WorkerRegistry();
-          if (this.options.programRoot) {
-            registry.addSearchPath(this.options.programRoot);
-          }
-
-          // Use async factory to create named tools for each worker
-          const workerToolset = await WorkerCallToolset.create({
-            registry,
-            allowedWorkers,
-            sandbox: this.sandbox,
-            approvalController: this.approvalController,
-            approvalCallback: this.options.approvalCallback,
-            approvalMode: this.options.approvalMode || "interactive",
-            delegationContext: this.options.delegationContext,
-            programRoot: this.options.programRoot,
-            model: this.options.model,
-            workerRunnerFactory: defaultWorkerRunnerFactory,
-            // Propagate event callback to child workers for nested tracing
-            onEvent: this.onEvent,
-            // Propagate runtimeUI to child workers for UI events
-            runtimeUI: this.runtimeUI,
-          });
-          for (const tool of workerToolset.getTools()) {
-            this.tools[tool.name] = tool;
-          }
-          break;
-        }
-
-        case "custom": {
-          // Custom tools from a tools.ts module
-          const parseResult = CustomToolsetConfigSchema.safeParse(toolsetConfig);
-          if (!parseResult.success) {
-            throw new Error(
-              `Invalid custom toolset config: ${parseResult.error.message}`
-            );
-          }
-
-          const customConfig: CustomToolsetConfig = parseResult.data;
-
-          // Resolve module path relative to worker file or program root
-          let modulePath = customConfig.module;
-          if (!path.isAbsolute(modulePath)) {
-            const baseDir = this.options.workerFilePath
-              ? path.dirname(this.options.workerFilePath)
-              : this.options.programRoot;
-
-            if (!baseDir) {
-              throw new Error(
-                "Custom toolset requires workerFilePath or programRoot to resolve relative module paths."
-              );
-            }
-
-            modulePath = path.resolve(baseDir, modulePath);
-          }
-
-          const customToolset = await createCustomToolset({
-            modulePath,
-            config: customConfig,
-            sandbox: this.sandbox,
-          });
-
-          for (const tool of customToolset.getTools()) {
-            this.tools[tool.name] = tool;
-          }
-          break;
-        }
-
-        default: {
-          // Check registry for dynamically registered toolsets
-          let factory = ToolsetRegistry.get(toolsetName);
-
-          // If not in registry, try to dynamically import the toolset module
-          // This enables lazy loading - only import toolsets that are actually used
-          if (!factory) {
-            try {
-              // Attempt to import the toolset module (triggers self-registration)
-              await import(`../tools/${toolsetName}/index.js`);
-              factory = ToolsetRegistry.get(toolsetName);
-            } catch {
-              // Module doesn't exist, will fall through to error below
-            }
-          }
-
-          if (factory) {
-            const registeredTools = await factory({
-              sandbox: this.sandbox,
-              approvalController: this.approvalController,
-              workerFilePath: this.options.workerFilePath,
-              programRoot: this.options.programRoot,
-              config: (toolsetConfig as Record<string, unknown>) || {},
-            });
-            for (const tool of registeredTools) {
-              this.tools[tool.name] = tool;
-            }
-            break;
-          }
-
-          throw new Error(
-            `Unknown toolset "${toolsetName}" in worker "${this.worker.name}". ` +
-            `Valid toolsets: filesystem, workers, custom` +
-            (ToolsetRegistry.list().length > 0 ? `, ${ToolsetRegistry.list().join(', ')}` : '')
-          );
-        }
-      }
-    }
-  }
-
-  /**
    * Execute the worker with the given input.
    * Uses AI SDK's native needsApproval for tool approval.
    * @param input - Text string or object with content and optional attachments
@@ -524,7 +363,7 @@ export class WorkerRuntime implements WorkerRunner {
     if (!this.initialized) {
       throw new Error(
         "WorkerRuntime.run() called before initialize(). " +
-        "Use createWorkerRuntime() or call initialize() first."
+        "Call initialize() first."
       );
     }
 
@@ -564,7 +403,7 @@ export class WorkerRuntime implements WorkerRunner {
         messages.push({ role: "user", content: input });
       } else {
         // Build user content with attachments
-        const userContent: Array<{ type: "text"; text: string } | { type: "file"; data: Buffer | string; mediaType: string }> = [
+        const userContent: Array<{ type: "text"; text: string } | { type: "file"; data: ArrayBuffer | Uint8Array | string; mediaType: string }> = [
           { type: "text", text: input.content },
         ];
 
@@ -701,7 +540,7 @@ export class WorkerRuntime implements WorkerRunner {
         } as any);
 
         // Execute tools via ToolExecutor
-        const executorCalls: ToolExecutorCall[] = toolCalls.map(tc => ({
+        const executorCalls: ToolCall[] = toolCalls.map(tc => ({
           toolCallId: tc.toolCallId,
           toolName: tc.toolName,
           toolArgs: getToolArgs(tc),
@@ -837,9 +676,9 @@ export class WorkerRuntime implements WorkerRunner {
 }
 
 /**
- * Create and initialize a worker runtime.
+ * Create and initialize a worker runtime with injected tools.
  */
-export async function createWorkerRuntime(options: WorkerRuntimeOptions): Promise<WorkerRuntime> {
+export async function createWorkerRuntime(options: WorkerRuntimeOptionsWithTools): Promise<WorkerRuntime> {
   const runtime = new WorkerRuntime(options);
   await runtime.initialize();
   return runtime;
@@ -848,9 +687,10 @@ export async function createWorkerRuntime(options: WorkerRuntimeOptions): Promis
 /**
  * Default factory for creating WorkerRunner instances.
  * Uses WorkerRuntime as the implementation.
+ * Note: This requires tools to be injected in options.
  */
 export const defaultWorkerRunnerFactory: WorkerRunnerFactory = {
   create(options: WorkerRunnerOptions): WorkerRunner {
-    return new WorkerRuntime(options);
+    return new WorkerRuntime(options as WorkerRuntimeOptionsWithTools);
   },
 };

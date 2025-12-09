@@ -2,60 +2,19 @@
  * Tool Executor
  *
  * Handles individual tool execution with approval flow.
- * Extracted from WorkerRuntime to improve testability and separation of concerns.
+ * Platform-agnostic implementation that can be used by CLI, browser, or other runtimes.
  */
 
-import type { Tool, ModelMessage } from "ai";
+import type { Tool } from "ai";
 import type { ApprovalController } from "../approval/index.js";
-import type { RuntimeEventCallback, RuntimeEventData, RuntimeUI } from "@golem-forge/core";
-import { isToolResultValue, toTypedToolResult } from "../ui/index.js";
-
-/**
- * A tool call to be executed.
- */
-export interface ToolCall {
-  toolCallId: string;
-  toolName: string;
-  toolArgs: Record<string, unknown>;
-}
-
-/**
- * Context for tool execution.
- */
-export interface ToolExecutionContext {
-  /** Full message history (some tools may need it) */
-  messages: ModelMessage[];
-  /** Current iteration number (1-based) */
-  iteration: number;
-}
-
-/**
- * Result of executing a tool.
- */
-export interface ToolExecutionResult {
-  toolCallId: string;
-  toolName: string;
-  /** The tool output (can be any JSON-serializable value) */
-  output: unknown;
-  /** Whether the output is an error */
-  isError: boolean;
-  /** How long execution took */
-  durationMs: number;
-}
-
-/**
- * Options for creating a ToolExecutor.
- */
-export interface ToolExecutorOptions {
-  /** Registry of available tools */
-  tools: Record<string, Tool>;
-  /** Controller for approval decisions */
-  approvalController: ApprovalController;
-  /** Optional event callback for observability */
-  onEvent?: RuntimeEventCallback;
-  /** Optional RuntimeUI for event-driven UI communication */
-  runtimeUI?: RuntimeUI;
-}
+import type { RuntimeUI } from "../runtime-ui.js";
+import type { RuntimeEventCallback, RuntimeEventData } from "./events.js";
+import type {
+  ToolCall,
+  ToolExecutionContext,
+  ToolExecutionResult,
+  ToolExecutorOptions,
+} from "./types.js";
 
 /**
  * Executes tools with approval handling and event emission.
@@ -130,8 +89,10 @@ export class ToolExecutor {
       isError = true;
     } else {
       // Check if tool needs approval
+      // Cast messages to any to satisfy AI SDK's type requirements
       const needsApproval = typeof tool.needsApproval === "function"
-        ? await tool.needsApproval(toolArgs, { toolCallId, messages: context.messages })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? await tool.needsApproval(toolArgs, { toolCallId, messages: context.messages as any })
         : tool.needsApproval;
 
       if (needsApproval) {
@@ -165,7 +126,8 @@ export class ToolExecutor {
         } else {
           // Execute approved tool
           try {
-            output = await tool.execute(toolArgs, { toolCallId, messages: context.messages });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            output = await tool.execute(toolArgs, { toolCallId, messages: context.messages as any });
           } catch (err) {
             output = `Error: ${err instanceof Error ? err.message : String(err)}`;
             isError = true;
@@ -174,7 +136,8 @@ export class ToolExecutor {
       } else {
         // Pre-approved, execute directly
         try {
-          output = await tool.execute(toolArgs, { toolCallId, messages: context.messages });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          output = await tool.execute(toolArgs, { toolCallId, messages: context.messages as any });
         } catch (err) {
           output = `Error: ${err instanceof Error ? err.message : String(err)}`;
           isError = true;
@@ -211,10 +174,6 @@ export class ToolExecutor {
     // Emit UI tool result event
     if (this.runtimeUI) {
       const status = isError ? 'error' : 'success';
-      // Convert output to structured value if possible
-      const value = isToolResultValue(output)
-        ? toTypedToolResult(toolName, toolCallId, output, isError, durationMs).value
-        : undefined;
       const error = isError ? (typeof output === 'string' ? output : String(output)) : undefined;
 
       this.runtimeUI.showToolResult(
@@ -222,7 +181,7 @@ export class ToolExecutor {
         toolName,
         status,
         durationMs,
-        value,
+        undefined, // value - let UI implementation handle conversion
         error
       );
     }

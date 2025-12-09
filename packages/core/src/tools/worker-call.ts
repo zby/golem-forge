@@ -1,24 +1,33 @@
 /**
  * Worker Call Tool
  *
- * Enables worker delegation - one worker calling another.
+ * Platform-agnostic worker delegation toolset.
+ * Enables one worker to call another worker.
+ *
+ * Works in both Node.js (CLI) and browser (Chrome extension).
  */
 
 import { z } from "zod";
 import type { ToolExecutionOptions } from "ai";
-import type { NamedTool } from "./filesystem.js";
+import type { NamedTool, ToolsetContext } from "./base.js";
 import type {
   ApprovalCallback,
   ApprovalMode,
+} from "../approval/index.js";
+import { ApprovalController } from "../approval/index.js";
+import type {
   FileOperations,
   MountSandbox,
-  RuntimeUI,
-  WorkerSandboxConfig,
-} from "@golem-forge/core";
-import { ApprovalController } from "@golem-forge/core";
-import { WorkerRegistry } from "../worker/registry.js";
-import type { WorkerDefinition } from "../worker/schema.js";
-import type { WorkerRunnerFactory, RuntimeEventCallback, DelegationContext } from "../runtime/interfaces.js";
+} from "../sandbox-types.js";
+import type { WorkerDefinition, WorkerSandboxConfig } from "../worker-schema.js";
+import type { RuntimeUI } from "../runtime-ui.js";
+import type {
+  DelegationContext,
+  WorkerRegistry,
+  WorkerRunnerFactory,
+} from "../runtime/types.js";
+import type { RuntimeEventCallback } from "../runtime/events.js";
+import { ToolsetRegistry } from "./registry.js";
 
 // Re-export DelegationContext for backwards compatibility
 export type { DelegationContext };
@@ -67,8 +76,8 @@ export interface WorkerCallToolsetOptions {
   maxDelegationDepth?: number;
   /** Model to pass to child workers (already resolved from CLI/env/config) */
   model?: string;
-  /** Factory for creating child WorkerRunner instances (breaks circular dependency) */
-  workerRunnerFactory?: WorkerRunnerFactory;
+  /** Factory for creating child WorkerRunner instances (required) */
+  workerRunnerFactory: WorkerRunnerFactory;
   /** Event callback for runtime events (propagates to child workers) */
   onEvent?: RuntimeEventCallback;
   /** Runtime UI for event-driven UI communication (propagates to child workers) */
@@ -184,7 +193,7 @@ interface ExecuteDelegationOptions {
   /** Model to pass to child worker (already resolved) */
   model?: string;
   /** Factory for creating child WorkerRunner instances */
-  workerRunnerFactory?: WorkerRunnerFactory;
+  workerRunnerFactory: WorkerRunnerFactory;
   /** Event callback for runtime events */
   onEvent?: RuntimeEventCallback;
   /** Runtime UI for event-driven UI communication */
@@ -286,20 +295,12 @@ async function executeWorkerDelegation(
       };
     }
 
-    // Create child runtime using factory (avoids circular dependency)
+    // Create child runtime using factory
     const childDelegationContext: DelegationContext = {
       delegationPath: [...currentPath, childWorker.name],
     };
 
-    // Get factory - use dynamic import as fallback if not provided
-    let factory = workerRunnerFactory;
-    if (!factory) {
-      // Fallback to dynamic import for backwards compatibility
-      const { defaultWorkerRunnerFactory } = await import("../runtime/worker.js");
-      factory = defaultWorkerRunnerFactory;
-    }
-
-    const childRuntime = factory.create({
+    const childRuntime = workerRunnerFactory.create({
       worker: modifiedWorker,
       model: model,
       approvalMode: approvalMode,
@@ -432,26 +433,31 @@ function isBinaryMimeType(mimeType: string): boolean {
 
 /**
  * Read attachments from sandbox paths.
+ * Uses Uint8Array for binary data (works in both Node.js and browser).
  */
 async function readAttachments(
   sandbox: FileOperations | undefined,
   paths: string[] | undefined
-): Promise<Array<{ data: Buffer | string; mimeType: string }>> {
+): Promise<Array<{ data: Uint8Array | string; mimeType: string }>> {
   if (!sandbox || !paths || paths.length === 0) {
     return [];
   }
 
-  const attachments: Array<{ data: Buffer | string; mimeType: string }> = [];
+  const attachments: Array<{ data: Uint8Array | string; mimeType: string }> = [];
 
   for (const filePath of paths) {
     try {
       const mimeType = getMediaType(filePath);
 
       if (isBinaryMimeType(mimeType)) {
-        // Binary files: use readBinary and convert to Buffer
+        // Binary files: use readBinary and return as Uint8Array
         const binaryContent = await sandbox.readBinary(filePath);
+        // Convert ArrayBuffer to Uint8Array if needed
+        const uint8Data = binaryContent instanceof Uint8Array
+          ? binaryContent
+          : new Uint8Array(binaryContent);
         attachments.push({
-          data: Buffer.from(binaryContent),
+          data: uint8Data,
           mimeType: mimeType,
         });
       } else {
@@ -579,6 +585,64 @@ export class WorkerCallToolset {
     return this.tools;
   }
 }
+
+/**
+ * Factory function for ToolsetRegistry.
+ * Creates worker-call tools from context.
+ *
+ * Note: This factory requires additional options in context.config:
+ * - allowedWorkers: string[] - list of worker names to create tools for
+ * - registry: WorkerRegistry - worker registry for lookups
+ * - workerRunnerFactory: WorkerRunnerFactory - factory for creating child workers
+ */
+export async function workerCallToolsetFactory(ctx: ToolsetContext): Promise<NamedTool[]> {
+  const config = ctx.config as {
+    allowedWorkers?: string[];
+    registry?: WorkerRegistry;
+    workerRunnerFactory?: WorkerRunnerFactory;
+    approvalCallback?: ApprovalCallback;
+    approvalMode?: ApprovalMode;
+    delegationContext?: DelegationContext;
+    programRoot?: string;
+    maxDelegationDepth?: number;
+    model?: string;
+    onEvent?: RuntimeEventCallback;
+    runtimeUI?: RuntimeUI;
+  };
+
+  if (!config.allowedWorkers || config.allowedWorkers.length === 0) {
+    return [];
+  }
+
+  if (!config.registry) {
+    throw new Error('WorkerCallToolset requires a registry in context.config');
+  }
+
+  if (!config.workerRunnerFactory) {
+    throw new Error('WorkerCallToolset requires a workerRunnerFactory in context.config');
+  }
+
+  const toolset = await WorkerCallToolset.create({
+    registry: config.registry,
+    allowedWorkers: config.allowedWorkers,
+    sandbox: ctx.sandbox,
+    approvalController: ctx.approvalController,
+    approvalCallback: config.approvalCallback,
+    approvalMode: config.approvalMode || 'interactive',
+    delegationContext: config.delegationContext,
+    programRoot: config.programRoot || ctx.programRoot,
+    maxDelegationDepth: config.maxDelegationDepth,
+    model: config.model,
+    workerRunnerFactory: config.workerRunnerFactory,
+    onEvent: config.onEvent,
+    runtimeUI: config.runtimeUI,
+  });
+
+  return toolset.getTools();
+}
+
+// Self-register with ToolsetRegistry
+ToolsetRegistry.register('workers', workerCallToolsetFactory);
 
 // ─────────────────────────────────────────────────────────────────────
 // Test Helpers (internal use only)

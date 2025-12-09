@@ -13,10 +13,21 @@ import {
   type MountSandbox,
   type FileOperations,
   createOPFSSandbox,
-  NotFoundError,
-  SandboxError,
 } from './opfs-sandbox';
-import type { RuntimeUI, ApprovalResult, WorkerInfo } from '@golem-forge/core';
+import type { RuntimeUI, ApprovalResult, WorkerInfo, ToolsetContext } from '@golem-forge/core';
+import { ToolsetRegistry, type NamedTool } from '@golem-forge/core';
+
+// Re-export core types for convenience
+import type {
+  ApprovalMode,
+  ApprovalRequest,
+  ApprovalDecision,
+  ApprovalCallback,
+  WorkerResult as CoreWorkerResult,
+} from '@golem-forge/core';
+
+// Re-export for backwards compatibility
+export type { ApprovalMode, ApprovalRequest, ApprovalDecision, ApprovalCallback };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Logging
@@ -116,42 +127,11 @@ function sanitizeErrorMessage(error: unknown): string {
 
 /**
  * Result of a worker execution.
+ * Extends core WorkerResult with browser-specific fields.
  */
-export interface WorkerResult {
-  success: boolean;
-  response?: string;
-  error?: string;
-  toolCallCount: number;
-  tokens?: { input: number; output: number };
+export interface WorkerResult extends CoreWorkerResult {
+  // Browser-specific fields can be added here if needed
 }
-
-/**
- * Approval mode for tool execution.
- */
-export type ApprovalMode = 'interactive' | 'approve_all' | 'auto_deny';
-
-/**
- * Request for user approval.
- */
-export interface ApprovalRequest {
-  toolName: string;
-  toolArgs: Record<string, unknown>;
-  description: string;
-}
-
-/**
- * User's approval decision.
- */
-export interface ApprovalDecision {
-  approved: boolean;
-  note?: string;
-  remember: 'none' | 'session';
-}
-
-/**
- * Callback for approval requests.
- */
-export type ApprovalCallback = (request: ApprovalRequest) => Promise<ApprovalDecision>;
 
 /**
  * Callback for streaming text updates.
@@ -307,152 +287,28 @@ class EventApprovalController implements IApprovalController {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Create filesystem tools for the browser sandbox.
+ * Load tools from ToolsetRegistry using the specified context.
+ * Returns tools as a Record<string, Tool> for use with AI SDK.
+ *
+ * Note: The tools from core use needsApproval property which is checked
+ * during tool execution in the runtime loop.
  */
-function createFilesystemTools(
-  sandbox: FileOperations,
-  approvalController: IApprovalController
-): Record<string, Tool> {
-  const tools: Record<string, Tool> = {};
+async function loadToolsFromRegistry(
+  toolsetName: string,
+  context: ToolsetContext
+): Promise<Record<string, NamedTool>> {
+  const factory = ToolsetRegistry.get(toolsetName);
+  if (!factory) {
+    console.warn(`Toolset "${toolsetName}" not found in registry`);
+    return {};
+  }
 
-  // read_file tool
-  tools['read_file'] = {
-    description: 'Read the contents of a text file',
-    inputSchema: z.object({
-      path: z.string().describe('Absolute path to the file (e.g., /dirname/file.txt)'),
-    }),
-    execute: async ({ path }: { path: string }) => {
-      try {
-        const content = await sandbox.read(path);
-        return { success: true, path, content };
-      } catch (error) {
-        if (error instanceof NotFoundError) {
-          return { success: false, error: `File not found: ${path}` };
-        }
-        return { success: false, error: String(error) };
-      }
-    },
-  };
-
-  // write_file tool (needs approval)
-  tools['write_file'] = {
-    description: 'Write content to a file',
-    inputSchema: z.object({
-      path: z.string().describe('Absolute path to write to'),
-      content: z.string().describe('Content to write'),
-    }),
-    needsApproval: true,
-    execute: async ({ path, content }: { path: string; content: string }) => {
-      // Request approval
-      const decision = await approvalController.requestApproval({
-        toolName: 'write_file',
-        toolArgs: { path, content: content.slice(0, 200) + (content.length > 200 ? '...' : '') },
-        description: `Write to file: ${path}`,
-      });
-
-      if (!decision.approved) {
-        return { success: false, error: `Operation denied: ${decision.note || 'User rejected'}` };
-      }
-
-      try {
-        await sandbox.write(path, content);
-        return { success: true, path, bytesWritten: content.length };
-      } catch (error) {
-        if (error instanceof SandboxError) {
-          return { success: false, error: error.message };
-        }
-        return { success: false, error: String(error) };
-      }
-    },
-  };
-
-  // list_files tool
-  tools['list_files'] = {
-    description: 'List files and directories in a path',
-    inputSchema: z.object({
-      path: z.string().describe('Directory path to list'),
-    }),
-    execute: async ({ path }: { path: string }) => {
-      try {
-        const files = await sandbox.list(path);
-        return { success: true, path, files, count: files.length };
-      } catch (error) {
-        if (error instanceof NotFoundError) {
-          return { success: false, error: `Directory not found: ${path}` };
-        }
-        return { success: false, error: String(error) };
-      }
-    },
-  };
-
-  // delete_file tool (needs approval)
-  tools['delete_file'] = {
-    description: 'Delete a file',
-    inputSchema: z.object({
-      path: z.string().describe('Absolute path to delete'),
-    }),
-    needsApproval: true,
-    execute: async ({ path }: { path: string }) => {
-      const decision = await approvalController.requestApproval({
-        toolName: 'delete_file',
-        toolArgs: { path },
-        description: `Delete file: ${path}`,
-      });
-
-      if (!decision.approved) {
-        return { success: false, error: `Operation denied: ${decision.note || 'User rejected'}` };
-      }
-
-      try {
-        await sandbox.delete(path);
-        return { success: true, path, deleted: true };
-      } catch (error) {
-        if (error instanceof NotFoundError) {
-          return { success: false, error: `File not found: ${path}` };
-        }
-        return { success: false, error: String(error) };
-      }
-    },
-  };
-
-  // file_exists tool
-  tools['file_exists'] = {
-    description: 'Check if a file or directory exists',
-    inputSchema: z.object({
-      path: z.string().describe('Path to check'),
-    }),
-    execute: async ({ path }: { path: string }) => {
-      const exists = await sandbox.exists(path);
-      return { success: true, path, exists };
-    },
-  };
-
-  // file_info tool
-  tools['file_info'] = {
-    description: 'Get metadata about a file',
-    inputSchema: z.object({
-      path: z.string().describe('Path to the file'),
-    }),
-    execute: async ({ path }: { path: string }) => {
-      try {
-        const stat = await sandbox.stat(path);
-        return {
-          success: true,
-          path: stat.path,
-          size: stat.size,
-          isDirectory: stat.isDirectory,
-          modifiedAt: stat.modifiedAt.toISOString(),
-        };
-      } catch (error) {
-        if (error instanceof NotFoundError) {
-          return { success: false, error: `File not found: ${path}` };
-        }
-        return { success: false, error: String(error) };
-      }
-    },
-  };
-
-  return tools;
+  const tools = await factory(context);
+  const toolMap: Record<string, NamedTool> = {};
+  for (const tool of tools) {
+    toolMap[tool.name] = tool;
+  }
+  return toolMap;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -571,29 +427,74 @@ export class BrowserWorkerRuntime {
 
   /**
    * Register tools based on worker configuration.
+   *
+   * Uses ToolsetRegistry from @golem-forge/core for portable toolsets.
+   * Shell toolset is not available in browser and will be skipped.
    */
   private async registerTools(): Promise<void> {
     const toolsetsConfig = this.worker.toolsets || {};
 
-    for (const [toolsetName] of Object.entries(toolsetsConfig)) {
-      switch (toolsetName) {
-        case 'filesystem': {
-          if (!this.sandbox) {
-            throw new Error('Filesystem toolset requires a program. Set programId in options.');
-          }
-          const fsTools = createFilesystemTools(this.sandbox, this.approvalController);
-          Object.assign(this.tools, fsTools);
-          break;
+    // Import filesystem toolset to ensure it's registered
+    // (self-registers when the module is imported)
+    await import('@golem-forge/core/tools');
+
+    for (const [toolsetName, toolsetConfig] of Object.entries(toolsetsConfig)) {
+      // Shell is not available in browser
+      if (toolsetName === 'shell') {
+        console.warn('Shell toolset is not available in browser - skipping');
+        continue;
+      }
+
+      // Workers toolset requires additional setup (registry, factory)
+      // TODO: Implement browser WorkerRegistry and WorkerRunnerFactory
+      if (toolsetName === 'workers') {
+        console.warn('Workers toolset is not yet fully implemented in browser - skipping');
+        continue;
+      }
+
+      // Special handling for filesystem (requires sandbox)
+      if (toolsetName === 'filesystem') {
+        if (!this.sandbox) {
+          throw new Error('Filesystem toolset requires a program. Set programId in options.');
         }
+      }
 
-        // Other toolsets can be added here
-        // case 'git': ...
-        // case 'web': ...
+      // Create context for toolset factory
+      // Note: We create a wrapper ApprovalController that adapts IApprovalController to ApprovalController
+      const context: ToolsetContext = {
+        sandbox: this.sandbox,
+        approvalController: this.createCoreApprovalController(),
+        workerFilePath: undefined,
+        programRoot: this.options.programId ? `/projects/${this.options.programId}` : undefined,
+        config: (toolsetConfig as Record<string, unknown>) || {},
+      };
 
-        default:
-          console.warn(`Unknown toolset "${toolsetName}" - skipping`);
+      // Load tools from registry
+      const tools = await loadToolsFromRegistry(toolsetName, context);
+      if (Object.keys(tools).length > 0) {
+        Object.assign(this.tools, tools);
+        log(`Loaded ${Object.keys(tools).length} tools from "${toolsetName}" toolset`);
       }
     }
+  }
+
+  /**
+   * Create a core-compatible ApprovalController from the browser's IApprovalController.
+   * This adapts the browser's approval interface to match core's expected interface.
+   */
+  private createCoreApprovalController() {
+    // The browser's IApprovalController has the same requestApproval signature
+    // as core's ApprovalController, so we can use it directly.
+    // We just need to add the mode property that core expects.
+    return {
+      mode: 'interactive' as const,
+      requestApproval: this.approvalController.requestApproval.bind(this.approvalController),
+      // Minimal implementation of other methods (not used by filesystem toolset)
+      isSessionApproved: () => false,
+      clearSessionApprovals: () => {},
+      memory: { lookup: () => undefined, store: () => {}, clear: () => {} },
+      getCallback: () => this.approvalController.requestApproval.bind(this.approvalController),
+    };
   }
 
   /**
@@ -722,7 +623,7 @@ export class BrowserWorkerRuntime {
             runtimeUI.showToolStarted(tc.toolCallId, tc.toolName, tc.args);
           }
 
-          const tool = this.tools[tc.toolName];
+          const tool = this.tools[tc.toolName] as NamedTool | undefined;
           let toolResult: unknown;
           let toolStatus: 'success' | 'error' = 'success';
 
@@ -730,14 +631,48 @@ export class BrowserWorkerRuntime {
             toolResult = { error: `Tool not found: ${tc.toolName}` };
             toolStatus = 'error';
           } else {
-            try {
-              toolResult = await tool.execute(tc.args, {
-                toolCallId: tc.toolCallId,
-                messages: [],
+            // Check if tool needs approval (supports both static boolean and dynamic function)
+            const needsApproval = typeof tool.needsApproval === 'function'
+              ? await tool.needsApproval(tc.args, { toolCallId: tc.toolCallId, messages: [] })
+              : tool.needsApproval;
+
+            if (needsApproval) {
+              // Request approval before executing
+              const decision = await this.approvalController.requestApproval({
+                toolName: tc.toolName,
+                toolArgs: tc.args,
+                description: `Execute tool: ${tc.toolName}`,
               });
-            } catch (err) {
-              toolResult = { error: err instanceof Error ? err.message : String(err) };
-              toolStatus = 'error';
+
+              if (!decision.approved) {
+                toolResult = {
+                  success: false,
+                  error: `Operation denied: ${decision.note || 'User rejected'}`,
+                };
+                toolStatus = 'error';
+              } else {
+                // Approved - execute the tool
+                try {
+                  toolResult = await tool.execute(tc.args, {
+                    toolCallId: tc.toolCallId,
+                    messages: [],
+                  });
+                } catch (err) {
+                  toolResult = { error: err instanceof Error ? err.message : String(err) };
+                  toolStatus = 'error';
+                }
+              }
+            } else {
+              // No approval needed - execute directly
+              try {
+                toolResult = await tool.execute(tc.args, {
+                  toolCallId: tc.toolCallId,
+                  messages: [],
+                });
+              } catch (err) {
+                toolResult = { error: err instanceof Error ? err.message : String(err) };
+                toolStatus = 'error';
+              }
             }
           }
 

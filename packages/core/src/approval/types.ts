@@ -117,4 +117,3 @@ export interface ToolApprovalConfig {
 export interface ApprovalConfig {
   [toolName: string]: ToolApprovalConfig;
 }
-

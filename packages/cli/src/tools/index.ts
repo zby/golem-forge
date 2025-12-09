@@ -2,10 +2,10 @@
  * Tool execution with approval support
  */
 
-// Registry
-export { ToolsetRegistry, type ToolsetContext, type ToolsetFactory } from "./registry.js";
+// Registry (re-exported from core for convenience)
+export { ToolsetRegistry, type ToolsetContext, type ToolsetFactory, type NamedTool, type ExecutionMode, type ManualExecutionConfig } from "./registry.js";
 
-// Filesystem toolset
+// Filesystem toolset (re-exported from core - platform-agnostic)
 export {
   FilesystemToolset,
   createFilesystemTools,
@@ -15,23 +15,24 @@ export {
   createDeleteFileTool,
   createFileExistsTool,
   createFileInfoTool,
+  filesystemToolsetFactory,
   type FilesystemToolResult,
   type FilesystemToolsetOptions,
-  type NamedTool,
-  type ExecutionMode,
-  type ManualExecutionConfig,
-} from "./filesystem.js";
+} from "@golem-forge/core";
 
+// Worker-call toolset (re-exported from core - platform-agnostic)
 export {
   WorkerCallToolset,
   createNamedWorkerTool,
   checkToolNameConflict,
+  workerCallToolsetFactory,
+  NamedWorkerInputSchema,
   type NamedWorkerInput,
   type CallWorkerResult,
   type DelegationContext,
   type WorkerCallToolsetOptions,
   type NamedWorkerToolOptions,
-} from "./worker-call.js";
+} from "@golem-forge/core";
 
 export {
   ShellToolset,

@@ -270,10 +270,22 @@ function enforceAttachmentPolicy(attachments: Attachment[], worker: WorkerDefini
 
   const policy = worker.attachment_policy;
   const totalBytes = attachments.reduce((sum, attachment) => {
-    if (typeof attachment.data === "string") {
-      return sum + Buffer.byteLength(attachment.data);
+    const data = attachment.data;
+    if (typeof data === "string") {
+      return sum + Buffer.byteLength(data);
     }
-    return sum + attachment.data.length;
+    // Buffer extends Uint8Array and has 'length' property
+    if (Buffer.isBuffer(data)) {
+      return sum + data.length;
+    }
+    // Uint8Array has length, ArrayBuffer has byteLength
+    if ('length' in data) {
+      return sum + (data as Uint8Array).length;
+    }
+    if ('byteLength' in data) {
+      return sum + (data as ArrayBuffer).byteLength;
+    }
+    return sum;
   }, 0);
 
   if (attachments.length > policy.max_attachments) {

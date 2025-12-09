@@ -1,11 +1,109 @@
 /**
  * @golem-forge/core
  *
- * Platform-agnostic types and utilities for golem-forge.
+ * Platform-agnostic runtime, types, and utilities for golem-forge.
  * Used by both CLI (Node.js) and browser extension (OPFS) implementations.
  *
  * @module @golem-forge/core
  */
+
+// ============================================================================
+// Approval System
+// ============================================================================
+
+export {
+  BlockedError,
+  ApprovalMemory,
+  ApprovalController,
+  type ApprovalRequest,
+  type ApprovalDecision,
+  type RememberOption,
+  type ApprovalCallback,
+  type SecurityContext,
+  type ToolApprovalConfig,
+  type ApprovalConfig,
+  type ApprovalMode,
+  type ApprovalControllerOptions,
+} from './approval/index.js';
+
+// ============================================================================
+// Tool Infrastructure
+// ============================================================================
+
+export {
+  ToolsetRegistry,
+  FilesystemToolset,
+  createFilesystemTools,
+  createReadFileTool,
+  createWriteFileTool,
+  createListFilesTool,
+  createDeleteFileTool,
+  createFileExistsTool,
+  createFileInfoTool,
+  filesystemToolsetFactory,
+  WorkerCallToolset,
+  createNamedWorkerTool,
+  checkToolNameConflict,
+  workerCallToolsetFactory,
+  NamedWorkerInputSchema,
+  type NamedTool,
+  type Toolset,
+  type ToolsetContext,
+  type ToolsetFactory,
+  type ExecutionMode,
+  type ManualExecutionConfig,
+  type FilesystemToolResult,
+  type FilesystemToolsetOptions,
+  type NamedWorkerInput,
+  type CallWorkerResult,
+  type WorkerCallToolsetOptions,
+  type NamedWorkerToolOptions,
+} from './tools/index.js';
+
+// ============================================================================
+// Runtime
+// ============================================================================
+
+export {
+  ToolExecutor,
+  WorkerRuntime,
+  createWorkerRuntime,
+  defaultWorkerRunnerFactory,
+  matchModelPattern,
+  type Attachment,
+  type InterruptSignal,
+  type DelegationContext,
+  type CachedWorker,
+  type WorkerLookupResult,
+  type WorkerResult,
+  type RunInput,
+  type WorkerRunner,
+  type WorkerRegistry,
+  type WorkerRunnerOptions,
+  type WorkerRunnerFactory,
+  type WorkerRuntimeOptionsWithTools,
+  type ToolCall,
+  type ToolExecutionContext,
+  type ToolExecutionResult,
+  type ToolExecutorOptions,
+  type RuntimeEvent,
+  type RuntimeEventData,
+  type RuntimeEventCallback,
+  type ExecutionStartEvent,
+  type MessageSendEvent,
+  type ResponseReceiveEvent,
+  type ToolCallStartEvent,
+  type ApprovalRequestEvent,
+  type ApprovalDecisionEvent,
+  type ToolCallEndEvent,
+  type ToolCallErrorEvent,
+  type ExecutionEndEvent,
+  type ExecutionErrorEvent,
+} from './runtime/index.js';
+
+// ============================================================================
+// Sandbox Types
+// ============================================================================
 
 // Sandbox types
 export type {
@@ -28,6 +126,10 @@ export {
   PermissionEscalationError,
   isSandboxError,
 } from './sandbox-errors.js';
+
+// ============================================================================
+// Worker Schema
+// ============================================================================
 
 // Worker schema
 export {

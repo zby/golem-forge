@@ -1,24 +1,42 @@
 /**
  * Worker Execution Runtime
+ *
+ * Core runtime types are in @golem-forge/core.
+ * CLI-specific implementations are in this package.
  */
 
+// Re-export types from core for convenience
+export type {
+  RuntimeEvent as CoreRuntimeEvent,
+  RuntimeEventData as CoreRuntimeEventData,
+  RuntimeEventCallback as CoreRuntimeEventCallback,
+  WorkerRegistry as CoreWorkerRegistry,
+  Attachment as CoreAttachment,
+} from "@golem-forge/core";
+
+// CLI-specific implementations
 export {
   WorkerRuntime,
   createWorkerRuntime,
   defaultWorkerRunnerFactory,
+  matchModelPattern,
   type WorkerResult,
-  type WorkerRuntimeOptions,
   type RunInput,
-  type Attachment,
-  type WorkerRunner,
-  type WorkerRunnerFactory,
-  type WorkerRunnerOptions,
+  type WorkerRuntimeOptions,
 } from "./worker.js";
 
 export type {
+  WorkerRunner,
+  WorkerRunnerFactory,
+  WorkerRunnerOptions,
+  DelegationContext,
+  RuntimeEventCallback,
+} from "./interfaces.js";
+
+// Events re-exported from core
+export type {
   RuntimeEvent,
   RuntimeEventData,
-  RuntimeEventCallback,
   ExecutionStartEvent,
   MessageSendEvent,
   ResponseReceiveEvent,
@@ -29,12 +47,12 @@ export type {
   ToolCallErrorEvent,
   ExecutionEndEvent,
   ExecutionErrorEvent,
-} from "./events.js";
+} from "@golem-forge/core";
 
-export {
-  ToolExecutor,
-  type ToolCall,
-  type ToolExecutionContext,
-  type ToolExecutionResult,
-  type ToolExecutorOptions,
-} from "./tool-executor.js";
+export { ToolExecutor, type ToolCall } from "./tool-executor.js";
+
+// Re-export Attachment from ai/types for backwards compatibility
+export type { Attachment } from "../ai/types.js";
+
+// Re-export InterruptSignal from ui
+export type { InterruptSignal } from "../ui/index.js";
