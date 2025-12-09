@@ -60,6 +60,7 @@ export {
   type MatchResult,
 } from "./shell.js";
 
+// Custom toolset (re-exported from core - platform-agnostic)
 export {
   CustomToolset,
   createCustomToolset,
@@ -69,12 +70,16 @@ export {
   isNamedTool,
   isZodSchema,
   extractFunctionDescription,
+  customToolsetFactory,
   CustomToolsetConfigSchema,
+  defaultModuleLoader,
   type CustomToolsetConfig,
   type CustomApprovalConfig,
   type CustomToolsetOptions,
   type ToolContext,
-} from "./custom.js";
+  type ModuleLoader,
+  type LoadCustomToolsOptions,
+} from "@golem-forge/core";
 
 // Git toolset (self-registers on import)
 export {
