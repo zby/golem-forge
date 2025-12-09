@@ -1,14 +1,14 @@
 # golem-forge
 
-Build composable LLM workflows using workers - focused, reusable prompt execution units.
+Build composable, agentic LLM workflows using workers—focused, reusable prompt execution units.
 
 ## Why golem-forge?
 
-**Tight context.** Each worker does one thing well. No bloated multi-purpose prompts that try to handle everything.
+**Tight context.** Each worker does one thing well. When delegating, the LLM crafts focused context for sub-workers—agentic context engineering.
 
 **Composability.** Workers call other workers like functions. Build complex workflows from simple, focused pieces.
 
-**Guardrails by construction.** Sandboxes limit file access, attachment policies cap resources, tool approvals gate dangerous operations. Guards against LLM mistakes, enforced in code rather than prompt instructions.
+**Guardrails by construction.** Sandboxes limit file access, approvals gate dangerous operations, clearance controls what exits. Manual-only tools can't be invoked by the LLM, even under prompt injection—git is the first implementation: LLM stages, humans push.
 
 **Progressive hardening.** Start with prompts for flexibility. As patterns stabilize, extract deterministic logic to tested TypeScript code.
 
@@ -83,7 +83,7 @@ my-program/
 ```
 my-program/
 ├── main.worker               # Orchestrator
-├── golem-forge.config.yaml   # Program config (model, sandbox zones)
+├── golem-forge.config.yaml   # Program config (model, sandbox mounts)
 └── workers/
     ├── analyzer.worker       # Focused worker
     └── formatter.worker      # Another focused worker
@@ -129,7 +129,7 @@ npx golem-forge init my-program
 
 ## Workers
 
-Workers are `.worker` files: YAML front matter (config) + body (instructions). They call other workers directly as tools - each allowed worker becomes a callable tool (e.g., `greeter`, `analyzer`), making worker delegation feel like function calls.
+Workers are `.worker` files—just YAML with a special `prompt` field. Front matter style (`---` delimiters) lets you write the prompt as the document body instead of a quoted string. Workers call other workers as tools, making delegation feel like function calls.
 
 Add custom tools by creating `tools.ts` in your program directory:
 
@@ -145,7 +145,7 @@ Functions become LLM-callable tools. Reference them in your worker's toolsets co
 
 ## Key Features
 
-- **Sandboxed file access** - Workers only access declared zones with permission controls
+- **Sandboxed file access** - Workers only access mounted paths
 - **Worker delegation** - Workers call other workers, with allowlists
 - **Custom tools** - TypeScript functions in `tools.ts` become LLM-callable tools
 - **Template support** - Compose prompts from reusable templates
@@ -192,7 +192,7 @@ compatible_models:
 
 ## Program Configuration
 
-Create a `golem-forge.config.yaml` in your program directory to configure sandbox zones and other settings:
+Create a `golem-forge.config.yaml` in your program directory:
 
 ```yaml
 # golem-forge.config.yaml
@@ -200,20 +200,9 @@ Create a `golem-forge.config.yaml` in your program directory to configure sandbo
 # Default model for this project (overridden by GOLEM_FORGE_MODEL or --model)
 model: anthropic:claude-haiku-4-5
 
-# Sandbox configuration
+# Sandbox configuration (Docker-style mount at /)
 sandbox:
-  mode: sandboxed           # or 'direct'
-  root: .sandbox            # relative to project root
-  zones:
-    cache:
-      path: ./cache
-      mode: rw
-    workspace:
-      path: ./workspace
-      mode: rw
-    data:
-      path: ./data
-      mode: ro              # read-only
+  root: ./workspace         # only workspace dir visible to LLM
 
 # Approval settings
 approval:
@@ -224,7 +213,7 @@ delegation:
   maxDepth: 5
 ```
 
-Workers declare which zones they need access to:
+Sub-workers can be restricted to subtrees:
 
 ```yaml
 # workers/analyzer.worker
@@ -232,19 +221,16 @@ Workers declare which zones they need access to:
 name: analyzer
 description: Analyzes data files
 sandbox:
-  zones:
-    - name: data
-      mode: ro              # only needs to read
-    - name: workspace
-      mode: rw              # writes results
+  restrict: /src            # only sees /src and below (i.e., workspace/src on disk)
+  readonly: true            # cannot write
 ---
 
-You analyze data from the /data/ zone and write results to /workspace/.
+You analyze code in the /src/ directory.
 ```
 
 **Key principles:**
-- Workers only get access to zones they explicitly declare
-- Child workers cannot exceed parent's access level
+- Paths use Docker bind mount semantics—simple paths, no zone prefixes
+- Sub-workers can only restrict access, never expand it
 - No sandbox declaration = pure function (no file access)
 
 ## Examples
