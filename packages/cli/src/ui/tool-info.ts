@@ -5,7 +5,7 @@
  * Used to build the manual tool list for UI display.
  */
 
-import type { NamedTool } from "../tools/filesystem.js";
+import type { NamedTool } from "@golem-forge/core";
 import type { ManualToolInfo, ManualToolField } from "./types.js";
 import { deriveFieldsFromSchema, isZodObjectSchema } from "./schema-to-fields.js";
 

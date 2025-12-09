@@ -16,8 +16,7 @@ import { z } from 'zod';
 import { spawn } from 'child_process';
 import * as shlex from 'shlex';
 import type { ToolExecutionOptions } from 'ai';
-import { BlockedError, type ApprovalConfig } from '../approval/index.js';
-import type { NamedTool } from './filesystem.js';
+import { BlockedError, type ApprovalConfig, type NamedTool } from '@golem-forge/core';
 
 /**
  * Approval decision type for shell commands.

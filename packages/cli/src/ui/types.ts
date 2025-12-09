@@ -5,8 +5,8 @@
  * These types enable platform-independent UI implementations.
  */
 
-// Re-export execution mode types from tools module
-export type { ExecutionMode, ManualExecutionConfig } from "../tools/filesystem.js";
+// Re-export execution mode types from core
+export type { ExecutionMode, ManualExecutionConfig } from "@golem-forge/core";
 
 /**
  * Tool call information for display purposes.

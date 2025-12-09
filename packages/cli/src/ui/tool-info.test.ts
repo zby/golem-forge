@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import type { NamedTool } from "../tools/filesystem.js";
+import type { NamedTool } from "@golem-forge/core";
 import {
   extractManualToolInfo,
   getManualTools,

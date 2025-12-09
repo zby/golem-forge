@@ -6,8 +6,7 @@
  */
 
 import type { ToolExecutionOptions } from 'ai';
-import type { NamedTool } from '../filesystem.js';
-import type { FileOperations } from '../../sandbox/mount-types.js';
+import type { NamedTool, FileOperations } from '@golem-forge/core';
 import type { GitBackend } from './backend.js';
 import type {
   GitStatusInput,

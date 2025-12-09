@@ -5,8 +5,7 @@
  * Self-registers with ToolsetRegistry on module load.
  */
 
-import { ToolsetRegistry, type ToolsetContext } from '../registry.js';
-import type { NamedTool } from '../filesystem.js';
+import { ToolsetRegistry, type ToolsetContext, type NamedTool } from '@golem-forge/core';
 import { createCLIGitBackend } from './cli-backend.js';
 import { createGitTools } from './tools.js';
 import { GitToolsetConfigSchema, type GitToolsetConfig, type GitCredentialsConfig } from './types.js';

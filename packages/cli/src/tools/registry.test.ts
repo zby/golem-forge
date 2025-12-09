@@ -4,9 +4,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { z } from 'zod';
-import { ToolsetRegistry, type ToolsetContext } from './registry.js';
-import type { NamedTool } from './filesystem.js';
-import { ApprovalController } from '../approval/index.js';
+import { ToolsetRegistry, type ToolsetContext, type NamedTool, ApprovalController } from '@golem-forge/core';
 
 describe('ToolsetRegistry', () => {
   beforeEach(() => {
