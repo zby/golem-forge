@@ -68,10 +68,13 @@ import {
   loadWorkerDefinition,
   WorkerDefinition,
 
-  // UI abstraction
-  CLIAdapter,
-  createCLIAdapter,
+  // UI abstraction (event-driven)
+  EventCLIAdapter,
+  createEventCLIAdapter,
 } from '@golem-forge/cli';
+
+// Use with @golem-forge/core for event bus
+import { createUIEventBus, createRuntimeUI } from '@golem-forge/core';
 ```
 
 ## Package Structure
