@@ -280,11 +280,13 @@ export function createRuntimeUIApprovalCallback(runtimeUI: RuntimeUI): ApprovalC
     );
 
     // Map RuntimeUI result to ApprovalDecision
-    // Note: RuntimeUI supports "always" but current ApprovalController only supports "session"
-    // so we map "always" to "session" for now
     if (result.approved === true) {
       return { approved: true, remember: "none" };
-    } else if (result.approved === "session" || result.approved === "always") {
+    } else if (result.approved === "session") {
+      return { approved: true, remember: "session" };
+    } else if (result.approved === "always") {
+      // Note: "always" is no longer offered in the UI but handle for type safety
+      // Map to "session" since ApprovalController doesn't support permanent rules
       return { approved: true, remember: "session" };
     } else {
       return {

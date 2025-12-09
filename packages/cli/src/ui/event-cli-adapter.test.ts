@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { PassThrough } from "stream";
 import { createUIEventBus, type UIEventBus } from "@golem-forge/core";
-import { EventCLIAdapter, createEventCLIAdapter } from "./event-cli-adapter.js";
+import { EventCLIAdapter, createEventCLIAdapter, parseToolCommand } from "./event-cli-adapter.js";
 
 // Helper to create mock streams
 function createMockStreams() {
@@ -354,6 +354,23 @@ describe("EventCLIAdapter", () => {
       expect(output).toContain("DevOps");
       expect(output).toContain("deploy");
     });
+
+    it("should show help hint in manual tools display", () => {
+      bus.emit("manualToolsAvailable", {
+        tools: [
+          {
+            name: "test_tool",
+            label: "Test Tool",
+            description: "A test tool",
+            fields: [],
+          },
+        ],
+      });
+
+      const output = streams.getOutput();
+      expect(output).toContain("/help");
+      expect(output).toContain("/tool");
+    });
   });
 
   describe("session end events", () => {
@@ -604,6 +621,81 @@ describe("EventCLIAdapter", () => {
       bus.emit("status", { type: "error", message: "Critical error" });
 
       expect(streams.getOutput()).toContain("Critical error");
+    });
+  });
+});
+
+describe("parseToolCommand", () => {
+  it("should return null for non-tool commands", () => {
+    expect(parseToolCommand("hello")).toBeNull();
+    expect(parseToolCommand("/help")).toBeNull();
+    expect(parseToolCommand("tool foo")).toBeNull();
+    expect(parseToolCommand("")).toBeNull();
+  });
+
+  it("should return null for empty tool name", () => {
+    expect(parseToolCommand("/tool ")).toBeNull();
+    expect(parseToolCommand("/tool   ")).toBeNull();
+  });
+
+  it("should parse basic tool name", () => {
+    const result = parseToolCommand("/tool my_tool");
+    expect(result).toEqual({ toolName: "my_tool", args: {} });
+  });
+
+  it("should parse tool with single argument", () => {
+    const result = parseToolCommand("/tool read_file --path /src/test.ts");
+    expect(result).toEqual({
+      toolName: "read_file",
+      args: { path: "/src/test.ts" },
+    });
+  });
+
+  it("should parse tool with multiple arguments", () => {
+    const result = parseToolCommand("/tool write_file --path /out.txt --content hello");
+    expect(result).toEqual({
+      toolName: "write_file",
+      args: { path: "/out.txt", content: "hello" },
+    });
+  });
+
+  it("should handle quoted string values", () => {
+    const result = parseToolCommand('/tool shell --command "echo hello world"');
+    expect(result).toEqual({
+      toolName: "shell",
+      args: { command: "echo hello world" },
+    });
+  });
+
+  it("should handle single-quoted string values", () => {
+    const result = parseToolCommand("/tool shell --command 'echo hello world'");
+    expect(result).toEqual({
+      toolName: "shell",
+      args: { command: "echo hello world" },
+    });
+  });
+
+  it("should parse JSON values", () => {
+    const result = parseToolCommand('/tool config --enabled true --count 42');
+    expect(result).toEqual({
+      toolName: "config",
+      args: { enabled: true, count: 42 },
+    });
+  });
+
+  it("should handle flag-style arguments without values", () => {
+    const result = parseToolCommand("/tool run_tests --verbose --coverage");
+    expect(result).toEqual({
+      toolName: "run_tests",
+      args: { verbose: true, coverage: true },
+    });
+  });
+
+  it("should ignore positional arguments after tool name", () => {
+    const result = parseToolCommand("/tool read_file foo bar --path /test.ts");
+    expect(result).toEqual({
+      toolName: "read_file",
+      args: { path: "/test.ts" },
     });
   });
 });

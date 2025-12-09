@@ -197,6 +197,7 @@ export class WorkerRuntime implements WorkerRunner {
   private toolExecutor?: ToolExecutor;
   private depth: number;
   private workerId: string;
+  private uiSubscriptions: Array<() => void> = [];
 
   constructor(options: WorkerRuntimeOptions) {
     this.worker = options.worker;
@@ -296,7 +297,81 @@ export class WorkerRuntime implements WorkerRunner {
       runtimeUI: this.options.runtimeUI,
     });
 
+    // Set up UI subscriptions for manual tool invocation and diff drill-down
+    this.setupUISubscriptions();
+
     this.initialized = true;
+  }
+
+  /**
+   * Set up subscriptions to UI action events.
+   * Handles manual tool invocation and diff drill-down requests.
+   */
+  private setupUISubscriptions(): void {
+    if (!this.runtimeUI) return;
+
+    // Subscribe to manual tool invocation
+    const unsubManualTool = this.runtimeUI.onManualToolInvoke(
+      async (toolName: string, args: Record<string, unknown>) => {
+        if (!this.toolExecutor) return;
+
+        // Check if tool exists
+        if (!this.tools[toolName]) {
+          this.runtimeUI?.showStatus('error', `Unknown tool: ${toolName}`);
+          return;
+        }
+
+        // Execute the tool via ToolExecutor
+        const toolCallId = `manual-${Date.now()}`;
+        const results = await this.toolExecutor.executeBatch(
+          [{ toolCallId, toolName, toolArgs: args }],
+          { messages: [], iteration: 0 }
+        );
+
+        // Show result
+        const result = results[0];
+        if (result) {
+          if (result.isError) {
+            const errorMsg = typeof result.output === 'string' ? result.output : JSON.stringify(result.output);
+            this.runtimeUI?.showStatus('error', `Tool ${toolName} failed: ${errorMsg}`);
+          } else {
+            this.runtimeUI?.showStatus('info', `Manual tool ${toolName} completed`);
+          }
+        }
+      }
+    );
+    this.uiSubscriptions.push(unsubManualTool);
+
+    // Subscribe to getDiff requests for diff drill-down
+    const unsubGetDiff = this.runtimeUI.onGetDiff(
+      async (requestId: string, path: string) => {
+        if (!this.sandbox) {
+          this.runtimeUI?.showStatus('error', 'No sandbox available for diff');
+          return;
+        }
+
+        // Read the file to show its content
+        try {
+          const content = await this.sandbox.read(path);
+          // For drill-down, we show the current content (no original for comparison)
+          this.runtimeUI?.showDiffContent(requestId, path, undefined, content, false);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          this.runtimeUI?.showStatus('error', `Failed to read ${path}: ${msg}`);
+        }
+      }
+    );
+    this.uiSubscriptions.push(unsubGetDiff);
+  }
+
+  /**
+   * Clean up UI subscriptions.
+   */
+  private cleanupUISubscriptions(): void {
+    for (const unsubscribe of this.uiSubscriptions) {
+      unsubscribe();
+    }
+    this.uiSubscriptions = [];
   }
 
   /**
@@ -352,6 +427,8 @@ export class WorkerRuntime implements WorkerRunner {
             workerRunnerFactory: defaultWorkerRunnerFactory,
             // Propagate event callback to child workers for nested tracing
             onEvent: this.onEvent,
+            // Propagate runtimeUI to child workers for UI events
+            runtimeUI: this.runtimeUI,
           });
           for (const tool of workerToolset.getTools()) {
             this.tools[tool.name] = tool;
@@ -748,13 +825,14 @@ export class WorkerRuntime implements WorkerRunner {
 
   /**
    * Clean up resources.
-   * Currently a no-op since sandbox files persist and in-memory backends
-   * are garbage collected. Hook for future resource cleanup needs.
+   * Unsubscribes from UI events and releases resources.
    */
   async dispose(): Promise<void> {
-    // No-op for now - sandbox files persist intentionally
+    // Clean up UI subscriptions
+    this.cleanupUISubscriptions();
+
+    // Sandbox files persist intentionally
     // and MemoryBackend is garbage collected.
-    // Future: close file handles, cancel pending operations, etc.
   }
 }
 

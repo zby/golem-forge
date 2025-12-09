@@ -86,6 +86,94 @@ function groupBy<T, K extends string>(items: T[], keyFn: (item: T) => K): Record
   return result as Record<K, T[]>;
 }
 
+/**
+ * Parse a /tool command string into tool name and arguments.
+ * Format: /tool <name> [--arg value ...]
+ *
+ * @returns null if not a valid /tool command
+ */
+function parseToolCommand(input: string): { toolName: string; args: Record<string, unknown> } | null {
+  const trimmed = input.trim();
+
+  // Must start with /tool
+  if (!trimmed.startsWith("/tool ")) {
+    return null;
+  }
+
+  // Remove "/tool " prefix
+  const rest = trimmed.slice(6).trim();
+  if (!rest) {
+    return null;
+  }
+
+  // Split into tokens, respecting quoted strings
+  const tokens: string[] = [];
+  let current = "";
+  let inQuote = false;
+  let quoteChar = "";
+
+  for (let i = 0; i < rest.length; i++) {
+    const char = rest[i];
+
+    if (!inQuote && (char === '"' || char === "'")) {
+      inQuote = true;
+      quoteChar = char;
+    } else if (inQuote && char === quoteChar) {
+      inQuote = false;
+      quoteChar = "";
+    } else if (!inQuote && char === " ") {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current) {
+    tokens.push(current);
+  }
+
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  const toolName = tokens[0];
+  const args: Record<string, unknown> = {};
+
+  // Parse --key value pairs
+  let i = 1;
+  while (i < tokens.length) {
+    const token = tokens[i];
+
+    if (token.startsWith("--")) {
+      const key = token.slice(2);
+      // Check if next token exists and is not another flag
+      const nextToken = tokens[i + 1];
+      if (key && nextToken && !nextToken.startsWith("--")) {
+        // Try to parse as JSON, otherwise use as string
+        try {
+          args[key] = JSON.parse(nextToken);
+        } catch {
+          args[key] = nextToken;
+        }
+        i += 2;
+      } else {
+        // Flag without value (or followed by another flag), treat as true
+        if (key) {
+          args[key] = true;
+        }
+        i += 1;
+      }
+    } else {
+      // Skip unknown tokens
+      i += 1;
+    }
+  }
+
+  return { toolName, args };
+}
+
 // ============================================================================
 // Implementation
 // ============================================================================
@@ -113,6 +201,10 @@ export class EventCLIAdapter extends BaseUIImplementation {
     requestId: string;
     summaries: DiffSummaryEvent["summaries"];
   } | null = null;
+
+  // State for manual tool input
+  private availableManualTools: ManualToolsAvailableEvent["tools"] = [];
+  private awaitingToolCommand = false;
 
   constructor(bus: UIEventBus, options: EventCLIAdapterOptions = {}) {
     super(bus);
@@ -504,7 +596,9 @@ export class EventCLIAdapter extends BaseUIImplementation {
   private promptApproval(requestId: string): void {
     if (!this.rl) return;
 
-    this.rl.question("[y]es / [n]o / [a]lways / [s]ession: ", (answer) => {
+    // Note: "always" option is not shown because current ApprovalController
+    // only supports session-level persistence, not permanent "always" rules
+    this.rl.question("[y]es / [n]o / [s]ession: ", (answer) => {
       const result = this.parseApprovalAnswer(answer.trim().toLowerCase());
 
       if (typeof result.approved === "boolean") {
@@ -516,7 +610,7 @@ export class EventCLIAdapter extends BaseUIImplementation {
   }
 
   private parseApprovalAnswer(answer: string): {
-    approved: boolean | "always" | "session";
+    approved: boolean | "session";
     reason?: string;
   } {
     switch (answer) {
@@ -527,9 +621,6 @@ export class EventCLIAdapter extends BaseUIImplementation {
       case "no":
       case "":
         return { approved: false };
-      case "a":
-      case "always":
-        return { approved: "always" };
       case "s":
       case "session":
         return { approved: "session" };
@@ -541,6 +632,9 @@ export class EventCLIAdapter extends BaseUIImplementation {
   }
 
   private handleManualToolsAvailable(event: ManualToolsAvailableEvent): void {
+    // Store available tools for validation
+    this.availableManualTools = event.tools;
+
     // Manual tools only shown at full level and above
     if (!this.shouldShow("full")) return;
 
@@ -557,7 +651,88 @@ export class EventCLIAdapter extends BaseUIImplementation {
       }
     }
 
-    output.write(`\n${pc.dim("Run: /tool <name> [--arg value ...]")}\n`);
+    output.write(`\n${pc.dim("Type /help for commands, or /tool <name> [--arg value ...]")}\n`);
+
+    // Prompt for tool command input
+    this.promptToolCommand();
+  }
+
+  private promptToolCommand(): void {
+    if (!this.rl || this.availableManualTools.length === 0) return;
+    if (this.awaitingToolCommand) return; // Prevent duplicate prompts
+
+    this.awaitingToolCommand = true;
+    const output = this.options.output as NodeJS.WriteStream;
+
+    this.rl.question(pc.dim("/tool> "), (answer) => {
+      this.awaitingToolCommand = false;
+      const trimmed = answer.trim();
+
+      // Skip empty input
+      if (!trimmed) {
+        return;
+      }
+
+      // Check for help command
+      if (trimmed === "/help" || trimmed === "help" || trimmed === "?") {
+        this.showManualCommandHelp();
+        this.promptToolCommand(); // Re-prompt after showing help
+        return;
+      }
+
+      // Check for skip/cancel
+      if (trimmed === "skip" || trimmed === "s" || trimmed === "cancel" || trimmed === "c") {
+        output.write(pc.dim("Skipped manual tool invocation\n"));
+        return;
+      }
+
+      // Prepend /tool if user didn't include it
+      const commandInput = trimmed.startsWith("/tool ") ? trimmed : `/tool ${trimmed}`;
+      const parsed = parseToolCommand(commandInput);
+
+      if (!parsed) {
+        output.write(pc.red("Invalid command format. Use: /tool <name> [--arg value ...]\n"));
+        this.promptToolCommand(); // Re-prompt
+        return;
+      }
+
+      // Validate tool name exists
+      const toolExists = this.availableManualTools.some((t) => t.name === parsed.toolName);
+      if (!toolExists) {
+        output.write(pc.red(`Unknown tool: ${parsed.toolName}\n`));
+        output.write(pc.dim(`Available: ${this.availableManualTools.map((t) => t.name).join(", ")}\n`));
+        this.promptToolCommand(); // Re-prompt
+        return;
+      }
+
+      // Invoke the manual tool
+      this.invokeManualTool(parsed.toolName, parsed.args);
+      output.write(pc.green(`✓ Invoked ${parsed.toolName}\n`));
+    });
+  }
+
+  private showManualCommandHelp(): void {
+    const output = this.options.output as NodeJS.WriteStream;
+
+    output.write("\n" + pc.bold("Manual Commands:") + "\n");
+    output.write(`  ${pc.cyan("/help")}           Show this help message\n`);
+    output.write(`  ${pc.cyan("/tool <name>")}    Invoke a tool (or just type the tool name)\n`);
+    output.write(`  ${pc.cyan("skip")} or ${pc.cyan("s")}       Skip manual tool invocation\n`);
+    output.write(`  ${pc.cyan("cancel")} or ${pc.cyan("c")}     Cancel manual tool invocation\n`);
+
+    output.write("\n" + pc.bold("Tool Invocation:") + "\n");
+    output.write(`  ${pc.dim("/tool <name> [--arg value ...]")}\n`);
+    output.write(`  ${pc.dim("Example: /tool read_file --path /src/main.ts")}\n`);
+
+    output.write("\n" + pc.bold("Available Tools:") + "\n");
+    const byCategory = groupBy(this.availableManualTools, (t) => t.category ?? "General");
+    for (const [category, categoryTools] of Object.entries(byCategory)) {
+      output.write(`  ${pc.cyan(category)}:\n`);
+      for (const tool of categoryTools) {
+        output.write(`    ${pc.yellow(tool.name)} - ${tool.description}\n`);
+      }
+    }
+    output.write("\n");
   }
 
   private handleDiffSummary(event: DiffSummaryEvent): void {
@@ -743,3 +918,6 @@ export function createEventCLIAdapter(
 ): EventCLIAdapter {
   return new EventCLIAdapter(bus, options);
 }
+
+// Export parseToolCommand for testing
+export { parseToolCommand };

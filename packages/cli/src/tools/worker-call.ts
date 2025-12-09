@@ -14,6 +14,7 @@ import { WorkerRegistry } from "../worker/registry.js";
 import type { WorkerDefinition, WorkerSandboxConfig } from "../worker/schema.js";
 import type { WorkerRunnerFactory } from "../runtime/interfaces.js";
 import type { RuntimeEventCallback } from "../runtime/events.js";
+import type { RuntimeUI } from "@golem-forge/core";
 
 /**
  * Schema for named worker tool input (worker name is the tool name).
@@ -71,6 +72,8 @@ export interface WorkerCallToolsetOptions {
   workerRunnerFactory?: WorkerRunnerFactory;
   /** Event callback for runtime events (propagates to child workers) */
   onEvent?: RuntimeEventCallback;
+  /** Runtime UI for event-driven UI communication (propagates to child workers) */
+  runtimeUI?: RuntimeUI;
 }
 
 /**
@@ -185,6 +188,8 @@ interface ExecuteDelegationOptions {
   workerRunnerFactory?: WorkerRunnerFactory;
   /** Event callback for runtime events */
   onEvent?: RuntimeEventCallback;
+  /** Runtime UI for event-driven UI communication */
+  runtimeUI?: RuntimeUI;
 }
 
 /**
@@ -209,6 +214,7 @@ async function executeWorkerDelegation(
     model,
     workerRunnerFactory,
     onEvent,
+    runtimeUI,
   } = options;
 
   // Check delegation depth
@@ -307,6 +313,8 @@ async function executeWorkerDelegation(
       registry: registry,
       // Propagate event callback to child workers for nested tracing
       onEvent: onEvent,
+      // Propagate runtimeUI to child workers for UI events
+      runtimeUI: runtimeUI,
     });
 
     await childRuntime.initialize();
@@ -374,6 +382,7 @@ export function createNamedWorkerTool(
     model,
     workerRunnerFactory,
     onEvent,
+    runtimeUI,
   } = options;
 
   return {
@@ -403,6 +412,7 @@ export function createNamedWorkerTool(
         model,
         workerRunnerFactory,
         onEvent,
+        runtimeUI,
       });
     },
   };

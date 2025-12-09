@@ -8,7 +8,7 @@
 import { Command } from "commander";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { createWorkerRuntime, type WorkerRuntimeOptions, type Attachment, type RunInput } from "../runtime/index.js";
+import { createWorkerRuntime, type WorkerRuntimeOptions, type Attachment, type RunInput, type WorkerResult } from "../runtime/index.js";
 import { parseWorkerString, type WorkerDefinition } from "../worker/index.js";
 import { createRuntimeUIApprovalCallback } from "./approval.js";
 import { getEffectiveConfig, findProgramRoot, resolveSandboxConfig } from "./program.js";
@@ -478,49 +478,53 @@ async function executeWorker(
   // Initialize the CLI adapter to start subscribing to events
   await cliAdapter.initialize();
 
-  // Create approval callback using RuntimeUI for event-driven approval
-  const approvalCallback = effectiveConfig.approvalMode === "interactive"
-    ? createRuntimeUIApprovalCallback(runtimeUI)
-    : undefined;
+  // Wrap in try/finally to ensure cleanup of readline and SIGINT handlers
+  let result: WorkerResult;
+  try {
+    // Create approval callback using RuntimeUI for event-driven approval
+    const approvalCallback = effectiveConfig.approvalMode === "interactive"
+      ? createRuntimeUIApprovalCallback(runtimeUI)
+      : undefined;
 
-  // Create runtime options - use detected program root
-  // Model is already resolved: CLI --model > env var > program config
-  const runtimeOptions: WorkerRuntimeOptions = {
-    worker: workerDefinition,
-    model: options.model || effectiveConfig.model,
-    approvalMode: effectiveConfig.approvalMode as ApprovalMode,
-    approvalCallback,
-    programRoot,
-    mountSandboxConfig,
-    runtimeUI,
-  };
+    // Create runtime options - use detected program root
+    // Model is already resolved: CLI --model > env var > program config
+    const runtimeOptions: WorkerRuntimeOptions = {
+      worker: workerDefinition,
+      model: options.model || effectiveConfig.model,
+      approvalMode: effectiveConfig.approvalMode as ApprovalMode,
+      approvalCallback,
+      programRoot,
+      mountSandboxConfig,
+      runtimeUI,
+    };
 
-  // Create and initialize runtime
-  const runtime = await createWorkerRuntime(runtimeOptions);
+    // Create and initialize runtime
+    const runtime = await createWorkerRuntime(runtimeOptions);
 
-  // Prepare run input
-  // When no text input is provided, use context-appropriate default prompt
-  let effectiveTextInput = textInput;
-  if (!effectiveTextInput) {
-    if (attachments && attachments.length > 0) {
-      effectiveTextInput = "Please process the attached file(s).";
-    } else if (hasSandbox) {
-      effectiveTextInput = "Please proceed with your task using the sandbox contents.";
+    // Prepare run input
+    // When no text input is provided, use context-appropriate default prompt
+    let effectiveTextInput = textInput;
+    if (!effectiveTextInput) {
+      if (attachments && attachments.length > 0) {
+        effectiveTextInput = "Please process the attached file(s).";
+      } else if (hasSandbox) {
+        effectiveTextInput = "Please proceed with your task using the sandbox contents.";
+      }
     }
+    const runInput: RunInput = attachments
+      ? { content: effectiveTextInput ?? "", attachments }
+      : effectiveTextInput ?? "";
+
+    // Run worker
+    if (options.trace === 'debug') {
+      console.log("Running worker...\n");
+    }
+
+    result = await runtime.run(runInput);
+  } finally {
+    // Always shutdown the CLI adapter to clean up readline and SIGINT handlers
+    await cliAdapter.shutdown();
   }
-  const runInput: RunInput = attachments
-    ? { content: effectiveTextInput ?? "", attachments }
-    : effectiveTextInput ?? "";
-
-  // Run worker
-  if (options.trace === 'debug') {
-    console.log("Running worker...\n");
-  }
-
-  const result = await runtime.run(runInput);
-
-  // Shutdown the CLI adapter
-  await cliAdapter.shutdown();
 
   // EventCLIAdapter handles all output via the event bus.
   // For 'summary' mode, also show stats after the response.
