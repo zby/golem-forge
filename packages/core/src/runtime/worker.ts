@@ -10,9 +10,6 @@
  */
 
 import { generateText, type ModelMessage, type Tool, type LanguageModel } from "ai";
-import { anthropic } from "@ai-sdk/anthropic";
-import { openai } from "@ai-sdk/openai";
-import { google } from "@ai-sdk/google";
 import type { WorkerDefinition } from "../worker-schema.js";
 import type { FileOperations } from "../sandbox-types.js";
 import type { RuntimeUI } from "../runtime-ui.js";
@@ -21,6 +18,7 @@ import { ToolExecutor } from "./tool-executor.js";
 import { getLLMTools } from "../tools/tool-info.js";
 import type { NamedTool } from "../tools/base.js";
 import type { RuntimeEventCallback, RuntimeEventData } from "./events.js";
+import { parseModelId, createModelWithOptions } from "./model-factory.js";
 import type {
   WorkerResult,
   RunInput,
@@ -31,18 +29,6 @@ import type {
   Attachment,
   BinaryData,
 } from "./types.js";
-
-/**
- * Parses a model identifier like "anthropic:claude-3-5-sonnet-20241022"
- * into provider and model parts.
- */
-function parseModelId(modelId: string): { provider: string; model: string } {
-  const parts = modelId.split(":");
-  if (parts.length !== 2) {
-    throw new Error(`Invalid model ID format: ${modelId}. Expected format: provider:model`);
-  }
-  return { provider: parts[0], model: parts[1] };
-}
 
 /**
  * Extract tool arguments from an AI SDK tool call.
@@ -209,28 +195,38 @@ function resolveModel(
 }
 
 /**
- * Creates a language model for the given model ID.
- * API keys are read from environment variables automatically by providers.
+ * Synchronously create a language model using environment variables.
+ * Uses the centralized createModelWithOptions from model-factory.ts.
+ *
+ * This function reads API keys from environment variables:
+ * - ANTHROPIC_API_KEY for Anthropic
+ * - OPENAI_API_KEY for OpenAI
+ * - GOOGLE_GENERATIVE_AI_API_KEY for Google
+ * - OPENROUTER_API_KEY for OpenRouter
+ *
+ * For async API key resolution (e.g., from browser storage), use
+ * options.modelFactory or options.injectedModel instead.
  */
-function createModel(modelId: string): LanguageModel {
-  const { provider, model } = parseModelId(modelId);
+function createModelFromEnv(modelId: string): LanguageModel {
+  const { provider } = parseModelId(modelId);
 
-  switch (provider) {
-    case "anthropic": {
-      // Reads ANTHROPIC_API_KEY from environment automatically
-      return anthropic(model);
-    }
-    case "openai": {
-      // Reads OPENAI_API_KEY from environment automatically
-      return openai(model);
-    }
-    case "google": {
-      // Reads GOOGLE_GENERATIVE_AI_API_KEY from environment automatically
-      return google(model);
-    }
-    default:
-      throw new Error(`Unsupported provider: ${provider}`);
+  // Get API key from environment - maps provider to env var name
+  const envVarMap: Record<string, string | undefined> = {
+    anthropic: process.env.ANTHROPIC_API_KEY,
+    openai: process.env.OPENAI_API_KEY,
+    google: process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    openrouter: process.env.OPENROUTER_API_KEY,
+  };
+
+  const apiKey = envVarMap[provider];
+  if (!apiKey) {
+    throw new Error(
+      `No API key configured for ${provider}. ` +
+      `Set the appropriate environment variable (e.g., ANTHROPIC_API_KEY).`
+    );
   }
+
+  return createModelWithOptions(modelId, { apiKey });
 }
 
 /**
@@ -286,7 +282,7 @@ export class WorkerRuntime implements WorkerRunner {
     } else {
       // Validate model against compatible_models
       this.resolvedModelId = resolveModel(this.worker, options.model);
-      this.model = createModel(this.resolvedModelId);
+      this.model = createModelFromEnv(this.resolvedModelId);
     }
 
     // Determine approval mode - default to "interactive" for safety
