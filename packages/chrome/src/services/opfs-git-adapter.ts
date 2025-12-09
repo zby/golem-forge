@@ -5,6 +5,11 @@
  * interface that isomorphic-git requires.
  *
  * This allows IsomorphicGitBackend to work with browser OPFS storage.
+ *
+ * Path handling:
+ * - rootPath is the base directory in OPFS (e.g., "projects/my-program")
+ * - All paths passed to fs methods are relative to this root
+ * - isomorphic-git passes paths like ".git/config" or "src/file.ts"
  */
 
 import type { IsomorphicFs } from '@golem-forge/core';
@@ -21,30 +26,47 @@ interface StatResult {
 /**
  * Create an IsomorphicFs adapter from OPFS.
  *
- * @param rootPath - The OPFS root path for git operations
+ * @param rootPath - The OPFS root path for git operations (e.g., "projects/my-program")
  * @returns An IsomorphicFs-compatible object
  */
 export async function createOPFSGitAdapter(rootPath: string): Promise<IsomorphicFs> {
   // Get the OPFS root directory
   const opfsRoot = await navigator.storage.getDirectory();
 
+  // Normalize rootPath: remove leading/trailing slashes
+  const normalizedRootPath = rootPath.replace(/^\/+|\/+$/g, '');
+  const rootSegments = normalizedRootPath.split('/').filter(Boolean);
+
+  // Navigate to and cache the root directory handle
+  let rootDirHandle = opfsRoot;
+  for (const segment of rootSegments) {
+    rootDirHandle = await rootDirHandle.getDirectoryHandle(segment, { create: true });
+  }
+
   /**
-   * Navigate to a directory handle from path segments.
-   * Creates intermediate directories if `create` is true.
+   * Normalize a path: remove leading slash, handle "." and empty paths.
+   * Returns array of path segments relative to git root.
+   */
+  function normalizePath(path: string): string[] {
+    // Remove leading slash and split
+    const cleaned = path.replace(/^\/+/, '');
+    if (!cleaned || cleaned === '.') {
+      return [];
+    }
+    return cleaned.split('/').filter(Boolean);
+  }
+
+  /**
+   * Navigate to a directory handle from the root.
+   * Path is relative to the git root (rootDirHandle).
    */
   async function getDirectoryHandle(
     path: string,
     create = false
   ): Promise<FileSystemDirectoryHandle> {
-    // Normalize path: remove leading slash, combine with rootPath
-    const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-    const fullPath = rootPath.startsWith('/')
-      ? rootPath.slice(1) + (normalizedPath ? '/' + normalizedPath : '')
-      : rootPath + (normalizedPath ? '/' + normalizedPath : '');
+    const segments = normalizePath(path);
 
-    const segments = fullPath.split('/').filter(Boolean);
-
-    let current = opfsRoot;
+    let current = rootDirHandle;
     for (const segment of segments) {
       try {
         current = await current.getDirectoryHandle(segment, { create });
@@ -61,35 +83,34 @@ export async function createOPFSGitAdapter(rootPath: string): Promise<Isomorphic
   }
 
   /**
-   * Get a file handle from a path.
+   * Get a file handle from a path relative to git root.
    */
   async function getFileHandle(
     path: string,
     create = false
   ): Promise<FileSystemFileHandle> {
-    const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-    const fullPath = rootPath.startsWith('/')
-      ? rootPath.slice(1) + '/' + normalizedPath
-      : rootPath + '/' + normalizedPath;
+    const segments = normalizePath(path);
 
-    const segments = fullPath.split('/').filter(Boolean);
-    const fileName = segments.pop();
-
-    if (!fileName) {
+    if (segments.length === 0) {
       throw Object.assign(new Error(`EISDIR: illegal operation on a directory, '${path}'`), {
         code: 'EISDIR',
       });
     }
 
-    const dirPath = segments.join('/');
-    let dir: FileSystemDirectoryHandle;
+    const fileName = segments.pop()!;
 
-    try {
-      dir = await getDirectoryHandle('/' + dirPath, create);
-    } catch {
-      throw Object.assign(new Error(`ENOENT: no such file or directory, '${path}'`), {
-        code: 'ENOENT',
-      });
+    // Get parent directory
+    let dir: FileSystemDirectoryHandle;
+    if (segments.length === 0) {
+      dir = rootDirHandle;
+    } else {
+      try {
+        dir = await getDirectoryHandle(segments.join('/'), create);
+      } catch {
+        throw Object.assign(new Error(`ENOENT: no such file or directory, '${path}'`), {
+          code: 'ENOENT',
+        });
+      }
     }
 
     try {
@@ -108,12 +129,7 @@ export async function createOPFSGitAdapter(rootPath: string): Promise<Isomorphic
    * Check if path is a file or directory.
    */
   async function statPath(path: string): Promise<StatResult & { type: 'file' | 'directory' }> {
-    const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-    const fullPath = rootPath.startsWith('/')
-      ? rootPath.slice(1) + (normalizedPath ? '/' + normalizedPath : '')
-      : rootPath + (normalizedPath ? '/' + normalizedPath : '');
-
-    const segments = fullPath.split('/').filter(Boolean);
+    const segments = normalizePath(path);
 
     // Empty path = root directory
     if (segments.length === 0) {
@@ -126,19 +142,19 @@ export async function createOPFSGitAdapter(rootPath: string): Promise<Isomorphic
     }
 
     const lastName = segments.pop()!;
-    const parentPath = segments.join('/');
 
+    // Get parent directory
     let parentDir: FileSystemDirectoryHandle;
-    try {
-      if (parentPath) {
-        parentDir = await getDirectoryHandle('/' + parentPath, false);
-      } else {
-        parentDir = await getDirectoryHandle('/', false);
+    if (segments.length === 0) {
+      parentDir = rootDirHandle;
+    } else {
+      try {
+        parentDir = await getDirectoryHandle(segments.join('/'), false);
+      } catch {
+        throw Object.assign(new Error(`ENOENT: no such file or directory, '${path}'`), {
+          code: 'ENOENT',
+        });
       }
-    } catch {
-      throw Object.assign(new Error(`ENOENT: no such file or directory, '${path}'`), {
-        code: 'ENOENT',
-      });
     }
 
     // Try as file first
@@ -205,21 +221,23 @@ export async function createOPFSGitAdapter(rootPath: string): Promise<Isomorphic
 
       // Delete file
       async unlink(path: string): Promise<void> {
-        const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-        const fullPath = rootPath.startsWith('/')
-          ? rootPath.slice(1) + '/' + normalizedPath
-          : rootPath + '/' + normalizedPath;
+        const segments = normalizePath(path);
 
-        const segments = fullPath.split('/').filter(Boolean);
-        const fileName = segments.pop();
-
-        if (!fileName) {
+        if (segments.length === 0) {
           throw Object.assign(new Error(`EISDIR: illegal operation on a directory, '${path}'`), {
             code: 'EISDIR',
           });
         }
 
-        const dir = await getDirectoryHandle('/' + segments.join('/'));
+        const fileName = segments.pop()!;
+
+        let dir: FileSystemDirectoryHandle;
+        if (segments.length === 0) {
+          dir = rootDirHandle;
+        } else {
+          dir = await getDirectoryHandle(segments.join('/'));
+        }
+
         await dir.removeEntry(fileName);
       },
 
@@ -242,41 +260,43 @@ export async function createOPFSGitAdapter(rootPath: string): Promise<Isomorphic
           // Create each segment
           await getDirectoryHandle(path, true);
         } else {
-          // Create only the last segment
-          const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-          const fullPath = rootPath.startsWith('/')
-            ? rootPath.slice(1) + '/' + normalizedPath
-            : rootPath + '/' + normalizedPath;
-
-          const segments = fullPath.split('/').filter(Boolean);
-          const dirName = segments.pop();
-
-          if (!dirName) {
+          const segments = normalizePath(path);
+          if (segments.length === 0) {
             return; // Root already exists
           }
 
-          const parentDir = await getDirectoryHandle('/' + segments.join('/'));
+          const dirName = segments.pop()!;
+
+          let parentDir: FileSystemDirectoryHandle;
+          if (segments.length === 0) {
+            parentDir = rootDirHandle;
+          } else {
+            parentDir = await getDirectoryHandle(segments.join('/'));
+          }
+
           await parentDir.getDirectoryHandle(dirName, { create: true });
         }
       },
 
       // Remove directory
       async rmdir(path: string): Promise<void> {
-        const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
-        const fullPath = rootPath.startsWith('/')
-          ? rootPath.slice(1) + '/' + normalizedPath
-          : rootPath + '/' + normalizedPath;
+        const segments = normalizePath(path);
 
-        const segments = fullPath.split('/').filter(Boolean);
-        const dirName = segments.pop();
-
-        if (!dirName) {
+        if (segments.length === 0) {
           throw Object.assign(new Error(`EPERM: operation not permitted, '${path}'`), {
             code: 'EPERM',
           });
         }
 
-        const parentDir = await getDirectoryHandle('/' + segments.join('/'));
+        const dirName = segments.pop()!;
+
+        let parentDir: FileSystemDirectoryHandle;
+        if (segments.length === 0) {
+          parentDir = rootDirHandle;
+        } else {
+          parentDir = await getDirectoryHandle(segments.join('/'));
+        }
+
         await parentDir.removeEntry(dirName);
       },
 

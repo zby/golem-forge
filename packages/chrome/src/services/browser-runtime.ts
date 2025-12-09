@@ -13,7 +13,7 @@ import {
   type FileOperations,
   createOPFSSandbox,
 } from './opfs-sandbox';
-import type { RuntimeUI, ApprovalResult, WorkerInfo, ToolsetContext, WorkerRunnerFactory, WorkerRunner, WorkerRunnerOptions } from '@golem-forge/core';
+import type { RuntimeUI, ApprovalResult, WorkerInfo, ToolsetContext, WorkerRunnerFactory, WorkerRunner, WorkerRunnerOptions, RunInput, Attachment } from '@golem-forge/core';
 import { ToolsetRegistry, IsomorphicGitBackend, type NamedTool } from '@golem-forge/core';
 import { createSandboxGitAdapter } from './opfs-git-adapter';
 import { createBrowserWorkerRegistry } from './browser-worker-registry';
@@ -185,6 +185,36 @@ export interface BrowserRuntimeOptions {
    * - Approval (runtimeUI.requestApproval)
    */
   runtimeUI?: RuntimeUI;
+
+  // ---- Worker delegation options ----
+
+  /**
+   * Shared sandbox from parent worker (for delegation).
+   * When provided, child worker uses this sandbox instead of creating a new one.
+   * This ensures delegated workers respect parent's restrict/readonly rules.
+   */
+  sharedSandbox?: MountSandbox;
+
+  /**
+   * Shared approval controller from parent worker (for delegation).
+   * When provided, child worker uses parent's approval state.
+   * This ensures delegated workers respect prior approvals.
+   */
+  sharedApprovalController?: IApprovalController;
+
+  /**
+   * Delegation context for worker chains.
+   * Tracks the path of workers in a delegation chain.
+   */
+  delegationContext?: {
+    delegationPath: string[];
+    maxDepth?: number;
+  };
+
+  /**
+   * Worker depth in delegation tree (0 = root).
+   */
+  depth?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -322,9 +352,18 @@ interface SystemMessage {
   content: string;
 }
 
+/**
+ * User message content part types.
+ * Supports text and file attachments (images, PDFs, etc.)
+ */
+type UserContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image'; image: ArrayBuffer | Uint8Array | string; mimeType?: string }
+  | { type: 'file'; data: ArrayBuffer | Uint8Array | string; mimeType: string };
+
 interface UserMessage {
   role: 'user';
-  content: string;
+  content: string | UserContentPart[];
 }
 
 interface AssistantMessage {
@@ -364,12 +403,15 @@ export class BrowserWorkerRuntime {
     this.worker = options.worker;
     this.options = options;
 
-    // Create approval controller based on mode
-    if (options.runtimeUI) {
+    // Use shared approval controller if provided (for worker delegation)
+    if (options.sharedApprovalController) {
+      this.approvalController = options.sharedApprovalController;
+    } else if (options.runtimeUI) {
       // Event-based mode: use RuntimeUI for approvals
+      const depth = options.depth ?? 0;
       const workerPath: WorkerInfo[] = [{
         id: options.worker.name || 'worker',
-        depth: 0,
+        depth,
         task: options.worker.name || 'Worker',
       }];
       this.approvalController = new EventApprovalController(options.runtimeUI, workerPath);
@@ -379,6 +421,11 @@ export class BrowserWorkerRuntime {
         options.approvalMode || 'interactive',
         options.approvalCallback
       );
+    }
+
+    // Use shared sandbox if provided (for worker delegation)
+    if (options.sharedSandbox) {
+      this.sandbox = options.sharedSandbox;
     }
   }
 
@@ -403,14 +450,23 @@ export class BrowserWorkerRuntime {
       throw new Error(sanitizeErrorMessage(error));
     }
 
-    // Create sandbox if program ID is provided
-    if (this.options.programId) {
+    // Create sandbox if program ID is provided and not already set (shared sandbox)
+    if (!this.sandbox && this.options.programId) {
       log('Creating sandbox for program:', this.options.programId);
       this.sandbox = await createOPFSSandbox({
         root: `/projects/${this.options.programId}`, // Path kept as 'projects' for backwards compatibility
       });
 
       // Apply worker sandbox restrictions
+      if (this.worker.sandbox) {
+        this.sandbox = this.sandbox.restrict({
+          restrict: this.worker.sandbox.restrict,
+          readonly: this.worker.sandbox.readonly,
+        }) as MountSandbox;
+      }
+    } else if (this.sandbox) {
+      log('Using shared sandbox from parent worker');
+      // Apply additional worker restrictions on top of shared sandbox
       if (this.worker.sandbox) {
         this.sandbox = this.sandbox.restrict({
           restrict: this.worker.sandbox.restrict,
@@ -510,8 +566,9 @@ export class BrowserWorkerRuntime {
 
       case 'workers': {
         // Workers toolset needs registry and runner factory
-        const config = toolsetConfig as { allow?: string[] } | undefined;
-        const allowedWorkers = config?.allow || [];
+        // Config uses "allowed_workers" key (matching worker YAML schema)
+        const config = toolsetConfig as { allowed_workers?: string[]; allow?: string[] } | undefined;
+        const allowedWorkers = config?.allowed_workers || config?.allow || [];
 
         if (allowedWorkers.length === 0) {
           log('Workers toolset has no allowed workers configured');
@@ -521,11 +578,10 @@ export class BrowserWorkerRuntime {
         // Create browser worker registry
         const registry = createBrowserWorkerRegistry('bundled');
 
-        // Create a simple runner factory that creates BrowserWorkerRuntime instances
+        // Create a runner factory that creates BrowserWorkerRuntime instances
+        // The factory must honor sharedSandbox/sharedApprovalController for security
         const workerRunnerFactory: WorkerRunnerFactory = {
           create: (options: WorkerRunnerOptions): WorkerRunner => {
-            // Return a minimal WorkerRunner implementation
-            // Note: Full delegation support would require recursive runtime creation
             return this.createChildWorkerRunner(options);
           },
         };
@@ -551,10 +607,16 @@ export class BrowserWorkerRuntime {
 
   /**
    * Create a child worker runner for delegation.
-   * This is a simplified implementation for browser.
+   * Honors sharedSandbox and sharedApprovalController for security.
    */
   private createChildWorkerRunner(options: WorkerRunnerOptions): WorkerRunner {
+    // Calculate child depth
+    const parentDepth = this.options.depth ?? 0;
+    const childDepth = parentDepth + 1;
+
     // Create a new BrowserWorkerRuntime for the child worker
+    // IMPORTANT: Pass sharedSandbox and sharedApprovalController to ensure
+    // child workers respect parent's security constraints
     const childRuntime = new BrowserWorkerRuntime({
       worker: options.worker,
       modelId: options.model,
@@ -563,15 +625,19 @@ export class BrowserWorkerRuntime {
       approvalCallback: options.approvalCallback,
       runtimeUI: options.runtimeUI,
       maxIterations: options.maxIterations,
+      // Pass shared sandbox - child inherits parent's restrictions
+      sharedSandbox: options.sharedSandbox as MountSandbox | undefined ?? this.sandbox,
+      // Pass shared approval controller - child uses parent's approval state
+      sharedApprovalController: options.sharedApprovalController as IApprovalController | undefined,
+      // Pass delegation context
+      delegationContext: options.delegationContext,
+      depth: childDepth,
     });
 
     // Wrap as WorkerRunner interface
     return {
       initialize: () => childRuntime.initialize(),
-      run: (input) => {
-        const content = typeof input === 'string' ? input : input.content;
-        return childRuntime.run(content);
-      },
+      run: (input) => childRuntime.runWithInput(input),
       getModelId: () => options.model || 'unknown',
       getTools: () => childRuntime.getTools(),
       getSandbox: () => childRuntime.getSandbox(),
@@ -846,6 +912,248 @@ export class BrowserWorkerRuntime {
       logError('Worker execution failed:', sanitizedError);
 
       // End streaming in event mode on error
+      if (runtimeUI) {
+        runtimeUI.endStreaming(streamingRequestId);
+      }
+
+      return {
+        success: false,
+        error: sanitizedError,
+        toolCallCount,
+        tokens: { input: totalInputTokens, output: totalOutputTokens },
+      };
+    }
+  }
+
+  /**
+   * Execute the worker with typed RunInput (supports attachments).
+   *
+   * This is the full implementation that handles both:
+   * - Simple string input
+   * - Object input with content and attachments
+   *
+   * Used by worker delegation to properly forward files/images.
+   */
+  async runWithInput(input: RunInput): Promise<WorkerResult> {
+    if (typeof input === 'string') {
+      // Simple string input - delegate to run()
+      return this.run(input);
+    }
+
+    // Object input with potential attachments
+    if (!this.initialized) {
+      throw new Error('Runtime not initialized. Call initialize() first.');
+    }
+
+    const { content, attachments } = input;
+
+    log('Running worker with content and', attachments?.length || 0, 'attachments');
+
+    const maxIterations = this.options.maxIterations || 50;
+    let toolCallCount = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+
+    const streamingRequestId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const runtimeUI = this.options.runtimeUI;
+
+    try {
+      // Build user message content with attachments
+      let userContent: string | UserContentPart[];
+
+      if (!attachments || attachments.length === 0) {
+        // No attachments - use simple string
+        userContent = content;
+      } else {
+        // Build content array with text and attachments
+        const contentParts: UserContentPart[] = [{ type: 'text', text: content }];
+
+        for (const attachment of attachments) {
+          // Convert attachment to content part
+          // Handle different data formats (ArrayBuffer, Uint8Array, base64 string)
+          let data: ArrayBuffer | Uint8Array | string;
+          if (typeof attachment.data === 'string') {
+            // Already a string (base64)
+            data = attachment.data;
+          } else if (attachment.data instanceof ArrayBuffer) {
+            data = attachment.data;
+          } else if (attachment.data instanceof Uint8Array) {
+            data = attachment.data;
+          } else {
+            // Unknown format, skip
+            console.warn('Unknown attachment data format, skipping');
+            continue;
+          }
+
+          // Determine content type based on MIME type
+          if (attachment.mimeType.startsWith('image/')) {
+            contentParts.push({
+              type: 'image',
+              image: data,
+              mimeType: attachment.mimeType,
+            });
+          } else {
+            // Other file types (PDF, etc.)
+            contentParts.push({
+              type: 'file',
+              data,
+              mimeType: attachment.mimeType,
+            });
+          }
+        }
+
+        userContent = contentParts;
+      }
+
+      // Build initial messages
+      const messages: Message[] = [
+        { role: 'system', content: this.worker.instructions },
+        { role: 'user', content: userContent },
+      ];
+
+      const hasTools = Object.keys(this.tools).length > 0;
+
+      // Start streaming if in event mode
+      if (runtimeUI) {
+        runtimeUI.startStreaming(streamingRequestId);
+      }
+
+      // Note: The rest of the execution loop is the same as run()
+      // For now, we delegate to the core run logic after building messages
+      // In a full implementation, this would contain the complete streamText loop
+
+      // For simplicity, if there are attachments we still try to run
+      // The AI SDK handles multimodal content when passed as content array
+      for (let iteration = 0; iteration < maxIterations; iteration++) {
+        log('Iteration', iteration + 1, '/', maxIterations);
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let result;
+        try {
+          result = await streamText({
+            model: this.model!,
+            messages: messages as any,
+            tools: hasTools ? this.tools : undefined,
+            maxOutputTokens: 4096,
+          });
+        } catch (streamError) {
+          throw new Error(sanitizeErrorMessage(streamError));
+        }
+
+        // Collect the full response
+        let responseText = '';
+        const toolCalls: Array<{ toolCallId: string; toolName: string; args: unknown }> = [];
+
+        for await (const part of result.fullStream) {
+          if (part.type === 'text-delta') {
+            responseText += part.textDelta;
+            if (runtimeUI) {
+              runtimeUI.appendStreaming(streamingRequestId, part.textDelta);
+            } else if (this.options.onStream) {
+              this.options.onStream(part.textDelta);
+            }
+          } else if (part.type === 'tool-call') {
+            toolCalls.push({
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              args: part.args,
+            });
+          } else if (part.type === 'finish') {
+            totalInputTokens += part.usage?.promptTokens || 0;
+            totalOutputTokens += part.usage?.completionTokens || 0;
+          }
+        }
+
+        // If no tool calls, we're done
+        if (toolCalls.length === 0) {
+          if (runtimeUI) {
+            runtimeUI.endStreaming(streamingRequestId);
+          }
+          return {
+            success: true,
+            response: responseText,
+            toolCallCount,
+            tokens: { input: totalInputTokens, output: totalOutputTokens },
+          };
+        }
+
+        // Process tool calls (simplified - full version in run())
+        const assistantContent: AssistantMessage['content'] = [];
+        if (responseText) {
+          assistantContent.push({ type: 'text', text: responseText });
+        }
+        for (const call of toolCalls) {
+          assistantContent.push({
+            type: 'tool-call',
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            args: call.args,
+          });
+        }
+        messages.push({ role: 'assistant', content: assistantContent });
+
+        // Execute tool calls
+        const toolResults: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: unknown }> = [];
+
+        for (const call of toolCalls) {
+          toolCallCount++;
+          const tool = this.tools[call.toolName];
+          if (!tool) {
+            toolResults.push({
+              type: 'tool-result',
+              toolCallId: call.toolCallId,
+              toolName: call.toolName,
+              result: { error: `Tool not found: ${call.toolName}` },
+            });
+            continue;
+          }
+
+          try {
+            if (runtimeUI) {
+              runtimeUI.showToolStarted(call.toolName, call.args as Record<string, unknown>);
+            }
+
+            const toolResult = await (tool as any).execute(call.args, { toolCallId: call.toolCallId });
+
+            if (runtimeUI) {
+              runtimeUI.showToolResult(call.toolName, toolResult);
+            }
+
+            toolResults.push({
+              type: 'tool-result',
+              toolCallId: call.toolCallId,
+              toolName: call.toolName,
+              result: toolResult,
+            });
+          } catch (err) {
+            const errorMsg = sanitizeErrorMessage(err);
+            toolResults.push({
+              type: 'tool-result',
+              toolCallId: call.toolCallId,
+              toolName: call.toolName,
+              result: { error: errorMsg },
+            });
+          }
+        }
+
+        messages.push({ role: 'tool', content: toolResults });
+      }
+
+      // Max iterations reached
+      if (runtimeUI) {
+        runtimeUI.endStreaming(streamingRequestId);
+      }
+
+      return {
+        success: false,
+        error: `Maximum iterations (${maxIterations}) exceeded`,
+        toolCallCount,
+        tokens: { input: totalInputTokens, output: totalOutputTokens },
+      };
+    } catch (err) {
+      const sanitizedError = sanitizeErrorMessage(err);
+      logError('Worker execution failed:', sanitizedError);
+
       if (runtimeUI) {
         runtimeUI.endStreaming(streamingRequestId);
       }
