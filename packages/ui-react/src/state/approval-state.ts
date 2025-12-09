@@ -4,10 +4,10 @@
  * Platform-agnostic state management for approval patterns and history.
  * Pure functions that return new state objects for immutability.
  *
- * @module @golem-forge/core/approval-state
+ * @module @golem-forge/ui-react/state/approval-state
  */
 
-import type { ApprovalRisk, ApprovalType } from './ui-events.js';
+import type { ApprovalRisk, ApprovalType } from '@golem-forge/core';
 
 // ============================================================================
 // Types

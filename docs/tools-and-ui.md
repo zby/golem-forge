@@ -278,6 +278,15 @@ Golem Forge uses an **event-driven UI architecture** that cleanly separates the 
 │  └─────────────────┘  └─────────────────┘  └─────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                               ▲
+                              │
+┌─────────────────────────────────────────────────────────────┐
+│                   @golem-forge/ui-react                     │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
+│  │  State Modules  │  │  React Contexts │  │  UIProvider │ │
+│  │  (pure funcs)   │  │  (hooks)        │  │  (combined) │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              ▲
           ┌───────────────────┴───────────────────┐
           ▼                                       ▼
 ┌─────────────────────┐               ┌─────────────────────┐
@@ -466,16 +475,54 @@ golem-forge ./worker --headless --trace full --input "Process files"
 | `--auto-approve [mode]` | Auto-approve approvals: `true` (default if flag present), `false`, or `session` |
 | `--trace <level>` | Output level: `quiet`, `summary`, `full`, `debug` |
 
+### @golem-forge/ui-react
+
+Shared React state management for UI implementations (`packages/ui-react/`):
+
+**State Modules** (pure functions):
+- `createMessageState()`, `addMessage()`, `updateStreamingFromEvent()` - conversation history
+- `createApprovalState()`, `addApproval()`, `isAutoApproved()` - approval patterns
+- `createWorkerState()`, `updateFromProgress()`, `getWorkerPath()` - worker tree
+
+**React Contexts** (event bus integration):
+- `EventBusContext` - provides UIEventBus to component tree
+- `MessagesContext` - subscribes to message/streaming events, manages state
+- `ApprovalContext` - handles approval requests/responses with auto-approval
+- `WorkerContext` - tracks worker tree from workerUpdate events
+- `UIStateContext` - UI mode (idle, input, approval), focus, errors
+
+**Combined Provider:**
+```tsx
+import { createUIEventBus } from '@golem-forge/core';
+import { UIProvider, useMessages, useStreaming } from '@golem-forge/ui-react';
+
+const bus = createUIEventBus();
+
+function App() {
+  return (
+    <UIProvider bus={bus}>
+      <ChatUI />
+    </UIProvider>
+  );
+}
+
+function ChatUI() {
+  const messages = useMessages();
+  const { content, isStreaming } = useStreaming();
+  const pending = usePendingApproval();
+  // ... render UI
+}
+```
+
+**Convenience Hooks:**
+- `useMessages()`, `useStreaming()`, `useConversationMessages()`
+- `usePendingApproval()`, `useApprovalStats()`, `useIsAutoApproved()`
+- `useActiveWorker()`, `useWorkerPath()`, `useWorkerStats()`
+- `useUIMode()`, `useUIFocus()`, `useUIError()`
+
 ### InkAdapter
 
-React/Ink implementation with context-based state (`packages/cli/src/ui/ink/`):
-
-**Contexts:**
-- `ThemeContext` - semantic color theming
-- `UIStateContext` - mode management (idle, input, approval, etc.)
-- `MessagesContext` - conversation history and streaming
-- `WorkerContext` - worker tree state
-- `ApprovalContext` - approval request/response flow
+React/Ink terminal implementation using ui-react contexts (`packages/cli/src/ui/ink/`):
 
 **Components:**
 - Layout: `Header`, `Footer`, `MainContent`, `InputPrompt`
@@ -819,16 +866,16 @@ We use a semantic type system for tool results instead of always returning strin
 
 ### Note on State Modules
 
-The `@golem-forge/core` package exports state management modules (`createMessageState`, `createWorkerState`, `createApprovalState`) that are **infrastructure for stateful UIs**. These are currently:
+State management has been moved to `@golem-forge/ui-react`:
 
-- **Exported** and fully tested
-- **Not used** by `EventCLIAdapter` (which is intentionally stateless)
+- **State modules** (`createMessageState`, `createWorkerState`, `createApprovalState`) are pure functions that can be used independently of React
+- **React contexts** subscribe to UIEventBus events and manage state automatically
+- **EventCLIAdapter** remains stateless - it renders events directly to the terminal stream
 
-The CLI adapter renders events directly to the terminal stream without maintaining conversation state. These modules are designed for:
-- **Browser extension**: React components need to maintain state for re-rendering
-- **Ink-based terminal UI**: Would need state for layout management
-
-They remain as ready-to-use infrastructure for the browser implementation.
+The `@golem-forge/ui-react` package provides the foundation for:
+- **Browser extension**: React components with automatic state management
+- **Ink-based terminal UI**: React/Ink components sharing state via contexts
+- **Custom UIs**: State modules can be used standalone without React
 
 ---
 

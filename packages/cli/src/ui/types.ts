@@ -119,8 +119,9 @@ export type UIApprovalResult =
 // Progress (re-exported from core)
 // ============================================================================
 
-// Re-export progress types from core
-export type { WorkerStatus as TaskStatus, TaskProgress } from "@golem-forge/core";
+// Re-export progress types from ui-react
+export type { WorkerStatus as TaskStatus } from "@golem-forge/core";
+export type { TaskProgress } from "@golem-forge/ui-react";
 
 /**
  * Status update for display.

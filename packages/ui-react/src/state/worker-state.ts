@@ -5,10 +5,10 @@
  * Workers can spawn sub-workers, forming a tree structure.
  * Pure functions that return new state objects for immutability.
  *
- * @module @golem-forge/core/worker-state
+ * @module @golem-forge/ui-react/state/worker-state
  */
 
-import type { WorkerStatus, WorkerInfo } from './ui-events.js';
+import type { WorkerStatus, WorkerInfo } from '@golem-forge/core';
 
 // ============================================================================
 // Types

@@ -5,7 +5,7 @@
  * Includes messages, tool results, status updates, and streaming.
  * Pure functions that return new state objects for immutability.
  *
- * @module @golem-forge/core/message-state
+ * @module @golem-forge/ui-react/state/message-state
  */
 
 import type {
@@ -14,7 +14,7 @@ import type {
   StatusType,
   ToolResultStatus,
   ToolResultValue,
-} from './ui-events.js';
+} from '@golem-forge/core';
 
 // Re-export Message for consumers
 export type { Message };

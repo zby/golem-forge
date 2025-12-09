@@ -26,6 +26,7 @@ import {
   getMessageStats,
 } from './message-state.js';
 import type { MessageState, Message, StatusUpdate, ToolResultData } from './message-state.js';
+import type { ToolResultValue } from '@golem-forge/core';
 
 describe('Message State', () => {
   let state: MessageState;
@@ -261,7 +262,7 @@ describe('Message State', () => {
           kind: 'git.status' as 'json', // Cast to satisfy TS since it's a custom kind
           data: { branch: 'main', ahead: 2 },
           summary: 'On branch main, 2 commits ahead',
-        } as import('./ui-events.js').ToolResultValue
+        } as ToolResultValue
       );
 
       const msg = state.messages[0];
@@ -280,7 +281,7 @@ describe('Message State', () => {
         {
           kind: 'custom.result' as 'json', // Cast to satisfy TS since it's a custom kind
           data: { foo: 'bar' },
-        } as import('./ui-events.js').ToolResultValue
+        } as ToolResultValue
       );
 
       const msg = state.messages[0];

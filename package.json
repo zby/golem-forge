@@ -7,15 +7,16 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @golem-forge/core && npm run build -w @golem-forge/cli",
+    "build": "npm run build -w @golem-forge/core && npm run build -w @golem-forge/ui-react && npm run build -w @golem-forge/cli",
     "build:all": "npm run build && npm run build -w @golem-forge/browser",
-    "test": "npm run test -w @golem-forge/core && npm run test -w @golem-forge/cli && npm run test -w @golem-forge/browser",
+    "test": "npm run test -w @golem-forge/core && npm run test -w @golem-forge/ui-react && npm run test -w @golem-forge/cli && npm run test -w @golem-forge/browser",
+    "test:ui-react": "npm run test -w @golem-forge/ui-react",
     "test:cli": "npm run test -w @golem-forge/cli",
     "test:browser": "npm run test -w @golem-forge/browser",
     "test:integration": "npm run test:integration -w @golem-forge/cli",
     "test:live": "npm run test:live -w @golem-forge/cli",
     "lint": "npm run lint -w @golem-forge/cli",
-    "clean": "npm run clean -w @golem-forge/core -w @golem-forge/cli"
+    "clean": "npm run clean -w @golem-forge/core -w @golem-forge/ui-react -w @golem-forge/cli"
   },
   "devDependencies": {
     "typescript": "^5.7.0"
