@@ -146,6 +146,7 @@ export class InkAdapter extends BaseUIImplementation {
           options={this.options}
           onReady={(actions) => {
             this.actions = actions;
+            this.subscribeToEvents();
             this.initialized = true;
             resolve();
           }}
@@ -158,6 +159,16 @@ export class InkAdapter extends BaseUIImplementation {
       };
       process.on("SIGINT", this.sigintHandler);
     });
+  }
+
+  private subscribeToEvents(): void {
+    // Subscribe to input prompt events from runtime
+    this.subscriptions.push(
+      this.bus.on("inputPrompt", (event) => {
+        this.actions!.inkUI.setInputPrompt(event.requestId, event.prompt);
+        this.actions!.ui.setMode("input");
+      })
+    );
   }
 
   async shutdown(): Promise<void> {

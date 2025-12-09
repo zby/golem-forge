@@ -307,6 +307,168 @@ describe('Message State', () => {
         expect(msg.result.error).toBe('Something went wrong');
       }
     });
+
+    it('should preserve the full ToolResultValue for text', () => {
+      const value: ToolResultValue = {
+        kind: 'text',
+        content: 'Full text content that should be preserved',
+      };
+
+      state = addToolResultFromEvent(
+        state,
+        'call-1',
+        'read_tool',
+        'success',
+        100,
+        value
+      );
+
+      const msg = state.messages[0];
+      if (msg.type === 'tool_result') {
+        expect(msg.result.value).toBeDefined();
+        expect(msg.result.value).toEqual(value);
+        expect(msg.result.value?.kind).toBe('text');
+      }
+    });
+
+    it('should preserve the full ToolResultValue for diff', () => {
+      const value: ToolResultValue = {
+        kind: 'diff',
+        path: '/src/app.ts',
+        original: 'const x = 1;',
+        modified: 'const x = 2;',
+        isNew: false,
+        bytesWritten: 13,
+      };
+
+      state = addToolResultFromEvent(
+        state,
+        'call-1',
+        'write_file',
+        'success',
+        150,
+        value
+      );
+
+      const msg = state.messages[0];
+      if (msg.type === 'tool_result') {
+        expect(msg.result.value).toBeDefined();
+        expect(msg.result.value?.kind).toBe('diff');
+        if (msg.result.value?.kind === 'diff') {
+          expect(msg.result.value.original).toBe('const x = 1;');
+          expect(msg.result.value.modified).toBe('const x = 2;');
+          expect(msg.result.value.path).toBe('/src/app.ts');
+        }
+      }
+    });
+
+    it('should preserve the full ToolResultValue for file_content', () => {
+      const value: ToolResultValue = {
+        kind: 'file_content',
+        path: '/data/config.json',
+        content: '{"key": "value", "nested": {"a": 1}}',
+        size: 36,
+      };
+
+      state = addToolResultFromEvent(
+        state,
+        'call-1',
+        'read_file',
+        'success',
+        50,
+        value
+      );
+
+      const msg = state.messages[0];
+      if (msg.type === 'tool_result') {
+        expect(msg.result.value).toBeDefined();
+        expect(msg.result.value?.kind).toBe('file_content');
+        if (msg.result.value?.kind === 'file_content') {
+          expect(msg.result.value.content).toBe('{"key": "value", "nested": {"a": 1}}');
+          expect(msg.result.value.path).toBe('/data/config.json');
+        }
+      }
+    });
+
+    it('should preserve the full ToolResultValue for file_list', () => {
+      const value: ToolResultValue = {
+        kind: 'file_list',
+        path: '/src',
+        files: ['app.ts', 'index.ts', 'utils.ts', 'types.ts'],
+        count: 4,
+      };
+
+      state = addToolResultFromEvent(
+        state,
+        'call-1',
+        'list_dir',
+        'success',
+        30,
+        value
+      );
+
+      const msg = state.messages[0];
+      if (msg.type === 'tool_result') {
+        expect(msg.result.value).toBeDefined();
+        expect(msg.result.value?.kind).toBe('file_list');
+        if (msg.result.value?.kind === 'file_list') {
+          expect(msg.result.value.files).toHaveLength(4);
+          expect(msg.result.value.files).toContain('app.ts');
+        }
+      }
+    });
+
+    it('should preserve the full ToolResultValue for json', () => {
+      const value: ToolResultValue = {
+        kind: 'json',
+        data: { users: [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }] },
+        summary: '2 users found',
+      };
+
+      state = addToolResultFromEvent(
+        state,
+        'call-1',
+        'api_call',
+        'success',
+        200,
+        value
+      );
+
+      const msg = state.messages[0];
+      if (msg.type === 'tool_result') {
+        expect(msg.result.value).toBeDefined();
+        expect(msg.result.value?.kind).toBe('json');
+        if (msg.result.value?.kind === 'json') {
+          expect(msg.result.value.data).toEqual({
+            users: [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }],
+          });
+        }
+      }
+    });
+
+    it('should have both value and summary', () => {
+      const value: ToolResultValue = {
+        kind: 'text',
+        content: 'Full content here',
+        summary: 'Custom summary',
+      };
+
+      state = addToolResultFromEvent(
+        state,
+        'call-1',
+        'test_tool',
+        'success',
+        100,
+        value
+      );
+
+      const msg = state.messages[0];
+      if (msg.type === 'tool_result') {
+        // Both value and summary should be present
+        expect(msg.result.value).toBeDefined();
+        expect(msg.result.summary).toBe('Custom summary');
+      }
+    });
   });
 
   describe('addStatus', () => {

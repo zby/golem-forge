@@ -20,7 +20,10 @@ import React, {
  */
 export interface InputPromptState {
   prompt: string;
-  resolve: (value: string) => void;
+  /** Request ID for event-based correlation */
+  requestId?: string;
+  /** Promise resolver for direct API calls */
+  resolve?: (value: string) => void;
 }
 
 /**
@@ -40,6 +43,9 @@ interface InkUIStateContextValue {
   actions: {
     setModelName: (name: string) => void;
     setContextUsage: (percentage: number) => void;
+    /** Event-based input prompt (for bus events) */
+    setInputPrompt: (requestId: string, prompt: string) => void;
+    /** Promise-based input prompt (for direct API calls) */
     requestInput: (prompt: string) => Promise<string>;
     clearInputPrompt: () => void;
   };
@@ -75,6 +81,15 @@ export function InkUIStateProvider({
     setState((s) => ({ ...s, contextUsage }));
   }, []);
 
+  /** Event-based input prompt - stores requestId for later correlation */
+  const setInputPrompt = useCallback((requestId: string, prompt: string) => {
+    setState((s) => ({
+      ...s,
+      inputPrompt: { requestId, prompt },
+    }));
+  }, []);
+
+  /** Promise-based input prompt - for direct API calls */
   const requestInput = useCallback((prompt: string): Promise<string> => {
     return new Promise((resolve) => {
       setState((s) => ({
@@ -94,11 +109,12 @@ export function InkUIStateProvider({
       actions: {
         setModelName,
         setContextUsage,
+        setInputPrompt,
         requestInput,
         clearInputPrompt,
       },
     }),
-    [state, setModelName, setContextUsage, requestInput, clearInputPrompt]
+    [state, setModelName, setContextUsage, setInputPrompt, requestInput, clearInputPrompt]
   );
 
   return (

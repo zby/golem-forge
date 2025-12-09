@@ -148,6 +148,15 @@ export {
 } from './contexts/UIStateContext.js';
 export type { UIStateProviderProps, UIMode, UIFocus } from './contexts/UIStateContext.js';
 
+// Manual Tools Context
+export {
+  ManualToolsProvider,
+  useManualTools,
+  useHasManualTools,
+  useManualToolsActions,
+} from './contexts/ManualToolsContext.js';
+export type { ManualToolsProviderProps } from './contexts/ManualToolsContext.js';
+
 // ============================================================================
 // Convenience Hooks
 // ============================================================================

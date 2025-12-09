@@ -38,6 +38,9 @@ export interface ToolResultData {
   toolName: string;
   toolCallId: string;
   status: ToolResultStatus;
+  /** Structured result value for rich rendering */
+  value?: ToolResultValue;
+  /** Human-readable summary (generated or from value.summary) */
   summary?: string;
   error?: string;
   durationMs: number;
@@ -191,6 +194,7 @@ function generateSummary(value: ToolResultValue): string | undefined {
 
 /**
  * Add a tool result from event data.
+ * Preserves the full ToolResultValue for rich rendering in the UI.
  */
 export function addToolResultFromEvent(
   state: MessageState,
@@ -207,6 +211,7 @@ export function addToolResultFromEvent(
     toolCallId,
     toolName,
     status,
+    value, // Preserve the full value for rich rendering
     summary,
     error,
     durationMs,

@@ -4,6 +4,15 @@
  * Platform-agnostic state management for approval patterns and history.
  * Pure functions that return new state objects for immutability.
  *
+ * ## Persistence Note
+ *
+ * Currently, "always" approvals are only stored in memory and behave like
+ * "session" approvals - they are remembered for the current process but
+ * not persisted to disk. To persist "always" approvals across sessions:
+ *
+ * 1. Save `state.alwaysApprovals` to disk when updated
+ * 2. Load them at startup via `UIProvider`'s `initialAlwaysApprovals` prop
+ *
  * @module @golem-forge/ui-react/state/approval-state
  */
 

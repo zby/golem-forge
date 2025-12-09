@@ -33,12 +33,15 @@ export function ApprovalDialog({
   const theme = useTheme();
   const [selected, setSelected] = useState(0);
 
+  // NOTE: "always" currently behaves like "session" - it is remembered for the
+  // current process but not persisted to disk. Persistence can be added later
+  // via the UIProvider's initialAlwaysApprovals prop.
   const options = [
     { key: "y", label: "[y]es", result: { approved: true } as ApprovalResult },
     { key: "n", label: "[n]o", result: { approved: false } as ApprovalResult },
     {
       key: "a",
-      label: "[a]lways",
+      label: "[a]lways*",
       result: { approved: "always" as const } as ApprovalResult,
     },
     {
@@ -136,9 +139,12 @@ export function ApprovalDialog({
       </Box>
 
       {/* Help text */}
-      <Box marginTop={1}>
+      <Box marginTop={1} flexDirection="column">
         <Text color={theme.colors.text.muted}>
           Press key or use arrows + enter
+        </Text>
+        <Text color={theme.colors.text.muted}>
+          * "always" remembered for this session only (not persisted)
         </Text>
       </Box>
     </Box>

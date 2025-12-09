@@ -109,12 +109,13 @@ export function ApprovalProvider({
       // Update state with approval decision
       setState((s) => addApproval(s, request, result));
 
-      // Emit response to bus
+      // Emit response to bus with full approval semantics
+      // Preserve 'session'|'always' discriminators for the runtime
       bus.emit('approvalResponse', {
         requestId: pending.requestId,
-        approved: result.approved === true ||
-          result.approved === 'session' ||
-          result.approved === 'always',
+        approved: result.approved,
+        // Only include reason for denied results
+        ...(result.approved === false && result.reason ? { reason: result.reason } : {}),
       });
 
       // Clear pending

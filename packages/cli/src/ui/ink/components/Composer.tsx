@@ -6,6 +6,7 @@
 
 import React from "react";
 import { Box, Text } from "ink";
+import { useEventBus } from "@golem-forge/ui-react";
 import {
   useTheme,
   useUIMode,
@@ -24,12 +25,25 @@ export function Composer(): React.ReactElement {
   const hasPendingApproval = useHasPendingApproval();
   const inkUIState = useInkUIState();
   const inkUIActions = useInkUIStateActions();
+  const bus = useEventBus();
 
   // Handle input submission
   const handleInputSubmit = (value: string) => {
-    if (inkUIState.inputPrompt?.resolve) {
-      inkUIState.inputPrompt.resolve(value);
+    const inputPrompt = inkUIState.inputPrompt;
+
+    // Event-based flow: emit userInput event with requestId
+    if (inputPrompt?.requestId) {
+      bus.emit("userInput", {
+        requestId: inputPrompt.requestId,
+        content: value,
+      });
     }
+
+    // Promise-based flow: resolve the promise
+    if (inputPrompt?.resolve) {
+      inputPrompt.resolve(value);
+    }
+
     inkUIActions.clearInputPrompt();
     setMode("idle");
   };

@@ -14,6 +14,7 @@ import { MessagesProvider } from '../contexts/MessagesContext.js';
 import { ApprovalProvider } from '../contexts/ApprovalContext.js';
 import { WorkerProvider } from '../contexts/WorkerContext.js';
 import { UIStateProvider } from '../contexts/UIStateContext.js';
+import { ManualToolsProvider } from '../contexts/ManualToolsContext.js';
 import type { ApprovalPattern } from '../state/approval-state.js';
 import type { UIMode, UIFocus } from '../contexts/UIStateContext.js';
 
@@ -36,7 +37,8 @@ export interface UIProviderProps {
  * 2. UIStateProvider - UI-level state (mode, focus, errors)
  * 3. WorkerProvider - Worker tree state
  * 4. ApprovalProvider - Approval patterns and pending approvals
- * 5. MessagesProvider - Message history and streaming
+ * 5. ManualToolsProvider - Manual tool availability
+ * 6. MessagesProvider - Message history and streaming
  *
  * @example
  * ```tsx
@@ -66,9 +68,11 @@ export function UIProvider({
       <UIStateProvider initialMode={initialUIMode} initialFocus={initialUIFocus}>
         <WorkerProvider bus={bus}>
           <ApprovalProvider bus={bus} initialAlwaysApprovals={initialAlwaysApprovals}>
-            <MessagesProvider bus={bus}>
-              {children}
-            </MessagesProvider>
+            <ManualToolsProvider bus={bus}>
+              <MessagesProvider bus={bus}>
+                {children}
+              </MessagesProvider>
+            </ManualToolsProvider>
           </ApprovalProvider>
         </WorkerProvider>
       </UIStateProvider>

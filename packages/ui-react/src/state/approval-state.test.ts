@@ -405,4 +405,65 @@ describe('Approval State', () => {
       expect(original.sessionApprovals).toHaveLength(0);
     });
   });
+
+  describe('approval result discriminators', () => {
+    // These tests verify that the approval semantics preserve the
+    // session/always discriminators correctly (fixes issue where
+    // all approvals were converted to boolean true)
+
+    const request: ApprovalRequestData = {
+      type: 'tool_call',
+      description: 'Test operation',
+      risk: 'low',
+    };
+
+    it('should preserve approved: true as simple approval', () => {
+      state = addApproval(state, request, { approved: true });
+
+      const lastEntry = state.history[state.history.length - 1];
+      expect(lastEntry.result.approved).toBe(true);
+      // Should NOT add to session or always approvals
+      expect(state.sessionApprovals).toHaveLength(0);
+      expect(state.alwaysApprovals).toHaveLength(0);
+    });
+
+    it('should preserve approved: session discriminator', () => {
+      state = addApproval(state, request, { approved: 'session' });
+
+      const lastEntry = state.history[state.history.length - 1];
+      expect(lastEntry.result.approved).toBe('session');
+      // Should add to session approvals
+      expect(state.sessionApprovals).toHaveLength(1);
+    });
+
+    it('should preserve approved: always discriminator', () => {
+      state = addApproval(state, request, { approved: 'always' });
+
+      const lastEntry = state.history[state.history.length - 1];
+      expect(lastEntry.result.approved).toBe('always');
+      // Should add to always approvals
+      expect(state.alwaysApprovals).toHaveLength(1);
+    });
+
+    it('should preserve approved: false with reason', () => {
+      state = addApproval(state, request, { approved: false, reason: 'Too risky' });
+
+      const lastEntry = state.history[state.history.length - 1];
+      expect(lastEntry.result.approved).toBe(false);
+      if (lastEntry.result.approved === false) {
+        expect(lastEntry.result.reason).toBe('Too risky');
+      }
+    });
+
+    it('should count session and always as approved in stats', () => {
+      state = addApproval(state, request, { approved: true });
+      state = addApproval(state, request, { approved: 'session' });
+      state = addApproval(state, request, { approved: 'always' });
+      state = addApproval(state, request, { approved: false });
+
+      const stats = getApprovalStats(state);
+      expect(stats.approvedCount).toBe(3); // true, session, always
+      expect(stats.deniedCount).toBe(1); // false
+    });
+  });
 });
