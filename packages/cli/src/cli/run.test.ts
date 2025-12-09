@@ -59,6 +59,15 @@ vi.mock("../ui/event-cli-adapter.js", () => ({
   createEventCLIAdapter: vi.fn(() => mockCLIAdapter),
 }));
 
+// Mock HeadlessAdapter - stable mock objects like EventCLIAdapter
+const mockHeadlessAdapter = {
+  initialize: vi.fn().mockResolvedValue(undefined),
+  shutdown: vi.fn().mockResolvedValue(undefined),
+};
+vi.mock("../ui/headless-adapter.js", () => ({
+  createHeadlessAdapter: vi.fn(() => mockHeadlessAdapter),
+}));
+
 vi.mock("./program.js", () => {
   const mockGetEffectiveConfig = vi.fn().mockReturnValue({
     model: "anthropic:claude-haiku-4-5",
@@ -142,6 +151,10 @@ Test instructions
     mockCLIAdapter.initialize.mockResolvedValue(undefined);
     mockCLIAdapter.shutdown.mockResolvedValue(undefined);
     mockRuntimeUI.requestApproval.mockResolvedValue({ approved: true });
+
+    // Reset headless adapter mock
+    mockHeadlessAdapter.initialize.mockResolvedValue(undefined);
+    mockHeadlessAdapter.shutdown.mockResolvedValue(undefined);
   });
 
   afterEach(async () => {
@@ -760,6 +773,131 @@ Instructions
 
       // These should be treated as text, not attachments
       expect(mockRun).toHaveBeenCalledWith("notes.txt readme.md");
+    });
+  });
+
+  describe("headless mode", () => {
+    it("should use HeadlessAdapter when --headless is specified", async () => {
+      const { createHeadlessAdapter } = await import("../ui/headless-adapter.js");
+
+      await runCLI(["node", "cli", workerDir, "--headless", "--input", "test"]);
+
+      expect(createHeadlessAdapter).toHaveBeenCalled();
+      expect(mockHeadlessAdapter.initialize).toHaveBeenCalled();
+      expect(mockHeadlessAdapter.shutdown).toHaveBeenCalled();
+    });
+
+    it("should pass autoManualTool option to HeadlessAdapter", async () => {
+      const { createHeadlessAdapter } = await import("../ui/headless-adapter.js");
+
+      await runCLI([
+        "node", "cli", workerDir,
+        "--headless",
+        "--auto-manual", "submit",
+        "--input", "test"
+      ]);
+
+      expect(createHeadlessAdapter).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          autoManualTool: "submit",
+        })
+      );
+    });
+
+    it("should pass autoApprove=true to HeadlessAdapter", async () => {
+      const { createHeadlessAdapter } = await import("../ui/headless-adapter.js");
+
+      await runCLI([
+        "node", "cli", workerDir,
+        "--headless",
+        "--auto-approve",
+        "--input", "test"
+      ]);
+
+      expect(createHeadlessAdapter).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          autoApprove: true,
+        })
+      );
+    });
+
+    it("should pass autoApprove='session' to HeadlessAdapter", async () => {
+      const { createHeadlessAdapter } = await import("../ui/headless-adapter.js");
+
+      await runCLI([
+        "node", "cli", workerDir,
+        "--headless",
+        "--auto-approve", "session",
+        "--input", "test"
+      ]);
+
+      expect(createHeadlessAdapter).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          autoApprove: "session",
+        })
+      );
+    });
+
+    it("should default autoApprove to false in headless mode", async () => {
+      const { createHeadlessAdapter } = await import("../ui/headless-adapter.js");
+
+      await runCLI(["node", "cli", workerDir, "--headless", "--input", "test"]);
+
+      expect(createHeadlessAdapter).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          autoApprove: false,
+        })
+      );
+    });
+
+    it("should use EventCLIAdapter when --headless is not specified", async () => {
+      const { createEventCLIAdapter } = await import("../ui/event-cli-adapter.js");
+      const { createHeadlessAdapter } = await import("../ui/headless-adapter.js");
+
+      await runCLI(["node", "cli", workerDir, "--input", "test"]);
+
+      expect(createEventCLIAdapter).toHaveBeenCalled();
+      expect(createHeadlessAdapter).not.toHaveBeenCalled();
+    });
+
+    it("should provide onEvent callback in headless mode for non-quiet trace", async () => {
+      const { createHeadlessAdapter } = await import("../ui/headless-adapter.js");
+
+      await runCLI([
+        "node", "cli", workerDir,
+        "--headless",
+        "--trace", "full",
+        "--input", "test"
+      ]);
+
+      expect(createHeadlessAdapter).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          onEvent: expect.any(Function),
+        })
+      );
+    });
+
+    it("should not provide onEvent callback in headless mode for quiet trace", async () => {
+      const { createHeadlessAdapter } = await import("../ui/headless-adapter.js");
+
+      await runCLI([
+        "node", "cli", workerDir,
+        "--headless",
+        "--trace", "quiet",
+        "--input", "test"
+      ]);
+
+      expect(createHeadlessAdapter).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          onEvent: undefined,
+        })
+      );
     });
   });
 });

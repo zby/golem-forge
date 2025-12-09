@@ -16,6 +16,7 @@ import type { ApprovalMode } from "../approval/index.js";
 import type { MountSandboxConfig } from "../sandbox/index.js";
 import { createUIEventBus, createRuntimeUI } from "@golem-forge/core";
 import { createEventCLIAdapter, type TraceLevel as AdapterTraceLevel } from "../ui/event-cli-adapter.js";
+import { createHeadlessAdapter, type HeadlessAdapterOptions } from "../ui/headless-adapter.js";
 
 /**
  * Trace levels control output verbosity.
@@ -39,6 +40,10 @@ interface CLIOptions {
   program?: string;
   trace: TraceLevel;
   attach?: string[];
+  // Headless mode options
+  headless?: boolean;
+  autoManual?: string;
+  autoApprove?: boolean | "session";
 }
 
 /**
@@ -335,6 +340,23 @@ function parseTraceLevel(value: string): TraceLevel {
 }
 
 /**
+ * Parse auto-approve option.
+ * Accepts: true (or no value), false, session
+ */
+function parseAutoApprove(value: string): boolean | "session" {
+  if (value === "session") {
+    return "session";
+  }
+  if (value === "true" || value === "") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  throw new Error(`Invalid auto-approve value: ${value}. Must be one of: true, false, session`);
+}
+
+/**
  * Main CLI execution.
  */
 export async function runCLI(argv: string[] = process.argv): Promise<void> {
@@ -353,6 +375,9 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .option("-A, --attach <file>", "Attach file explicitly (can be used multiple times)", collectAttachments, [])
     .option("-p, --program <path>", "Program root directory (auto-detected if not specified)")
     .option("-t, --trace <level>", "Trace level: quiet, summary, full, debug", parseTraceLevel, "debug")
+    .option("--headless", "Run in headless mode (no interactive UI)")
+    .option("--auto-manual <tool>", "Auto-invoke this manual tool when available (headless mode)")
+    .option("--auto-approve [mode]", "Auto-approve all approvals in headless mode (true/false/session)", parseAutoApprove)
     .action(async (dirArg: string, inputArgs: string[], options: CLIOptions) => {
       try {
         await executeWorker(dirArg, inputArgs, options);
@@ -471,12 +496,22 @@ async function executeWorker(
   // Create event-based UI infrastructure
   const eventBus = createUIEventBus();
   const runtimeUI = createRuntimeUI(eventBus);
-  const cliAdapter = createEventCLIAdapter(eventBus, {
-    traceLevel: options.trace as AdapterTraceLevel,
-  });
 
-  // Initialize the CLI adapter to start subscribing to events
-  await cliAdapter.initialize();
+  // Create appropriate adapter based on mode
+  const adapter = options.headless
+    ? createHeadlessAdapter(eventBus, {
+        autoManualTool: options.autoManual,
+        autoApprove: options.autoApprove ?? false,
+        onEvent: options.trace !== "quiet"
+          ? (event, data) => console.log(`[${event}]`, JSON.stringify(data))
+          : undefined,
+      } satisfies HeadlessAdapterOptions)
+    : createEventCLIAdapter(eventBus, {
+        traceLevel: options.trace as AdapterTraceLevel,
+      });
+
+  // Initialize the adapter to start subscribing to events
+  await adapter.initialize();
 
   // Wrap in try/finally to ensure cleanup of readline and SIGINT handlers
   let result: WorkerResult;
@@ -522,8 +557,8 @@ async function executeWorker(
 
     result = await runtime.run(runInput);
   } finally {
-    // Always shutdown the CLI adapter to clean up readline and SIGINT handlers
-    await cliAdapter.shutdown();
+    // Always shutdown the adapter to clean up resources
+    await adapter.shutdown();
   }
 
   // EventCLIAdapter handles all output via the event bus.

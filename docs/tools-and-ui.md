@@ -387,6 +387,85 @@ Features:
 - Handles approval dialogs via terminal prompts
 - Parses manual tool commands (`/tool name --arg value`)
 
+### HeadlessAdapter
+
+CI/automated mode implementation (`packages/cli/src/ui/headless-adapter.ts`):
+
+```typescript
+import { createHeadlessAdapter } from '@golem-forge/cli';
+
+const adapter = createHeadlessAdapter(bus, {
+  // Auto-invoke 'submit' when manual tools are available
+  autoManualTool: 'submit',
+
+  // Auto-approve all approval requests
+  autoApprove: true,  // or 'session' or false (default)
+
+  // Default input for prompts
+  defaultInput: '',
+
+  // Optional: log events for debugging
+  onEvent: (event, data) => console.log(event, data),
+
+  // Optional: handle session end
+  onSessionEnd: (reason, message) => { ... },
+});
+
+await adapter.initialize();
+// Runtime executes without user interaction
+```
+
+**Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `autoManualTool` | `string` | - | Tool to auto-invoke when `manualToolsAvailable` |
+| `autoApprove` | `boolean \| 'session'` | `false` | Auto-approve (`true`), session scope (`'session'`), or deny (`false`) |
+| `defaultInput` | `string` | `''` | Response for input prompts |
+| `onEvent` | `function` | - | Callback for all events (logging) |
+| `onSessionEnd` | `function` | - | Callback when session ends |
+
+**Use cases:**
+- CI/CD pipelines running workers automatically
+- Integration tests with predefined responses
+- Batch processing without human interaction
+
+### CLI Headless Mode
+
+Use command-line flags to run in headless mode:
+
+```bash
+# Basic headless mode (auto-deny approvals)
+golem-forge ./worker --headless --input "Process files"
+
+# Auto-approve all approval requests
+golem-forge ./worker --headless --auto-approve --input "Process files"
+
+# Auto-approve with session scope
+golem-forge ./worker --headless --auto-approve session --input "Process files"
+
+# Auto-invoke a manual tool (e.g., 'submit' when available)
+golem-forge ./worker --headless --auto-manual submit --input "Process files"
+
+# Combined: auto-approve and auto-invoke manual tool
+golem-forge ./worker --headless --auto-approve --auto-manual submit --input "Process files"
+
+# Quiet mode (minimal output)
+golem-forge ./worker --headless --trace quiet --input "Process files"
+
+# With event logging for debugging
+golem-forge ./worker --headless --trace full --input "Process files"
+```
+
+**CLI Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--headless` | Enable headless mode (no interactive UI) |
+| `--auto-manual <tool>` | Auto-invoke this manual tool when `manualToolsAvailable` |
+| `--auto-approve [mode]` | Auto-approve approvals: `true` (default if flag present), `false`, or `session` |
+| `--trace <level>` | Output level: `quiet`, `summary`, `full`, `debug` |
+
 ### InkAdapter
 
 React/Ink implementation with context-based state (`packages/cli/src/ui/ink/`):
