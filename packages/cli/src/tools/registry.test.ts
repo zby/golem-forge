@@ -95,7 +95,7 @@ describe('ToolsetRegistry', () => {
       const context: ToolsetContext = {
         sandbox: undefined,
         approvalController: new ApprovalController({ mode: 'approve_all' }),
-        projectRoot: '/test',
+        programRoot: '/test',
         config: { key: 'value' },
       };
 

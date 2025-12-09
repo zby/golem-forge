@@ -21,8 +21,8 @@ import { GitToolsetConfigSchema, type GitToolsetConfig, type GitCredentialsConfi
 export interface GitToolsetOptions {
   /** Sandbox for file operations (supports both zone-based and mount-based) */
   sandbox?: import('../../sandbox/mount-types.js').FileOperations;
-  /** Project root directory */
-  projectRoot?: string;
+  /** Program root directory */
+  programRoot?: string;
   /** Git toolset configuration */
   config?: GitToolsetConfig;
 }
@@ -61,7 +61,7 @@ export class GitToolset {
     const credentialEnv = buildCredentialEnv(options.config?.credentials);
 
     const backend = createCLIGitBackend({
-      projectRoot: options.projectRoot,
+      programRoot: options.programRoot,
       env: credentialEnv,
     });
 
@@ -101,7 +101,7 @@ async function gitToolsetFactory(ctx: ToolsetContext): Promise<NamedTool[]> {
 
   const toolset = new GitToolset({
     sandbox: ctx.sandbox,
-    projectRoot: ctx.projectRoot,
+    programRoot: ctx.programRoot,
     config,
   });
 

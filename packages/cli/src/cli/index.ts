@@ -10,12 +10,12 @@ export {
 } from "./approval.js";
 
 export {
-  findProjectRoot,
-  loadProjectConfig,
+  findProgramRoot,
+  loadProgramConfig,
   getEffectiveConfig,
   resolveWorkerPaths,
-  type ProjectConfig,
-  type ProjectInfo,
-} from "./project.js";
+  type ProgramConfig,
+  type ProgramInfo,
+} from "./program.js";
 
 export { runCLI } from "./run.js";

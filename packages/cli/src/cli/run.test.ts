@@ -24,28 +24,28 @@ vi.mock("./approval.js", () => ({
   createCLIApprovalCallback: vi.fn().mockReturnValue(vi.fn()),
 }));
 
-vi.mock("./project.js", () => {
+vi.mock("./program.js", () => {
   const mockGetEffectiveConfig = vi.fn().mockReturnValue({
     model: "anthropic:claude-haiku-4-5",
     trustLevel: "session",
     approvalMode: "interactive",
     workerPaths: ["workers"],
   });
-  const mockFindProjectRoot = vi.fn().mockResolvedValue(null);
-  const mockResolveSandboxConfig = vi.fn().mockImplementation((projectRoot, config) => ({
+  const mockFindProgramRoot = vi.fn().mockResolvedValue(null);
+  const mockResolveSandboxConfig = vi.fn().mockImplementation((programRoot, config) => ({
     mode: config?.mode ?? "sandboxed",
-    root: projectRoot,
+    root: programRoot,
     zones: new Map(Object.entries(config?.zones ?? {}).map(([name, zone]) => [
       name,
-      { name, absolutePath: `${projectRoot}/${(zone as { path: string }).path}`, relativePath: (zone as { path: string }).path, mode: (zone as { mode: string }).mode },
+      { name, absolutePath: `${programRoot}/${(zone as { path: string }).path}`, relativePath: (zone as { path: string }).path, mode: (zone as { mode: string }).mode },
     ])),
   }));
   return {
     getEffectiveConfig: mockGetEffectiveConfig,
-    findProjectRoot: mockFindProjectRoot,
+    findProgramRoot: mockFindProgramRoot,
     resolveSandboxConfig: mockResolveSandboxConfig,
     __mockGetEffectiveConfig: mockGetEffectiveConfig,
-    __mockFindProjectRoot: mockFindProjectRoot,
+    __mockFindProgramRoot: mockFindProgramRoot,
   };
 });
 
@@ -59,7 +59,7 @@ vi.mock("./trace.js", () => ({
 
 // Import after mocks
 import { runCLI } from "./run.js";
-import { getEffectiveConfig } from "./project.js";
+import { getEffectiveConfig } from "./program.js";
 import * as runtimeModule from "../runtime/index.js";
 
 // Get mock references
@@ -198,7 +198,7 @@ Test instructions
       expect(mockCreateWorkerRuntime).toHaveBeenCalledWith(
         expect.objectContaining({
           worker: expect.objectContaining({ name: "test-worker" }),
-          projectRoot: workerDir,
+          programRoot: workerDir,
         })
       );
     });
@@ -390,7 +390,7 @@ Process files in the workspace.
       }
     });
 
-    it("should allow running sandbox-only workers without input (project-config sandbox)", async () => {
+    it("should allow running sandbox-only workers without input (program-config sandbox)", async () => {
       // Worker without sandbox configuration
       const plainWorker = `---
 name: plain-worker
@@ -399,7 +399,7 @@ Process files.
 `;
       await fs.writeFile(path.join(workerDir, "main.worker"), plainWorker);
 
-      // Mock project config with sandbox (mount-based)
+      // Mock program config with sandbox (mount-based)
       vi.mocked(getEffectiveConfig).mockReturnValueOnce({
         model: "anthropic:claude-haiku-4-5",
         trustLevel: "session",
@@ -593,7 +593,7 @@ Instructions
       expect(mockCreateWorkerRuntime).toHaveBeenCalledWith(
         expect.objectContaining({
           worker: expect.objectContaining({ name: "test-worker" }),
-          model: "anthropic:claude-haiku-4-5",  // resolved from project config
+          model: "anthropic:claude-haiku-4-5",  // resolved from program config
           approvalMode: "approve_all",
         })
       );
