@@ -16,6 +16,7 @@ import {
   NotFoundError,
   SandboxError,
 } from './opfs-sandbox';
+import type { RuntimeUI, ApprovalResult, WorkerInfo } from '@golem-forge/core';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Logging
@@ -164,6 +165,12 @@ export type ToolCallback = (toolName: string, args: Record<string, unknown>, res
 
 /**
  * Options for running a worker.
+ *
+ * Supports two modes:
+ * - Callback-based (legacy): Use approvalCallback, onStream, onToolCall
+ * - Event-based (new): Use runtimeUI for event-driven communication
+ *
+ * If runtimeUI is provided, it takes precedence over callbacks.
  */
 export interface BrowserRuntimeOptions {
   /** The worker definition to execute */
@@ -172,23 +179,49 @@ export interface BrowserRuntimeOptions {
   modelId?: string;
   /** Program ID for sandbox access */
   programId?: string;
-  /** Approval mode */
-  approvalMode?: ApprovalMode;
-  /** Callback for approval requests (required for interactive mode) */
-  approvalCallback?: ApprovalCallback;
   /** Maximum iterations */
   maxIterations?: number;
-  /** Callback for streaming text */
+
+  // ---- Option A: Callback-based (legacy, for backwards compatibility) ----
+
+  /** Approval mode (only used if runtimeUI is not provided) */
+  approvalMode?: ApprovalMode;
+  /** Callback for approval requests (only used if runtimeUI is not provided) */
+  approvalCallback?: ApprovalCallback;
+  /** Callback for streaming text (only used if runtimeUI is not provided) */
   onStream?: StreamCallback;
-  /** Callback for tool calls */
+  /** Callback for tool calls (only used if runtimeUI is not provided) */
   onToolCall?: ToolCallback;
+
+  // ---- Option B: Event-based (new, preferred) ----
+
+  /**
+   * RuntimeUI instance for event-based communication.
+   * If provided, uses events instead of callbacks for:
+   * - Streaming (runtimeUI.appendStreaming)
+   * - Tool execution (runtimeUI.showToolStarted, runtimeUI.showToolResult)
+   * - Approval (runtimeUI.requestApproval)
+   */
+  runtimeUI?: RuntimeUI;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Approval Controller (simplified for browser)
+// Approval Controllers
 // ─────────────────────────────────────────────────────────────────────────────
 
-class BrowserApprovalController {
+/**
+ * Interface for approval controllers.
+ * Supports both callback-based and event-based approval.
+ */
+interface IApprovalController {
+  requestApproval(request: ApprovalRequest): Promise<ApprovalDecision>;
+}
+
+/**
+ * Callback-based approval controller (legacy).
+ * Uses approvalMode and approvalCallback for approval decisions.
+ */
+class CallbackApprovalController implements IApprovalController {
   private mode: ApprovalMode;
   private callback?: ApprovalCallback;
   private sessionCache = new Map<string, ApprovalDecision>();
@@ -230,6 +263,45 @@ class BrowserApprovalController {
   }
 }
 
+/**
+ * Event-based approval controller.
+ * Uses RuntimeUI for approval via event bus.
+ */
+class EventApprovalController implements IApprovalController {
+  private runtimeUI: RuntimeUI;
+  private workerPath: WorkerInfo[];
+
+  constructor(runtimeUI: RuntimeUI, workerPath: WorkerInfo[] = []) {
+    this.runtimeUI = runtimeUI;
+    this.workerPath = workerPath;
+  }
+
+  async requestApproval(request: ApprovalRequest): Promise<ApprovalDecision> {
+    // Use RuntimeUI's event-based approval
+    const result: ApprovalResult = await this.runtimeUI.requestApproval(
+      'tool_call',
+      request.description,
+      request.toolArgs,
+      'medium', // Default to medium risk for write/delete operations
+      this.workerPath
+    );
+
+    // Convert ApprovalResult to ApprovalDecision
+    if (result.approved === true) {
+      return { approved: true, remember: 'none' };
+    } else if (result.approved === false) {
+      return { approved: false, note: result.reason, remember: 'none' };
+    } else if (result.approved === 'session') {
+      return { approved: true, remember: 'session' };
+    } else {
+      // 'always' - treat as session approval for now
+      // (always approvals are managed by UIProvider, not here)
+      return { approved: true, remember: 'session' };
+    }
+  }
+}
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tool Creation
 // ─────────────────────────────────────────────────────────────────────────────
@@ -239,7 +311,7 @@ class BrowserApprovalController {
  */
 function createFilesystemTools(
   sandbox: FileOperations,
-  approvalController: BrowserApprovalController
+  approvalController: IApprovalController
 ): Record<string, Tool> {
   const tools: Record<string, Tool> = {};
 
@@ -427,18 +499,29 @@ export class BrowserWorkerRuntime {
   private model?: LanguageModel;
   private sandbox?: MountSandbox;
   private tools: Record<string, Tool> = {};
-  private approvalController: BrowserApprovalController;
+  private approvalController: IApprovalController;
   private initialized = false;
 
   constructor(options: BrowserRuntimeOptions) {
     this.worker = options.worker;
     this.options = options;
 
-    // Create approval controller
-    this.approvalController = new BrowserApprovalController(
-      options.approvalMode || 'interactive',
-      options.approvalCallback
-    );
+    // Create approval controller based on mode
+    if (options.runtimeUI) {
+      // Event-based mode: use RuntimeUI for approvals
+      const workerPath: WorkerInfo[] = [{
+        id: options.worker.name || 'worker',
+        depth: 0,
+        task: options.worker.name || 'Worker',
+      }];
+      this.approvalController = new EventApprovalController(options.runtimeUI, workerPath);
+    } else {
+      // Callback-based mode (legacy)
+      this.approvalController = new CallbackApprovalController(
+        options.approvalMode || 'interactive',
+        options.approvalCallback
+      );
+    }
   }
 
   /**
@@ -517,6 +600,7 @@ export class BrowserWorkerRuntime {
    * Execute the worker with the given input.
    *
    * Uses streamText for real-time streaming of responses.
+   * Supports both callback-based and event-based communication.
    */
   async run(input: string): Promise<WorkerResult> {
     if (!this.initialized) {
@@ -530,6 +614,12 @@ export class BrowserWorkerRuntime {
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
 
+    // Generate a unique request ID for streaming correlation
+    const streamingRequestId = `stream-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    // Get runtimeUI if in event mode
+    const runtimeUI = this.options.runtimeUI;
+
     try {
       // Build initial messages
       const messages: Message[] = [
@@ -538,6 +628,11 @@ export class BrowserWorkerRuntime {
       ];
 
       const hasTools = Object.keys(this.tools).length > 0;
+
+      // Start streaming if in event mode
+      if (runtimeUI) {
+        runtimeUI.startStreaming(streamingRequestId);
+      }
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
         log('Iteration', iteration + 1, '/', maxIterations);
@@ -569,13 +664,19 @@ export class BrowserWorkerRuntime {
         try {
           for await (const part of result.fullStream) {
             if (part.type === 'text-delta') {
-              fullText += part.textDelta;
-              this.options.onStream?.(part.textDelta);
+              fullText += part.text;
+
+              // Emit streaming event or call callback
+              if (runtimeUI) {
+                runtimeUI.appendStreaming(streamingRequestId, part.text);
+              } else {
+                this.options.onStream?.(part.text);
+              }
             } else if (part.type === 'tool-call') {
               toolCalls.push({
                 toolCallId: part.toolCallId,
                 toolName: part.toolName,
-                args: part.args as Record<string, unknown>,
+                args: part.input as Record<string, unknown>,
               });
             }
           }
@@ -591,6 +692,11 @@ export class BrowserWorkerRuntime {
 
         // If no tool calls, we're done
         if (toolCalls.length === 0) {
+          // End streaming in event mode
+          if (runtimeUI) {
+            runtimeUI.endStreaming(streamingRequestId);
+          }
+
           return {
             success: true,
             response: fullText,
@@ -609,12 +715,20 @@ export class BrowserWorkerRuntime {
 
         for (const tc of toolCalls) {
           toolCallCount++;
+          const startTime = Date.now();
+
+          // Emit tool started event in event mode
+          if (runtimeUI) {
+            runtimeUI.showToolStarted(tc.toolCallId, tc.toolName, tc.args);
+          }
 
           const tool = this.tools[tc.toolName];
           let toolResult: unknown;
+          let toolStatus: 'success' | 'error' = 'success';
 
           if (!tool || !tool.execute) {
             toolResult = { error: `Tool not found: ${tc.toolName}` };
+            toolStatus = 'error';
           } else {
             try {
               toolResult = await tool.execute(tc.args, {
@@ -623,11 +737,25 @@ export class BrowserWorkerRuntime {
               });
             } catch (err) {
               toolResult = { error: err instanceof Error ? err.message : String(err) };
+              toolStatus = 'error';
             }
           }
 
-          // Notify callback
-          this.options.onToolCall?.(tc.toolName, tc.args, toolResult);
+          const durationMs = Date.now() - startTime;
+
+          // Emit tool result event or call callback
+          if (runtimeUI) {
+            runtimeUI.showToolResult(
+              tc.toolCallId,
+              tc.toolName,
+              toolStatus,
+              durationMs,
+              { kind: 'json', data: toolResult },
+              toolStatus === 'error' ? String((toolResult as { error: string }).error) : undefined
+            );
+          } else {
+            this.options.onToolCall?.(tc.toolName, tc.args, toolResult);
+          }
 
           toolResults.push({
             type: 'tool-result',
@@ -660,6 +788,12 @@ export class BrowserWorkerRuntime {
 
       // Max iterations exceeded
       log('Max iterations exceeded:', maxIterations);
+
+      // End streaming in event mode
+      if (runtimeUI) {
+        runtimeUI.endStreaming(streamingRequestId);
+      }
+
       return {
         success: false,
         error: `Maximum iterations (${maxIterations}) exceeded`,
@@ -669,6 +803,12 @@ export class BrowserWorkerRuntime {
     } catch (err) {
       const sanitizedError = sanitizeErrorMessage(err);
       logError('Worker execution failed:', sanitizedError);
+
+      // End streaming in event mode on error
+      if (runtimeUI) {
+        runtimeUI.endStreaming(streamingRequestId);
+      }
+
       return {
         success: false,
         error: sanitizedError,

@@ -2,19 +2,22 @@
  * Sidepanel Component
  *
  * Main interface for the Golem Forge extension.
- * Provides chat interface for running workers and managing programs.
+ * Uses event-driven architecture with UIProvider from @golem-forge/ui-react.
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
+import { createUIEventBus } from '@golem-forge/core';
+import { UIProvider } from '@golem-forge/ui-react';
 import { settingsManager } from './storage/settings-manager';
 import { programManager } from './storage/program-manager';
-import { workerManager, type BundledProgram } from './services/worker-manager';
+import { createChromeAdapter } from './services/chrome-adapter';
 import {
-  createBrowserRuntime,
-  type ApprovalRequest,
-  type ApprovalDecision,
-} from './services/browser-runtime';
+  ChromeUIStateProvider,
+  useChromeUIState,
+  useChromeUIActions,
+} from './contexts/ChromeUIStateContext';
+import { ChatTab } from './components/ChatTab';
 import type { LLMProvider, Program } from './storage/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,94 +72,6 @@ const styles = {
     overflow: 'auto',
     padding: '16px',
   },
-  chatContainer: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    height: '100%',
-  },
-  messages: {
-    flex: 1,
-    overflow: 'auto',
-    paddingBottom: '16px',
-  },
-  message: {
-    marginBottom: '12px',
-    padding: '10px 14px',
-    borderRadius: '12px',
-    maxWidth: '85%',
-  },
-  userMessage: {
-    backgroundColor: '#6366f1',
-    color: 'white',
-    marginLeft: 'auto',
-    borderBottomRightRadius: '4px',
-  },
-  assistantMessage: {
-    backgroundColor: '#f3f4f6',
-    color: '#1f2937',
-    marginRight: 'auto',
-    borderBottomLeftRadius: '4px',
-  },
-  toolMessage: {
-    backgroundColor: '#fef3c7',
-    color: '#92400e',
-    marginRight: 'auto',
-    fontSize: '12px',
-    fontFamily: 'monospace',
-  },
-  inputArea: {
-    borderTop: '1px solid #e5e7eb',
-    padding: '12px',
-    backgroundColor: '#f9fafb',
-  },
-  inputWrapper: {
-    display: 'flex',
-    gap: '8px',
-  },
-  input: {
-    flex: 1,
-    padding: '10px 14px',
-    border: '1px solid #e5e7eb',
-    borderRadius: '8px',
-    fontSize: '14px',
-    outline: 'none',
-    resize: 'none' as const,
-    minHeight: '40px',
-    maxHeight: '120px',
-  },
-  sendButton: {
-    padding: '10px 16px',
-    backgroundColor: '#6366f1',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '14px',
-    fontWeight: 500,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap' as const,
-  },
-  sendButtonDisabled: {
-    backgroundColor: '#9ca3af',
-    cursor: 'not-allowed',
-  },
-  workerSelector: {
-    marginBottom: '12px',
-  },
-  select: {
-    width: '100%',
-    padding: '8px 12px',
-    border: '1px solid #e5e7eb',
-    borderRadius: '6px',
-    fontSize: '14px',
-    backgroundColor: 'white',
-  },
-  label: {
-    display: 'block',
-    fontSize: '12px',
-    fontWeight: 500,
-    color: '#6b7280',
-    marginBottom: '4px',
-  },
   settingsForm: {
     display: 'flex',
     flexDirection: 'column' as const,
@@ -173,6 +88,21 @@ const styles = {
     borderRadius: '6px',
     fontSize: '14px',
   },
+  select: {
+    width: '100%',
+    padding: '8px 12px',
+    border: '1px solid #e5e7eb',
+    borderRadius: '6px',
+    fontSize: '14px',
+    backgroundColor: 'white',
+  },
+  label: {
+    display: 'block',
+    fontSize: '12px',
+    fontWeight: 500,
+    color: '#6b7280',
+    marginBottom: '4px',
+  },
   saveButton: {
     padding: '12px',
     backgroundColor: '#10b981',
@@ -182,6 +112,17 @@ const styles = {
     fontSize: '14px',
     fontWeight: 500,
     cursor: 'pointer',
+  },
+  sendButton: {
+    padding: '10px 16px',
+    backgroundColor: '#6366f1',
+    color: 'white',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
   emptyState: {
     display: 'flex',
@@ -193,122 +134,7 @@ const styles = {
     textAlign: 'center' as const,
     padding: '20px',
   },
-  approvalDialog: {
-    position: 'fixed' as const,
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-  },
-  approvalContent: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '20px',
-    maxWidth: '400px',
-    width: '90%',
-  },
-  approvalTitle: {
-    fontSize: '16px',
-    fontWeight: 600,
-    marginBottom: '12px',
-  },
-  approvalDesc: {
-    fontSize: '14px',
-    color: '#6b7280',
-    marginBottom: '16px',
-  },
-  approvalArgs: {
-    backgroundColor: '#f3f4f6',
-    padding: '12px',
-    borderRadius: '6px',
-    fontSize: '12px',
-    fontFamily: 'monospace',
-    marginBottom: '16px',
-    maxHeight: '150px',
-    overflow: 'auto',
-  },
-  approvalButtons: {
-    display: 'flex',
-    gap: '8px',
-    justifyContent: 'flex-end',
-  },
-  approveButton: {
-    padding: '8px 16px',
-    backgroundColor: '#10b981',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-  },
-  denyButton: {
-    padding: '8px 16px',
-    backgroundColor: '#ef4444',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-  },
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface Message {
-  id: string;
-  role: 'user' | 'assistant' | 'tool';
-  content: string;
-}
-
-// Message ID counter for uniqueness within same millisecond
-let messageIdCounter = 0;
-function generateMessageId(): string {
-  return `${Date.now()}-${++messageIdCounter}`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Approval Dialog Component
-// ─────────────────────────────────────────────────────────────────────────────
-
-function ApprovalDialog({
-  request,
-  onDecision,
-}: {
-  request: ApprovalRequest;
-  onDecision: (decision: ApprovalDecision) => void;
-}) {
-  return (
-    <div style={styles.approvalDialog}>
-      <div style={styles.approvalContent}>
-        <h3 style={styles.approvalTitle}>Approval Required</h3>
-        <p style={styles.approvalDesc}>{request.description}</p>
-        <div style={styles.approvalArgs}>
-          <strong>{request.toolName}</strong>
-          <pre>{JSON.stringify(request.toolArgs, null, 2)}</pre>
-        </div>
-        <div style={styles.approvalButtons}>
-          <button
-            style={styles.denyButton}
-            onClick={() => onDecision({ approved: false, remember: 'none' })}
-          >
-            Deny
-          </button>
-          <button
-            style={styles.approveButton}
-            onClick={() => onDecision({ approved: true, remember: 'session' })}
-          >
-            Approve
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Default models per provider
@@ -363,6 +189,9 @@ function SettingsTab() {
   // UI state
   const [saved, setSaved] = useState(false);
   const [activeSection, setActiveSection] = useState<'api' | 'model' | 'programs'>('api');
+
+  // Get actions for refreshing API key status
+  const { refreshAPIKeyStatus } = useChromeUIActions();
 
   useEffect(() => {
     async function init() {
@@ -419,8 +248,9 @@ function SettingsTab() {
       await settingsManager.setAPIKey('openrouter', openrouterKey);
     }
 
-    // Clear modified tracking after save
+    // Clear modified tracking and refresh API key status
     setModifiedKeys(new Set());
+    await refreshAPIKeyStatus();
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   }
@@ -689,264 +519,12 @@ function SettingsTab() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Chat Tab Component
+// Sidepanel Content Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ChatTab() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [isRunning, setIsRunning] = useState(false);
-  const [bundledPrograms, setBundledPrograms] = useState<BundledProgram[]>([]);
-  const [selectedProgramId, setSelectedProgramId] = useState<string>('');
-  const [approvalRequest, setApprovalRequest] = useState<ApprovalRequest | null>(null);
-  const [approvalResolver, setApprovalResolver] = useState<((decision: ApprovalDecision) => void) | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Load bundled programs on mount
-  useEffect(() => {
-    const programs = workerManager.getBundledPrograms();
-    setBundledPrograms(programs);
-    // Select first program by default
-    if (programs.length > 0) {
-      setSelectedProgramId(programs[0].id);
-    }
-  }, []);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Handle program change - clear messages
-  function handleProgramChange(programId: string) {
-    setSelectedProgramId(programId);
-    setMessages([]); // Clear messages when program changes
-  }
-
-  const handleApproval = useCallback(
-    async (request: ApprovalRequest): Promise<ApprovalDecision> => {
-      return new Promise((resolve) => {
-        setApprovalRequest(request);
-        setApprovalResolver(() => resolve);
-      });
-    },
-    []
-  );
-
-  function handleApprovalDecision(decision: ApprovalDecision) {
-    if (approvalResolver) {
-      approvalResolver(decision);
-    }
-    setApprovalRequest(null);
-    setApprovalResolver(null);
-  }
-
-  async function handleSend() {
-    if (!input.trim() || isRunning || !selectedProgramId) return;
-
-    const userMessage: Message = {
-      id: generateMessageId(),
-      role: 'user',
-      content: input.trim(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
-    setIsRunning(true);
-
-    try {
-      // Get worker definition from the bundled program's main.worker
-      const worker = workerManager.getBundledProgramWorker(selectedProgramId);
-
-      // Create runtime - use programId for sandbox
-      const runtime = await createBrowserRuntime({
-        worker,
-        programId: selectedProgramId,
-        approvalMode: 'interactive',
-        approvalCallback: handleApproval,
-        onStream: (text) => {
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            if (last?.role === 'assistant') {
-              return [
-                ...prev.slice(0, -1),
-                { ...last, content: last.content + text },
-              ];
-            }
-            return [
-              ...prev,
-              { id: generateMessageId(), role: 'assistant', content: text },
-            ];
-          });
-        },
-        onToolCall: (toolName, _args, result) => {
-          const toolMessage: Message = {
-            id: generateMessageId(),
-            role: 'tool',
-            content: `[${toolName}] ${JSON.stringify(result).slice(0, 200)}`,
-          };
-          setMessages((prev) => [...prev, toolMessage]);
-        },
-      });
-
-      // Run worker
-      const result = await runtime.run(userMessage.content);
-
-      if (!result.success && result.error) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: generateMessageId(),
-            role: 'assistant',
-            content: `Error: ${result.error}`,
-          },
-        ]);
-      }
-    } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: generateMessageId(),
-          role: 'assistant',
-          content: `Error: ${error instanceof Error ? error.message : String(error)}`,
-        },
-      ]);
-    } finally {
-      setIsRunning(false);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }
-
-  // Get the selected program for display
-  const selectedProgram = bundledPrograms.find((p) => p.id === selectedProgramId);
-
-  return (
-    <div style={styles.chatContainer}>
-      {/* Program Selector */}
-      <div style={styles.workerSelector}>
-        <label style={styles.label}>Program</label>
-        <select
-          style={styles.select}
-          value={selectedProgramId}
-          onChange={(e) => handleProgramChange(e.target.value)}
-          disabled={isRunning}
-        >
-          {bundledPrograms.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name} - {p.description}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Messages */}
-      <div style={styles.messages}>
-        {messages.length === 0 ? (
-          <div style={styles.emptyState}>
-            <p><strong>{selectedProgram?.name}</strong></p>
-            <p style={{ marginTop: '4px', fontSize: '13px', color: '#6b7280' }}>
-              {selectedProgram?.description}
-            </p>
-            <p style={{ marginTop: '12px', fontSize: '13px' }}>
-              Send a message to start chatting.
-            </p>
-          </div>
-        ) : (
-          messages.map((msg) => (
-            <div
-              key={msg.id}
-              style={{
-                ...styles.message,
-                ...(msg.role === 'user'
-                  ? styles.userMessage
-                  : msg.role === 'tool'
-                  ? styles.toolMessage
-                  : styles.assistantMessage),
-              }}
-            >
-              {msg.content}
-            </div>
-          ))
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input Area */}
-      <div style={styles.inputArea}>
-        <div style={styles.inputWrapper}>
-          <textarea
-            style={styles.input}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
-            disabled={isRunning}
-            rows={1}
-          />
-          <button
-            style={{
-              ...styles.sendButton,
-              ...(isRunning || !input.trim() || !selectedProgramId ? styles.sendButtonDisabled : {}),
-            }}
-            onClick={handleSend}
-            disabled={isRunning || !input.trim() || !selectedProgramId}
-          >
-            {isRunning ? 'Running...' : 'Send'}
-          </button>
-        </div>
-      </div>
-
-      {/* Approval Dialog */}
-      {approvalRequest && (
-        <ApprovalDialog
-          request={approvalRequest}
-          onDecision={handleApprovalDecision}
-        />
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main App Component
-// ─────────────────────────────────────────────────────────────────────────────
-
-function SidepanelApp() {
-  const [activeTab, setActiveTab] = useState<'chat' | 'settings'>('chat');
-  const [hasAPIKeys, setHasAPIKeys] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    initializeApp();
-  }, []);
-
-  useEffect(() => {
-    checkAPIKeys();
-  }, [activeTab]);
-
-  async function initializeApp() {
-    // Check for pending tab from popup navigation
-    const result = await chrome.storage.local.get('pendingTab');
-    if (result.pendingTab) {
-      if (result.pendingTab === 'settings' || result.pendingTab === 'chat') {
-        setActiveTab(result.pendingTab);
-      }
-      // Clear the pending tab
-      await chrome.storage.local.remove('pendingTab');
-    }
-    await checkAPIKeys();
-  }
-
-  async function checkAPIKeys() {
-    const apiKeys = await settingsManager.getAPIKeys();
-    setHasAPIKeys(apiKeys.length > 0);
-    setLoading(false);
-  }
+function SidepanelContent() {
+  const { activeTab, hasAPIKeys, isLoading } = useChromeUIState();
+  const { setActiveTab } = useChromeUIActions();
 
   return (
     <div style={styles.container}>
@@ -980,7 +558,7 @@ function SidepanelApp() {
 
       {/* Content */}
       <div style={styles.content}>
-        {loading ? (
+        {isLoading ? (
           <div style={styles.emptyState}>Loading...</div>
         ) : activeTab === 'settings' ? (
           <SettingsTab />
@@ -999,6 +577,27 @@ function SidepanelApp() {
         )}
       </div>
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main App Component
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SidepanelApp() {
+  // Create event bus and adapter once
+  const { eventBus, adapter } = useMemo(() => {
+    const bus = createUIEventBus();
+    const chromeAdapter = createChromeAdapter(bus);
+    return { eventBus: bus, adapter: chromeAdapter };
+  }, []);
+
+  return (
+    <UIProvider bus={eventBus}>
+      <ChromeUIStateProvider adapter={adapter}>
+        <SidepanelContent />
+      </ChromeUIStateProvider>
+    </UIProvider>
   );
 }
 

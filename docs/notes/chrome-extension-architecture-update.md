@@ -1,6 +1,6 @@
 # Chrome Extension Architecture Update Plan
 
-**Status:** Planning
+**Status:** Completed
 **Date:** 2025-12-09
 
 ## Naming Convention
@@ -139,11 +139,11 @@ export interface BrowserRuntimeOptions {
 4. Remove `BrowserApprovalController` usage when in event mode
 
 **Tasks:**
-- [ ] Add `runtimeUI?: RuntimeUI` to `BrowserRuntimeOptions`
-- [ ] Modify `run()` to check for `runtimeUI` and use events instead of callbacks
-- [ ] Use `runtimeUI.requestApproval()` for approval flow (replaces BrowserApprovalController)
-- [ ] Emit streaming events via `runtimeUI.appendStreaming()`
-- [ ] Emit tool events via `runtimeUI.showToolStarted()` and `runtimeUI.showToolResult()`
+- [x] Add `runtimeUI?: RuntimeUI` to `BrowserRuntimeOptions`
+- [x] Modify `run()` to check for `runtimeUI` and use events instead of callbacks
+- [x] Use `runtimeUI.requestApproval()` for approval flow (replaces BrowserApprovalController)
+- [x] Emit streaming events via `runtimeUI.appendStreaming()`
+- [x] Emit tool events via `runtimeUI.showToolStarted()` and `runtimeUI.showToolResult()`
 
 ### Phase 2: Create ChromeAdapter
 
@@ -210,8 +210,8 @@ export function createChromeAdapter(
 ```
 
 **Tasks:**
-- [ ] Create `services/chrome-adapter.ts`
-- [ ] Export from `services/index.ts`
+- [x] Create `services/chrome-adapter.ts`
+- [x] Export from `services/index.ts`
 
 ### Phase 3: Update Sidepanel with UIProvider
 
@@ -239,10 +239,10 @@ function SidepanelApp() {
 ```
 
 **Tasks:**
-- [ ] Create event bus instance in sidepanel.tsx
-- [ ] Wrap app in UIProvider
-- [ ] Create ChromeUIStateProvider for chrome-specific state (selected program, etc.)
-- [ ] Initialize ChromeAdapter on mount
+- [x] Create event bus instance in sidepanel.tsx
+- [x] Wrap app in UIProvider
+- [x] Create ChromeUIStateProvider for chrome-specific state (selected program, etc.)
+- [x] Initialize ChromeAdapter on mount
 
 ### Phase 4: Refactor ChatTab
 
@@ -269,11 +269,11 @@ function ChatTab() {
 ```
 
 **Tasks:**
-- [ ] Replace messages useState with useMessages()
-- [ ] Replace streaming state with useStreaming()
-- [ ] Replace approvalRequest with usePendingApproval()
-- [ ] Use useApprovalActions().respond() instead of Promise resolver
-- [ ] Update message rendering to use UIMessage type
+- [x] Replace messages useState with useMessages()
+- [x] Replace streaming state with useStreaming()
+- [x] Replace approvalRequest with usePendingApproval()
+- [x] Use useApprovalActions().respond() instead of Promise resolver
+- [x] Update message rendering to use UIMessage type
 
 ### Phase 5: Refactor ApprovalDialog
 
@@ -308,10 +308,10 @@ function ApprovalDialog() {
 ```
 
 **Tasks:**
-- [ ] Remove Promise-based approval from ChatTab
-- [ ] Use usePendingApproval() hook
-- [ ] Use useApprovalActions().respond() for decisions
-- [ ] Add "session" and "always" approval options
+- [x] Remove Promise-based approval from ChatTab
+- [x] Use usePendingApproval() hook
+- [x] Use useApprovalActions().respond() for decisions
+- [x] Add "session" and "always" approval options
 
 ### Phase 6: Create Chrome-Specific Context
 
@@ -335,10 +335,10 @@ export function useChromeUIActions();
 ```
 
 **Tasks:**
-- [ ] Create `contexts/ChromeUIStateContext.tsx`
-- [ ] Move selectedProgramId, activeTab to context
-- [ ] Export hooks for state and actions
-- [ ] Update components to use hooks
+- [x] Create `contexts/ChromeUIStateContext.tsx`
+- [x] Move selectedProgramId, activeTab to context
+- [x] Export hooks for state and actions
+- [x] Update components to use hooks
 
 
 ## File Changes Summary
@@ -388,13 +388,13 @@ export function useChromeUIActions();
 
 ## Success Criteria
 
-- [ ] Chrome extension builds without errors
-- [ ] All existing tests pass
-- [ ] Chat functionality works (send message, receive response)
-- [ ] Streaming displays in real-time
-- [ ] Approval dialogs work with session/always options
-- [ ] Settings persist correctly
-- [ ] Program selection works
+- [x] Chrome extension builds without errors
+- [x] All existing tests pass
+- [x] Chat functionality works (send message, receive response)
+- [x] Streaming displays in real-time
+- [x] Approval dialogs work with session/always options
+- [x] Settings persist correctly
+- [x] Program selection works
 
 ## References
 

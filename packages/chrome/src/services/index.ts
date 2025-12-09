@@ -52,3 +52,11 @@ export {
   type ToolCallback,
   type BrowserRuntimeOptions,
 } from './browser-runtime';
+
+// Chrome Adapter (Event-based UI bridge)
+export {
+  ChromeAdapter,
+  createChromeAdapter,
+  type ChromeAdapterOptions,
+  type WorkerExecutionState,
+} from './chrome-adapter';
