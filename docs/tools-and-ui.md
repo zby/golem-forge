@@ -738,6 +738,19 @@ We use a semantic type system for tool results instead of always returning strin
 3. **Graceful Degradation**: Unknown types fall back to tree/JSON view
 4. **Summaries**: Tools provide human-readable summaries for compact display
 
+### Note on State Modules
+
+The `@golem-forge/core` package exports state management modules (`createMessageState`, `createWorkerState`, `createApprovalState`) that are **infrastructure for stateful UIs**. These are currently:
+
+- **Exported** and fully tested
+- **Not used** by `EventCLIAdapter` (which is intentionally stateless)
+
+The CLI adapter renders events directly to the terminal stream without maintaining conversation state. These modules are designed for:
+- **Browser extension**: React components need to maintain state for re-rendering
+- **Ink-based terminal UI**: Would need state for layout management
+
+They remain as ready-to-use infrastructure for the browser implementation.
+
 ---
 
 ## Related Documentation
