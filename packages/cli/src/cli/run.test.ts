@@ -517,7 +517,7 @@ Process files.
       );
     });
 
-    it("should enforce attachment policy constraints", async () => {
+    it("should surface attachment policy violations returned by runtime", async () => {
       const policyWorker = `---
 name: policy-worker
 attachment_policy:
@@ -535,6 +535,12 @@ Policy instructions
       await fs.writeFile(path.join(assetsDir, "one.png"), Buffer.from([0x89]));
       await fs.writeFile(path.join(assetsDir, "two.png"), Buffer.from([0x89]));
 
+      mockRun.mockResolvedValueOnce({
+        success: false,
+        error: "Attachment policy violation",
+        toolCallCount: 0,
+      });
+
       await expect(
         runCLI([
           "node",
@@ -549,9 +555,15 @@ Policy instructions
         ])
       ).rejects.toThrow("process.exit called");
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Attachment policy violation")
+      expect(mockRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          attachments: [
+            expect.objectContaining({ name: "one.png" }),
+            expect.objectContaining({ name: "two.png" }),
+          ],
+        })
       );
+      expect(processExitSpy).toHaveBeenCalledWith(1);
     });
 
     it("should allow attaching arbitrary file types and preserve mime type hints", async () => {
@@ -580,7 +592,7 @@ Policy instructions
       );
     });
 
-    it("should enforce allowed suffix restrictions from attachment policy", async () => {
+    it("should propagate allowed suffix violations from runtime", async () => {
       const restrictedWorker = `---
 name: restricted-worker
 attachment_policy:
@@ -591,6 +603,12 @@ Instructions
 `;
       await fs.writeFile(path.join(workerDir, "main.worker"), restrictedWorker);
       await fs.writeFile(path.join(workerDir, "notes.pdf"), "content");
+
+      mockRun.mockResolvedValueOnce({
+        success: false,
+        error: "Attachment policy violation",
+        toolCallCount: 0,
+      });
 
       await expect(
         runCLI([
@@ -604,9 +622,7 @@ Instructions
         ])
       ).rejects.toThrow("process.exit called");
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Attachment policy violation")
-      );
+      expect(processExitSpy).toHaveBeenCalledWith(1);
     });
   });
 

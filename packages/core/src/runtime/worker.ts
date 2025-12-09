@@ -28,6 +28,8 @@ import type {
   WorkerRunnerOptions,
   WorkerRunnerFactory,
   ToolCall,
+  Attachment,
+  BinaryData,
 } from "./types.js";
 
 /**
@@ -51,6 +53,82 @@ function getToolArgs(toolCall: { args?: unknown; input?: unknown }): Record<stri
   // Remove 'args' fallback once AI SDK <6 support is dropped
   const rawArgs = toolCall.input ?? toolCall.args ?? {};
   return rawArgs as Record<string, unknown>;
+}
+
+/**
+ * Compute the byte size of binary data in a cross-platform way.
+ */
+function getBinarySize(data: BinaryData): number {
+  if (typeof data === "string") {
+    return new TextEncoder().encode(data).byteLength;
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return data.byteLength;
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    return data.byteLength;
+  }
+
+  return 0;
+}
+
+/**
+ * Get normalized extension (lowercase, includes leading dot) from an attachment name.
+ */
+function getAttachmentExtension(name: string | undefined): string {
+  if (!name) return "";
+  const normalized = name.replace(/\\/g, "/");
+  const baseName = normalized.split("/").pop() ?? name;
+  const lastDot = baseName.lastIndexOf(".");
+  if (lastDot === -1 || lastDot === baseName.length - 1) {
+    return "";
+  }
+  return baseName.slice(lastDot).toLowerCase();
+}
+
+/**
+ * Enforce attachment policy defined on the worker.
+ * Throws an error when the policy is violated.
+ */
+function enforceAttachmentPolicy(worker: WorkerDefinition, attachments: Attachment[]): void {
+  const policy = worker.attachment_policy;
+  if (!policy || attachments.length === 0) return;
+
+  if (attachments.length > policy.max_attachments) {
+    throw new Error(
+      `Attachment policy violation: up to ${policy.max_attachments} attachment(s) allowed but ${attachments.length} provided.`
+    );
+  }
+
+  const totalBytes = attachments.reduce((sum, attachment) => {
+    return sum + getBinarySize(attachment.data);
+  }, 0);
+
+  if (totalBytes > policy.max_total_bytes) {
+    throw new Error(
+      `Attachment policy violation: total size ${totalBytes} bytes exceeds limit of ${policy.max_total_bytes} bytes.`
+    );
+  }
+
+  const allowed = policy.allowed_suffixes.map((s) => s.toLowerCase());
+  const denied = policy.denied_suffixes.map((s) => s.toLowerCase());
+
+  for (const attachment of attachments) {
+    const name = attachment.name || "attachment";
+    const ext = getAttachmentExtension(name);
+
+    if (allowed.length > 0 && (ext === "" || !allowed.includes(ext))) {
+      throw new Error(
+        `Attachment policy violation: ${name} (${ext || "no extension"}) not in allowed list: ${allowed.join(", ")}`
+      );
+    }
+
+    if (denied.length > 0 && ext && denied.includes(ext)) {
+      throw new Error(`Attachment policy violation: ${name} extension ${ext} is denied.`);
+    }
+  }
 }
 
 /**
@@ -370,10 +448,13 @@ export class WorkerRuntime implements WorkerRunner {
     }
 
     const maxIterations = this.options.maxIterations || 10;
+    const isChatMode = this.worker.mode === 'chat';
+    const maxContextTokens = this.worker.max_context_tokens;
     let toolCallCount = 0;
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
     let currentIteration = 0;
+    let lastResponse = "";
     const startTime = Date.now();
 
     // Emit execution start event
@@ -401,207 +482,307 @@ export class WorkerRuntime implements WorkerRunner {
       ];
 
       // Add user message with optional attachments
-      if (typeof input === "string") {
-        messages.push({ role: "user", content: input });
-      } else {
-        // Build user content with attachments
-        const userContent: Array<{ type: "text"; text: string } | { type: "file"; data: ArrayBuffer | Uint8Array | string; mediaType: string }> = [
-          { type: "text", text: input.content },
-        ];
-
-        if (input.attachments) {
-          for (const att of input.attachments) {
-            userContent.push({
-              type: "file",
-              data: att.data,
-              mediaType: att.mimeType,
-            });
-          }
-        }
-
-        messages.push({ role: "user", content: userContent });
-      }
+      this.addUserMessage(messages, input);
 
       // Filter to only LLM-invokable tools (excludes manual-only tools)
       // Tools without manualExecution config are treated as LLM tools (default)
       const llmTools = getLLMTools(this.tools as Record<string, NamedTool>);
       const hasTools = Object.keys(llmTools).length > 0;
 
-      for (let iteration = 0; iteration < maxIterations; iteration++) {
-        // Check for interruption at the start of each iteration (before counting it)
-        if (this.options.interruptSignal?.interrupted) {
-          this.emit({
-            type: "execution_end",
-            success: true,
-            response: "[Interrupted]",
-            totalIterations: iteration,  // Report actual completed iterations
-            totalToolCalls: toolCallCount,
-            totalTokens: { input: totalInputTokens, output: totalOutputTokens },
-            durationMs: Date.now() - startTime,
-          });
-          return {
-            success: true,
-            response: "[Interrupted]",
-            toolCallCount,
-            tokens: { input: totalInputTokens, output: totalOutputTokens },
-          };
-        }
-
-        currentIteration = iteration + 1;
-        const iterationNum = currentIteration;
-
-        // Emit message_send event
-        this.emit({
-          type: "message_send",
-          iteration: iterationNum,
-          messages: messages.map(m => ({ role: m.role as "system" | "user" | "assistant" | "tool", content: m.content })),
-          toolCount: Object.keys(this.tools).length,
-        });
-
-        // Call generateText - SDK handles tool execution and approval
-        // Note: llmTools is filtered to exclude manual-only tools
-        const result = await generateText({
-          model: this.model,
-          messages,
-          tools: hasTools ? llmTools : undefined,
-        });
-
-        // Accumulate tokens
-        totalInputTokens += result.usage?.inputTokens || 0;
-        totalOutputTokens += result.usage?.outputTokens || 0;
-
-        // Check if we have tool calls
-        const toolCalls = result.toolCalls;
-
-        // Emit response_receive event
-        this.emit({
-          type: "response_receive",
-          iteration: iterationNum,
-          text: result.text || undefined,
-          toolCalls: (toolCalls || []).map(tc => ({
-            id: tc.toolCallId,
-            name: tc.toolName,
-            args: getToolArgs(tc),
-          })),
-          usage: result.usage ? {
-            input: result.usage.inputTokens ?? 0,
-            output: result.usage.outputTokens ?? 0,
-          } : undefined,
-        });
-        if (!toolCalls || toolCalls.length === 0) {
-          // No tool calls, we're done
-          const response = result.text || "";
-          this.emit({
-            type: "execution_end",
-            success: true,
-            response,
-            totalIterations: iterationNum,
-            totalToolCalls: toolCallCount,
-            totalTokens: { input: totalInputTokens, output: totalOutputTokens },
-            durationMs: Date.now() - startTime,
-          });
-
-          // Emit UI events for completion
-          if (this.runtimeUI) {
-            // Show the assistant's response
-            if (response) {
-              this.runtimeUI.showMessage({ role: 'assistant', content: response });
-            }
-            // Update worker status to complete
-            this.runtimeUI.updateWorker(
-              this.workerId,
-              this.worker.name,
-              'complete',
-              undefined,
-              this.depth
-            );
-            // Signal session end (only for root worker)
-            if (this.depth === 0) {
-              this.runtimeUI.endSession('completed');
-            }
+      // Chat loop - runs once for single mode, repeatedly for chat mode
+      chatLoop: while (true) {
+        // Tool loop - handles LLM + tool calls until turn is complete
+        for (let iteration = 0; iteration < maxIterations; iteration++) {
+          // Check for interruption at the start of each iteration (before counting it)
+          if (this.options.interruptSignal?.interrupted) {
+            this.emit({
+              type: "execution_end",
+              success: true,
+              response: "[Interrupted]",
+              totalIterations: iteration,  // Report actual completed iterations
+              totalToolCalls: toolCallCount,
+              totalTokens: { input: totalInputTokens, output: totalOutputTokens },
+              durationMs: Date.now() - startTime,
+            });
+            return {
+              success: true,
+              response: "[Interrupted]",
+              toolCallCount,
+              tokens: { input: totalInputTokens, output: totalOutputTokens },
+            };
           }
 
-          return {
-            success: true,
-            response,
-            toolCallCount,
-            tokens: { input: totalInputTokens, output: totalOutputTokens },
-          };
+          currentIteration = iteration + 1;
+          const iterationNum = currentIteration;
+
+          // Emit message_send event
+          this.emit({
+            type: "message_send",
+            iteration: iterationNum,
+            messages: messages.map(m => ({ role: m.role as "system" | "user" | "assistant" | "tool", content: m.content })),
+            toolCount: Object.keys(this.tools).length,
+          });
+
+          // Call generateText - SDK handles tool execution and approval
+          // Note: llmTools is filtered to exclude manual-only tools
+          const result = await generateText({
+            model: this.model,
+            messages,
+            tools: hasTools ? llmTools : undefined,
+          });
+
+          // Accumulate tokens
+          totalInputTokens += result.usage?.inputTokens || 0;
+          totalOutputTokens += result.usage?.outputTokens || 0;
+
+          // Check if we have tool calls
+          const toolCalls = result.toolCalls;
+
+          // Emit response_receive event
+          this.emit({
+            type: "response_receive",
+            iteration: iterationNum,
+            text: result.text || undefined,
+            toolCalls: (toolCalls || []).map(tc => ({
+              id: tc.toolCallId,
+              name: tc.toolName,
+              args: getToolArgs(tc),
+            })),
+            usage: result.usage ? {
+              input: result.usage.inputTokens ?? 0,
+              output: result.usage.outputTokens ?? 0,
+            } : undefined,
+          });
+
+          if (!toolCalls || toolCalls.length === 0) {
+            // No tool calls - turn complete
+            lastResponse = result.text || "";
+
+            // Add assistant response to messages for chat history
+            if (lastResponse) {
+              messages.push({ role: "assistant", content: lastResponse });
+            }
+
+            // Show the assistant's response in UI
+            if (this.runtimeUI && lastResponse) {
+              this.runtimeUI.showMessage({ role: 'assistant', content: lastResponse });
+            }
+
+            // For single mode, we're done
+            if (!isChatMode) {
+              this.emit({
+                type: "execution_end",
+                success: true,
+                response: lastResponse,
+                totalIterations: iterationNum,
+                totalToolCalls: toolCallCount,
+                totalTokens: { input: totalInputTokens, output: totalOutputTokens },
+                durationMs: Date.now() - startTime,
+              });
+
+              // Emit UI events for completion
+              if (this.runtimeUI) {
+                this.runtimeUI.updateWorker(
+                  this.workerId,
+                  this.worker.name,
+                  'complete',
+                  undefined,
+                  this.depth
+                );
+                // Signal session end (only for root worker)
+                if (this.depth === 0) {
+                  this.runtimeUI.endSession('completed');
+                }
+              }
+
+              return {
+                success: true,
+                response: lastResponse,
+                toolCallCount,
+                tokens: { input: totalInputTokens, output: totalOutputTokens },
+              };
+            }
+
+            // Chat mode: emit context usage and get next user input
+            const totalTokens = totalInputTokens + totalOutputTokens;
+            if (this.runtimeUI) {
+              this.runtimeUI.updateContextUsage(totalTokens, maxContextTokens);
+
+              // Warn if context limit exceeded
+              if (totalTokens > maxContextTokens) {
+                this.runtimeUI.showStatus(
+                  'warning',
+                  `Context limit exceeded (${totalTokens}/${maxContextTokens} tokens). Use /new to start fresh.`
+                );
+              }
+            }
+
+            // Get next user input
+            if (!this.runtimeUI) {
+              // No UI available for chat mode - this shouldn't happen
+              throw new Error("Chat mode requires RuntimeUI for user input");
+            }
+
+            const userInput = await this.runtimeUI.getUserInput('> ');
+            const trimmedInput = userInput.trim();
+
+            // Handle commands
+            if (trimmedInput === '/exit') {
+              // Exit chat loop
+              this.emit({
+                type: "execution_end",
+                success: true,
+                response: lastResponse,
+                totalIterations: iterationNum,
+                totalToolCalls: toolCallCount,
+                totalTokens: { input: totalInputTokens, output: totalOutputTokens },
+                durationMs: Date.now() - startTime,
+              });
+
+              if (this.runtimeUI) {
+                this.runtimeUI.updateWorker(
+                  this.workerId,
+                  this.worker.name,
+                  'complete',
+                  undefined,
+                  this.depth
+                );
+                if (this.depth === 0) {
+                  this.runtimeUI.endSession('completed');
+                }
+              }
+
+              return {
+                success: true,
+                response: lastResponse,
+                toolCallCount,
+                tokens: { input: totalInputTokens, output: totalOutputTokens },
+              };
+            }
+
+            if (trimmedInput === '/new') {
+              // Reset conversation - keep only system message
+              messages.length = 1;
+              totalInputTokens = 0;
+              totalOutputTokens = 0;
+              if (this.runtimeUI) {
+                this.runtimeUI.showStatus('info', 'Conversation reset. Starting fresh.');
+                this.runtimeUI.updateContextUsage(0, maxContextTokens);
+              }
+              // Wait for new user input
+              const newUserInput = await this.runtimeUI.getUserInput('> ');
+              if (newUserInput.trim() === '/exit') {
+                this.emit({
+                  type: "execution_end",
+                  success: true,
+                  response: "",
+                  totalIterations: iterationNum,
+                  totalToolCalls: toolCallCount,
+                  totalTokens: { input: 0, output: 0 },
+                  durationMs: Date.now() - startTime,
+                });
+                if (this.runtimeUI) {
+                  this.runtimeUI.updateWorker(
+                    this.workerId,
+                    this.worker.name,
+                    'complete',
+                    undefined,
+                    this.depth
+                  );
+                  if (this.depth === 0) {
+                    this.runtimeUI.endSession('completed');
+                  }
+                }
+                return {
+                  success: true,
+                  response: "",
+                  toolCallCount,
+                  tokens: { input: 0, output: 0 },
+                };
+              }
+              messages.push({ role: "user", content: newUserInput });
+              continue chatLoop;
+            }
+
+            // Regular user input - add to messages and continue
+            messages.push({ role: "user", content: trimmedInput });
+            continue chatLoop;
+          }
+
+          // Add assistant message with tool calls to history
+          messages.push({
+            role: "assistant",
+            content: [
+              ...(result.text ? [{ type: "text" as const, text: result.text }] : []),
+              ...toolCalls.map(tc => ({
+                type: "tool-call" as const,
+                toolCallId: tc.toolCallId,
+                toolName: tc.toolName,
+                input: getToolArgs(tc),
+              })),
+            ],
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any);
+
+          // Execute tools via ToolExecutor
+          const executorCalls: ToolCall[] = toolCalls.map(tc => ({
+            toolCallId: tc.toolCallId,
+            toolName: tc.toolName,
+            toolArgs: getToolArgs(tc),
+          }));
+
+          // Increment count BEFORE execution so failures don't underreport
+          toolCallCount += executorCalls.length;
+
+          const executionResults = await this.toolExecutor!.executeBatch(executorCalls, {
+            messages,
+            iteration: iterationNum,
+          });
+
+          // Convert results to tool-result messages
+          const toolResultMessages = executionResults.map(result => ({
+            type: "tool-result" as const,
+            toolCallId: result.toolCallId,
+            toolName: result.toolName,
+            // AI SDK v6 requires output to be wrapped in { type: "json", value: ... }
+            output: { type: "json", value: result.output },
+          }));
+
+          // Add tool results to messages
+          messages.push({
+            role: "tool",
+            content: toolResultMessages,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any);
         }
 
-        // Add assistant message with tool calls to history
-        messages.push({
-          role: "assistant",
-          content: [
-            ...(result.text ? [{ type: "text" as const, text: result.text }] : []),
-            ...toolCalls.map(tc => ({
-              type: "tool-call" as const,
-              toolCallId: tc.toolCallId,
-              toolName: tc.toolName,
-              input: getToolArgs(tc),
-            })),
-          ],
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any);
-
-        // Execute tools via ToolExecutor
-        const executorCalls: ToolCall[] = toolCalls.map(tc => ({
-          toolCallId: tc.toolCallId,
-          toolName: tc.toolName,
-          toolArgs: getToolArgs(tc),
-        }));
-
-        // Increment count BEFORE execution so failures don't underreport
-        toolCallCount += executorCalls.length;
-
-        const executionResults = await this.toolExecutor!.executeBatch(executorCalls, {
-          messages,
-          iteration: iterationNum,
+        // Hit max iterations within a turn
+        const maxIterError = `Maximum iterations (${maxIterations}) exceeded`;
+        this.emit({
+          type: "execution_error",
+          success: false,
+          error: maxIterError,
+          totalIterations: maxIterations,
+          totalToolCalls: toolCallCount,
+          durationMs: Date.now() - startTime,
         });
 
-        // Convert results to tool-result messages
-        const toolResultMessages = executionResults.map(result => ({
-          type: "tool-result" as const,
-          toolCallId: result.toolCallId,
-          toolName: result.toolName,
-          // AI SDK v6 requires output to be wrapped in { type: "json", value: ... }
-          output: { type: "json", value: result.output },
-        }));
-
-        // Add tool results to messages
-        messages.push({
-          role: "tool",
-          content: toolResultMessages,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any);
-      }
-
-      // Hit max iterations
-      const maxIterError = `Maximum iterations (${maxIterations}) exceeded`;
-      this.emit({
-        type: "execution_error",
-        success: false,
-        error: maxIterError,
-        totalIterations: maxIterations,
-        totalToolCalls: toolCallCount,
-        durationMs: Date.now() - startTime,
-      });
-
-      // Emit UI error events
-      if (this.runtimeUI) {
-        this.runtimeUI.showStatus('error', maxIterError);
-        this.runtimeUI.updateWorker(this.workerId, this.worker.name, 'error', undefined, this.depth);
-        if (this.depth === 0) {
-          this.runtimeUI.endSession('error', maxIterError);
+        // Emit UI error events
+        if (this.runtimeUI) {
+          this.runtimeUI.showStatus('error', maxIterError);
+          this.runtimeUI.updateWorker(this.workerId, this.worker.name, 'error', undefined, this.depth);
+          if (this.depth === 0) {
+            this.runtimeUI.endSession('error', maxIterError);
+          }
         }
-      }
 
-      return {
-        success: false,
-        error: maxIterError,
-        toolCallCount,
-        tokens: { input: totalInputTokens, output: totalOutputTokens },
-      };
+        return {
+          success: false,
+          error: maxIterError,
+          toolCallCount,
+          tokens: { input: totalInputTokens, output: totalOutputTokens },
+        };
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.emit({
@@ -628,6 +809,36 @@ export class WorkerRuntime implements WorkerRunner {
         toolCallCount,
         tokens: { input: totalInputTokens, output: totalOutputTokens },
       };
+    }
+  }
+
+  /**
+   * Add a user message to the messages array.
+   * Handles both string input and structured input with attachments.
+   */
+  private addUserMessage(messages: ModelMessage[], input: RunInput): void {
+    if (typeof input === "string") {
+      messages.push({ role: "user", content: input });
+    } else {
+      const attachments = input.attachments ?? [];
+      if (attachments.length > 0) {
+        enforceAttachmentPolicy(this.worker, attachments);
+      }
+
+      // Build user content with attachments
+      const userContent: Array<
+        { type: "text"; text: string } | { type: "file"; data: ArrayBuffer | Uint8Array | string; mediaType: string }
+      > = [{ type: "text", text: input.content }];
+
+      for (const att of attachments) {
+        userContent.push({
+          type: "file",
+          data: att.data,
+          mediaType: att.mimeType,
+        });
+      }
+
+      messages.push({ role: "user", content: userContent });
     }
   }
 

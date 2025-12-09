@@ -9,7 +9,7 @@ import { Command } from "commander";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { createCLIWorkerRuntime, type CLIWorkerRuntimeOptions, type Attachment, type RunInput, type WorkerResult } from "../runtime/index.js";
-import { parseWorkerString, type WorkerDefinition } from "../worker/index.js";
+import { parseWorkerString } from "../worker/index.js";
 import { createRuntimeUIApprovalCallback } from "./approval.js";
 import { getEffectiveConfig, findProgramRoot, resolveSandboxConfig } from "./program.js";
 import type { ApprovalMode } from "../approval/index.js";
@@ -261,65 +261,6 @@ async function loadAttachments(filePaths: string[], workerDir: string): Promise<
 }
 
 /**
- * Validate attachments against the worker's attachment policy.
- */
-function enforceAttachmentPolicy(attachments: Attachment[], worker: WorkerDefinition): void {
-  if (!worker.attachment_policy || attachments.length === 0) {
-    return;
-  }
-
-  const policy = worker.attachment_policy;
-  const totalBytes = attachments.reduce((sum, attachment) => {
-    const data = attachment.data;
-    if (typeof data === "string") {
-      return sum + Buffer.byteLength(data);
-    }
-    // Buffer extends Uint8Array and has 'length' property
-    if (Buffer.isBuffer(data)) {
-      return sum + data.length;
-    }
-    // Uint8Array has length, ArrayBuffer has byteLength
-    if ('length' in data) {
-      return sum + (data as Uint8Array).length;
-    }
-    if ('byteLength' in data) {
-      return sum + (data as ArrayBuffer).byteLength;
-    }
-    return sum;
-  }, 0);
-
-  if (attachments.length > policy.max_attachments) {
-    throw new Error(
-      `Attachment policy violation: up to ${policy.max_attachments} attachment(s) allowed but ${attachments.length} provided.`
-    );
-  }
-
-  if (totalBytes > policy.max_total_bytes) {
-    throw new Error(
-      `Attachment policy violation: total size ${totalBytes} bytes exceeds limit of ${policy.max_total_bytes} bytes.`
-    );
-  }
-
-  const allowed = policy.allowed_suffixes.map((s) => s.toLowerCase());
-  const denied = policy.denied_suffixes.map((s) => s.toLowerCase());
-
-  for (const attachment of attachments) {
-    const name = attachment.name || "attachment";
-    const ext = path.extname(name).toLowerCase();
-
-    if (allowed.length > 0 && (ext === "" || !allowed.includes(ext))) {
-      throw new Error(
-        `Attachment policy violation: ${name} (${ext || "no extension"}) not in allowed list: ${allowed.join(", ")}`
-      );
-    }
-
-    if (denied.length > 0 && ext && denied.includes(ext)) {
-      throw new Error(`Attachment policy violation: ${name} extension ${ext} is denied.`);
-    }
-  }
-}
-
-/**
  * Collect multiple --attach options into an array.
  */
 function collectAttachments(value: string, previous: string[]): string[] {
@@ -456,10 +397,6 @@ async function executeWorker(
   const attachments = allAttachmentPaths.length > 0
     ? await loadAttachments(allAttachmentPaths, workerDir)
     : undefined;
-
-  if (attachments) {
-    enforceAttachmentPolicy(attachments, workerDefinition);
-  }
 
   // Read text input
   const textInput = await readInput(options, textArgs);

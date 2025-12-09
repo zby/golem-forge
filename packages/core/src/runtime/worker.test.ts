@@ -10,6 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { z } from "zod";
 import type { WorkerDefinition } from "../worker-schema.js";
 
 // Mock generateText from AI SDK
@@ -34,8 +35,10 @@ describe("WorkerRuntime", () => {
     name: "test-worker",
     instructions: "You are a helpful assistant.",
     description: "A test worker",
+    mode: "single",
     server_side_tools: [],
     locked: false,
+    max_context_tokens: 8000,
   };
 
   beforeEach(() => {
@@ -151,6 +154,107 @@ describe("WorkerRuntime", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe("Network error");
+    });
+
+    it("enforces attachment policy limits", async () => {
+      const workerWithPolicy: WorkerDefinition = {
+        ...simpleWorker,
+        attachment_policy: {
+          max_attachments: 1,
+          max_total_bytes: 100,
+          allowed_suffixes: [],
+          denied_suffixes: [],
+        },
+      };
+
+      const runtime = new WorkerRuntime({
+        worker: workerWithPolicy,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+      });
+      await runtime.initialize();
+
+      const result = await runtime.run({
+        content: "process files",
+        attachments: [
+          { mimeType: "text/plain", data: "file-a", name: "a.txt" },
+          { mimeType: "text/plain", data: "file-b", name: "b.txt" },
+        ],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Attachment policy violation");
+      expect(mockGenerateText).not.toHaveBeenCalled();
+    });
+
+    it("rejects attachments that are not in allowed suffix list", async () => {
+      const workerWithPolicy: WorkerDefinition = {
+        ...simpleWorker,
+        attachment_policy: {
+          max_attachments: 2,
+          max_total_bytes: 1_000,
+          allowed_suffixes: [".txt"],
+          denied_suffixes: [],
+        },
+      };
+
+      const runtime = new WorkerRuntime({
+        worker: workerWithPolicy,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+      });
+      await runtime.initialize();
+
+      const result = await runtime.run({
+        content: "process image",
+        attachments: [{ mimeType: "image/png", data: "fake-bytes", name: "diagram.png" }],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Attachment policy violation");
+      expect(mockGenerateText).not.toHaveBeenCalled();
+    });
+
+    it("excludes manual-only tools from LLM invocation", async () => {
+      const manualTool = {
+        name: "git_push",
+        description: "Manual git push",
+        inputSchema: z.object({}),
+        execute: vi.fn(),
+        manualExecution: { mode: "manual" as const },
+      };
+      const llmTool = {
+        name: "code_search",
+        description: "Search codebase",
+        inputSchema: z.object({
+          query: z.string(),
+        }),
+        execute: vi.fn(),
+      };
+
+      const runtime = new WorkerRuntime({
+        worker: simpleWorker,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+        tools: {
+          git_push: manualTool,
+          code_search: llmTool,
+        },
+      });
+      await runtime.initialize();
+
+      mockGenerateText.mockResolvedValueOnce({
+        text: "Done",
+        toolCalls: [],
+        finishReason: "stop",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      });
+
+      await runtime.run("search");
+
+      const callArgs = mockGenerateText.mock.calls[0][0];
+      expect(callArgs.tools).toBeDefined();
+      expect(Object.keys(callArgs.tools)).toEqual(["code_search"]);
     });
   });
 
@@ -269,6 +373,63 @@ describe("WorkerRuntime", () => {
   });
 });
 
+describe("dispose", () => {
+  it("unsubscribes runtime UI handlers", async () => {
+    const simpleWorker: WorkerDefinition = {
+      name: "test-worker",
+      instructions: "You are a helpful assistant.",
+      description: "A test worker",
+      mode: "single",
+      server_side_tools: [],
+      locked: false,
+      max_context_tokens: 8000,
+    };
+    const unsubManual = vi.fn();
+    const unsubDiff = vi.fn();
+    const mockBus = {
+      emit: vi.fn(),
+      on: vi.fn(() => vi.fn()),
+      off: vi.fn(),
+      clear: vi.fn(),
+    };
+
+    const mockRuntimeUI = {
+      bus: mockBus,
+      showMessage: vi.fn(),
+      showStatus: vi.fn(),
+      startStreaming: vi.fn(),
+      appendStreaming: vi.fn(),
+      endStreaming: vi.fn(),
+      showToolStarted: vi.fn(),
+      showToolResult: vi.fn(),
+      updateWorker: vi.fn(),
+      showManualTools: vi.fn(),
+      showDiffSummary: vi.fn(),
+      showDiffContent: vi.fn(),
+      endSession: vi.fn(),
+      requestApproval: vi.fn(),
+      getUserInput: vi.fn(),
+      updateContextUsage: vi.fn(),
+      onInterrupt: vi.fn(() => vi.fn()),
+      onManualToolInvoke: vi.fn(() => unsubManual),
+      onGetDiff: vi.fn(() => unsubDiff),
+    };
+
+    const runtime = new WorkerRuntime({
+      worker: simpleWorker,
+      approvalMode: "approve_all",
+      model: TEST_MODEL,
+      runtimeUI: mockRuntimeUI,
+    });
+    await runtime.initialize();
+
+    await runtime.dispose();
+
+    expect(unsubManual).toHaveBeenCalledTimes(1);
+    expect(unsubDiff).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("matchModelPattern", () => {
   it("matches exact model names", () => {
     expect(matchModelPattern("anthropic:claude-sonnet-4", "anthropic:claude-sonnet-4")).toBe(true);
@@ -307,8 +468,10 @@ describe("RuntimeUI event emission", () => {
     name: "test-worker",
     instructions: "You are a helpful assistant.",
     description: "A test worker",
+    mode: "single",
     server_side_tools: [],
     locked: false,
+    max_context_tokens: 8000,
   };
 
   beforeEach(() => {
@@ -346,6 +509,7 @@ describe("RuntimeUI event emission", () => {
       endSession: vi.fn(),
       requestApproval: vi.fn(),
       getUserInput: vi.fn(),
+      updateContextUsage: vi.fn(),
       onInterrupt: vi.fn(),
       onManualToolInvoke: vi.fn(() => vi.fn()),
       onGetDiff: vi.fn(() => vi.fn()),
@@ -417,6 +581,7 @@ describe("RuntimeUI event emission", () => {
       endSession: vi.fn(),
       requestApproval: vi.fn(),
       getUserInput: vi.fn(),
+      updateContextUsage: vi.fn(),
       onInterrupt: vi.fn(),
       onManualToolInvoke: vi.fn(() => vi.fn()),
       onGetDiff: vi.fn(() => vi.fn()),
