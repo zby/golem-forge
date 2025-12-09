@@ -1,8 +1,13 @@
 /**
- * Tests for Worker Execution Runtime
+ * Tests for CLI Worker Runtime Factory
  *
- * Note: These tests focus on configuration and initialization.
- * Tests that require LLM calls use mocked generateText.
+ * CLI-specific tests for:
+ * - createCLIWorkerRuntime factory function
+ * - Sandbox creation and configuration
+ * - Toolset registration (filesystem, workers, custom)
+ * - Tool execution with CLI toolsets
+ *
+ * Core WorkerRuntime tests are in packages/core/src/runtime/worker.test.ts
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -20,12 +25,13 @@ vi.mock("ai", async (importOriginal) => {
 });
 
 // Import after mock is set up
-import { WorkerRuntime, createWorkerRuntime, matchModelPattern } from "./worker.js";
+import { createCLIWorkerRuntime } from "./factory.js";
+import { WorkerRuntime } from "@golem-forge/core";
 
-// Default model for tests (simulates GOLEM_FORGE_MODEL being set via CLI)
+// Default model for tests
 const TEST_MODEL = "anthropic:claude-haiku-4-5";
 
-describe("WorkerRuntime", () => {
+describe("createCLIWorkerRuntime", () => {
   const simpleWorker: WorkerDefinition = {
     name: "test-worker",
     instructions: "You are a helpful assistant.",
@@ -44,9 +50,9 @@ describe("WorkerRuntime", () => {
     vi.clearAllMocks();
   });
 
-  describe("constructor", () => {
-    it("creates runtime with worker definition", () => {
-      const runtime = new WorkerRuntime({
+  describe("factory function", () => {
+    it("creates and initializes runtime", async () => {
+      const runtime = await createCLIWorkerRuntime({
         worker: simpleWorker,
         approvalMode: "approve_all",
         model: TEST_MODEL,
@@ -55,62 +61,47 @@ describe("WorkerRuntime", () => {
       expect(runtime).toBeInstanceOf(WorkerRuntime);
     });
 
-    it("stores worker instructions", () => {
-      const runtime = new WorkerRuntime({
-        worker: simpleWorker,
-        approvalMode: "approve_all",
-        model: TEST_MODEL,
-      });
-
-      // The instructions are stored and used when run() is called
-      expect(runtime).toBeDefined();
-    });
-
-    it("throws error when interactive mode has no callback", () => {
-      expect(() => {
-        new WorkerRuntime({
-          worker: simpleWorker,
-          approvalMode: "interactive",
-          model: TEST_MODEL,
-        });
-      }).toThrow("requires an approvalCallback");
-    });
-
-    it("allows interactive mode with callback", () => {
-      const runtime = new WorkerRuntime({
+    it("throws error when interactive mode has no callback", async () => {
+      await expect(createCLIWorkerRuntime({
         worker: simpleWorker,
         approvalMode: "interactive",
-        approvalCallback: async () => ({ approved: true, remember: "none" }),
         model: TEST_MODEL,
-      });
-
-      expect(runtime).toBeInstanceOf(WorkerRuntime);
+      })).rejects.toThrow("requires an approvalCallback");
     });
   });
 
-  describe("initialize", () => {
+  describe("sandbox creation", () => {
     it("creates test sandbox when useTestSandbox is true", async () => {
-      const runtime = new WorkerRuntime({
+      const runtime = await createCLIWorkerRuntime({
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
         model: TEST_MODEL,
       });
-
-      await runtime.initialize();
 
       expect(runtime.getSandbox()).toBeDefined();
     });
 
-    it("registers filesystem tools when toolset is configured", async () => {
-      const runtime = new WorkerRuntime({
+    it("initializes sandbox when configured", async () => {
+      const runtime = await createCLIWorkerRuntime({
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
         model: TEST_MODEL,
       });
 
-      await runtime.initialize();
+      expect(runtime.getSandbox()).toBeDefined();
+    });
+  });
+
+  describe("toolset registration", () => {
+    it("registers filesystem tools when toolset is configured", async () => {
+      const runtime = await createCLIWorkerRuntime({
+        worker: workerWithFilesystem,
+        useTestSandbox: true,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+      });
 
       const tools = runtime.getTools();
       const toolNames = Object.keys(tools);
@@ -120,13 +111,11 @@ describe("WorkerRuntime", () => {
     });
 
     it("throws error if filesystem toolset requested without sandbox", async () => {
-      const runtime = new WorkerRuntime({
+      await expect(createCLIWorkerRuntime({
         worker: workerWithFilesystem,
         approvalMode: "approve_all",
         model: TEST_MODEL,
-      });
-
-      await expect(runtime.initialize()).rejects.toThrow("Filesystem toolset requires a sandbox");
+      })).rejects.toThrow("Filesystem toolset requires a sandbox");
     });
 
     it("throws error for unknown toolset", async () => {
@@ -138,85 +127,16 @@ describe("WorkerRuntime", () => {
         },
       };
 
-      const runtime = new WorkerRuntime({
+      await expect(createCLIWorkerRuntime({
         worker: workerWithUnknownToolset,
         useTestSandbox: true,
         approvalMode: "approve_all",
         model: TEST_MODEL,
-      });
-
-      await expect(runtime.initialize()).rejects.toThrow('Unknown toolset "unknownToolset"');
-    });
-
-    it("throws error if run() called before initialize()", async () => {
-      const runtime = new WorkerRuntime({
-        worker: simpleWorker,
-        approvalMode: "approve_all",
-        model: TEST_MODEL,
-      });
-
-      await expect(runtime.run("Hello!")).rejects.toThrow(
-        "WorkerRuntime.run() called before initialize()"
-      );
+      })).rejects.toThrow('Unknown toolset "unknownToolset"');
     });
   });
 
-  describe("run", () => {
-    it("returns success with response when LLM completes without tool calls", async () => {
-      mockGenerateText.mockResolvedValueOnce({
-        text: "Hello! How can I help you?",
-        toolCalls: [],
-        finishReason: "stop",
-        usage: { inputTokens: 10, outputTokens: 20 },
-      });
-
-      const runtime = new WorkerRuntime({
-        worker: simpleWorker,
-        approvalMode: "approve_all",
-        model: TEST_MODEL,
-      });
-      await runtime.initialize();
-
-      const result = await runtime.run("Hello!");
-
-      expect(result.success).toBe(true);
-      expect(result.response).toBe("Hello! How can I help you?");
-      expect(result.toolCallCount).toBe(0);
-      expect(result.tokens).toEqual({ input: 10, output: 20 });
-    });
-
-    it("returns error when LLM fails", async () => {
-      mockGenerateText.mockRejectedValueOnce(new Error("Something went wrong"));
-
-      const runtime = new WorkerRuntime({
-        worker: simpleWorker,
-        approvalMode: "approve_all",
-        model: TEST_MODEL,
-      });
-      await runtime.initialize();
-
-      const result = await runtime.run("Hello!");
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Something went wrong");
-    });
-
-    it("handles exceptions gracefully", async () => {
-      mockGenerateText.mockRejectedValueOnce(new Error("Network error"));
-
-      const runtime = new WorkerRuntime({
-        worker: simpleWorker,
-        approvalMode: "approve_all",
-        model: TEST_MODEL,
-      });
-      await runtime.initialize();
-
-      const result = await runtime.run("Hello!");
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe("Network error");
-    });
-
+  describe("tool execution", () => {
     it("handles tool calls and iterates", async () => {
       // First call returns tool call
       mockGenerateText
@@ -240,13 +160,12 @@ describe("WorkerRuntime", () => {
           usage: { inputTokens: 25, outputTokens: 20 },
         });
 
-      const runtime = new WorkerRuntime({
+      const runtime = await createCLIWorkerRuntime({
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
         model: TEST_MODEL,
       });
-      await runtime.initialize();
 
       // Create the file first
       const sandbox = runtime.getSandbox()!;
@@ -275,14 +194,13 @@ describe("WorkerRuntime", () => {
         usage: { inputTokens: 10, outputTokens: 15 },
       });
 
-      const runtime = new WorkerRuntime({
+      const runtime = await createCLIWorkerRuntime({
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
         maxIterations: 3,
         model: TEST_MODEL,
       });
-      await runtime.initialize();
 
       const result = await runtime.run("Keep listing forever");
 
@@ -306,13 +224,12 @@ describe("WorkerRuntime", () => {
           usage: { inputTokens: 20, outputTokens: 5 },
         });
 
-      const runtime = new WorkerRuntime({
+      const runtime = await createCLIWorkerRuntime({
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
         model: TEST_MODEL,
       });
-      await runtime.initialize();
 
       const result = await runtime.run("Do something");
 
@@ -342,13 +259,12 @@ describe("WorkerRuntime", () => {
           usage: { inputTokens: 30, outputTokens: 20 },
         });
 
-      const runtime = new WorkerRuntime({
+      const runtime = await createCLIWorkerRuntime({
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
         model: TEST_MODEL,
       });
-      await runtime.initialize();
 
       const result = await runtime.run("Use a fake tool");
 
@@ -370,380 +286,82 @@ describe("WorkerRuntime", () => {
     });
   });
 
-  describe("approval controller", () => {
-    it("uses specified approval mode", () => {
-      const runtime = new WorkerRuntime({
-        worker: simpleWorker,
-        approvalMode: "auto_deny",
-        model: TEST_MODEL,
-      });
+  describe("RuntimeUI integration with tools", () => {
+    it("emits tool events during tool execution", async () => {
+      mockGenerateText
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            {
+              toolCallId: "call_1",
+              toolName: "read_file",
+              args: { path: "/workspace/test.txt" },
+            },
+          ],
+          finishReason: "tool-calls",
+          usage: { inputTokens: 10, outputTokens: 15 },
+        })
+        .mockResolvedValueOnce({
+          text: "Done!",
+          toolCalls: [],
+          finishReason: "stop",
+          usage: { inputTokens: 25, outputTokens: 20 },
+        });
 
-      expect(runtime.getApprovalController().mode).toBe("auto_deny");
-    });
+      const mockRuntimeUI = {
+        bus: {},
+        showMessage: vi.fn(),
+        showStatus: vi.fn(),
+        startStreaming: vi.fn(),
+        appendStreaming: vi.fn(),
+        endStreaming: vi.fn(),
+        showToolStarted: vi.fn(),
+        showToolResult: vi.fn(),
+        updateWorker: vi.fn(),
+        showManualTools: vi.fn(),
+        showDiffSummary: vi.fn(),
+        showDiffContent: vi.fn(),
+        endSession: vi.fn(),
+        requestApproval: vi.fn(),
+        getUserInput: vi.fn(),
+        onInterrupt: vi.fn(),
+        onManualToolInvoke: vi.fn(),
+        onGetDiff: vi.fn(),
+      };
 
-    it("defaults to interactive mode when callback provided", () => {
-      const runtime = new WorkerRuntime({
-        worker: simpleWorker,
-        approvalCallback: async () => ({ approved: true, remember: "none" }),
-        model: TEST_MODEL,
-      });
-
-      expect(runtime.getApprovalController().mode).toBe("interactive");
-    });
-  });
-
-  describe("createWorkerRuntime", () => {
-    it("creates and initializes runtime", async () => {
-      const runtime = await createWorkerRuntime({
-        worker: simpleWorker,
-        approvalMode: "approve_all",
-        model: TEST_MODEL,
-      });
-
-      expect(runtime).toBeInstanceOf(WorkerRuntime);
-    });
-
-    it("initializes sandbox when configured", async () => {
-      const runtime = await createWorkerRuntime({
+      const runtime = await createCLIWorkerRuntime({
         worker: workerWithFilesystem,
         useTestSandbox: true,
         approvalMode: "approve_all",
         model: TEST_MODEL,
+        runtimeUI: mockRuntimeUI,
       });
 
-      expect(runtime.getSandbox()).toBeDefined();
+      // Create test file
+      const sandbox = runtime.getSandbox()!;
+      await sandbox.write("/workspace/test.txt", "file content");
+
+      const result = await runtime.run("Read the file");
+
+      expect(result.success).toBe(true);
+
+      // Should emit toolStarted
+      expect(mockRuntimeUI.showToolStarted).toHaveBeenCalledWith(
+        "call_1",
+        "read_file",
+        { path: "/workspace/test.txt" }
+      );
+
+      // Should emit toolResult
+      // Note: Core's ToolExecutor passes undefined for structuredResult - UI handles conversion
+      expect(mockRuntimeUI.showToolResult).toHaveBeenCalledWith(
+        "call_1",
+        "read_file",
+        "success",
+        expect.any(Number), // durationMs
+        undefined, // structuredResult - Core leaves conversion to UI
+        undefined // no error
+      );
     });
-  });
-
-  describe("model resolution", () => {
-    it("uses provided model", () => {
-      const runtime = new WorkerRuntime({
-        worker: simpleWorker,
-        model: "openai:gpt-4",
-        approvalMode: "approve_all",
-      });
-
-      expect(runtime.getModelId()).toBe("openai:gpt-4");
-    });
-
-    it("throws error when no model specified", () => {
-      expect(() => {
-        new WorkerRuntime({
-          worker: simpleWorker,
-          approvalMode: "approve_all",
-        });
-      }).toThrow("No model specified");
-    });
-
-    it("validates model against compatible_models", () => {
-      const workerWithCompatibility: WorkerDefinition = {
-        ...simpleWorker,
-        compatible_models: ["anthropic:*"],
-      };
-
-      expect(() => {
-        new WorkerRuntime({
-          worker: workerWithCompatibility,
-          model: "openai:gpt-4",
-          approvalMode: "approve_all",
-        });
-      }).toThrow('Model "openai:gpt-4" is not compatible');
-    });
-
-    it("allows compatible model", () => {
-      const workerWithCompatibility: WorkerDefinition = {
-        ...simpleWorker,
-        compatible_models: ["anthropic:*"],
-      };
-
-      const runtime = new WorkerRuntime({
-        worker: workerWithCompatibility,
-        model: "anthropic:claude-sonnet-4",
-        approvalMode: "approve_all",
-      });
-
-      expect(runtime.getModelId()).toBe("anthropic:claude-sonnet-4");
-    });
-
-    it("rejects empty compatible_models array", () => {
-      const workerWithEmptyCompat: WorkerDefinition = {
-        ...simpleWorker,
-        compatible_models: [],
-      };
-
-      expect(() => {
-        new WorkerRuntime({
-          worker: workerWithEmptyCompat,
-          model: TEST_MODEL,
-          approvalMode: "approve_all",
-        });
-      }).toThrow("empty compatible_models");
-    });
-
-    it("error message includes compatible patterns when no model specified", () => {
-      const workerRequiringOpenai: WorkerDefinition = {
-        ...simpleWorker,
-        compatible_models: ["openai:*"],
-      };
-
-      expect(() => {
-        new WorkerRuntime({
-          worker: workerRequiringOpenai,
-          approvalMode: "approve_all",
-        });
-      }).toThrow("Compatible patterns: openai:*");
-    });
-  });
-});
-
-describe("matchModelPattern", () => {
-  it("matches exact model names", () => {
-    expect(matchModelPattern("anthropic:claude-sonnet-4", "anthropic:claude-sonnet-4")).toBe(true);
-    expect(matchModelPattern("anthropic:claude-sonnet-4", "anthropic:claude-haiku")).toBe(false);
-  });
-
-  it("matches wildcard patterns", () => {
-    expect(matchModelPattern("anthropic:claude-sonnet-4", "*")).toBe(true);
-    expect(matchModelPattern("openai:gpt-4", "*")).toBe(true);
-  });
-
-  it("matches provider wildcards", () => {
-    expect(matchModelPattern("anthropic:claude-sonnet-4", "anthropic:*")).toBe(true);
-    expect(matchModelPattern("anthropic:claude-haiku-4-5", "anthropic:*")).toBe(true);
-    expect(matchModelPattern("openai:gpt-4", "anthropic:*")).toBe(false);
-  });
-
-  it("matches suffix wildcards", () => {
-    expect(matchModelPattern("anthropic:claude-haiku-4-5", "anthropic:claude-haiku-*")).toBe(true);
-    expect(matchModelPattern("anthropic:claude-sonnet-4", "anthropic:claude-haiku-*")).toBe(false);
-  });
-
-  it("matches multiple wildcards", () => {
-    expect(matchModelPattern("anthropic:claude-3-5-sonnet-20241022", "*:*sonnet*")).toBe(true);
-    expect(matchModelPattern("openai:gpt-4o-mini", "*:*gpt*")).toBe(true);
-  });
-
-  it("escapes regex special characters", () => {
-    // Dots in model names should be matched literally
-    expect(matchModelPattern("openai:gpt-4.5", "openai:gpt-4.5")).toBe(true);
-    expect(matchModelPattern("openai:gpt-4x5", "openai:gpt-4.5")).toBe(false);
-  });
-});
-
-describe("RuntimeUI event emission", () => {
-  const simpleWorker: WorkerDefinition = {
-    name: "test-worker",
-    instructions: "You are a helpful assistant.",
-    description: "A test worker",
-  };
-
-  const workerWithFilesystem: WorkerDefinition = {
-    name: "fs-worker",
-    instructions: "You can read and write files.",
-    toolsets: {
-      filesystem: {},
-    },
-  };
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("emits workerUpdate and message events on successful run", async () => {
-    mockGenerateText.mockResolvedValueOnce({
-      text: "Hello there!",
-      toolCalls: [],
-      finishReason: "stop",
-      usage: { inputTokens: 10, outputTokens: 5 },
-    });
-
-    const mockRuntimeUI = {
-      bus: {},
-      showMessage: vi.fn(),
-      showStatus: vi.fn(),
-      startStreaming: vi.fn(),
-      appendStreaming: vi.fn(),
-      endStreaming: vi.fn(),
-      showToolStarted: vi.fn(),
-      showToolResult: vi.fn(),
-      updateWorker: vi.fn(),
-      showManualTools: vi.fn(),
-      showDiffSummary: vi.fn(),
-      showDiffContent: vi.fn(),
-      endSession: vi.fn(),
-      requestApproval: vi.fn(),
-      getUserInput: vi.fn(),
-      onInterrupt: vi.fn(),
-      onManualToolInvoke: vi.fn(),
-      onGetDiff: vi.fn(),
-    };
-
-    const runtime = new WorkerRuntime({
-      worker: simpleWorker,
-      approvalMode: "approve_all",
-      model: TEST_MODEL,
-      runtimeUI: mockRuntimeUI,
-    });
-    await runtime.initialize();
-
-    const result = await runtime.run("Hello!");
-
-    expect(result.success).toBe(true);
-
-    // Should emit workerUpdate with 'running' status at start
-    expect(mockRuntimeUI.updateWorker).toHaveBeenCalledWith(
-      expect.any(String), // workerId
-      "test-worker",
-      "running",
-      undefined,
-      0
-    );
-
-    // Should emit showMessage with assistant response
-    expect(mockRuntimeUI.showMessage).toHaveBeenCalledWith({
-      role: "assistant",
-      content: "Hello there!",
-    });
-
-    // Should emit workerUpdate with 'complete' status
-    expect(mockRuntimeUI.updateWorker).toHaveBeenCalledWith(
-      expect.any(String), // workerId
-      "test-worker",
-      "complete",
-      undefined,
-      0
-    );
-
-    // Should emit endSession for root worker
-    expect(mockRuntimeUI.endSession).toHaveBeenCalledWith("completed");
-  });
-
-  it("emits error events on failure", async () => {
-    mockGenerateText.mockRejectedValueOnce(new Error("API error"));
-
-    const mockRuntimeUI = {
-      bus: {},
-      showMessage: vi.fn(),
-      showStatus: vi.fn(),
-      startStreaming: vi.fn(),
-      appendStreaming: vi.fn(),
-      endStreaming: vi.fn(),
-      showToolStarted: vi.fn(),
-      showToolResult: vi.fn(),
-      updateWorker: vi.fn(),
-      showManualTools: vi.fn(),
-      showDiffSummary: vi.fn(),
-      showDiffContent: vi.fn(),
-      endSession: vi.fn(),
-      requestApproval: vi.fn(),
-      getUserInput: vi.fn(),
-      onInterrupt: vi.fn(),
-      onManualToolInvoke: vi.fn(),
-      onGetDiff: vi.fn(),
-    };
-
-    const runtime = new WorkerRuntime({
-      worker: simpleWorker,
-      approvalMode: "approve_all",
-      model: TEST_MODEL,
-      runtimeUI: mockRuntimeUI,
-    });
-    await runtime.initialize();
-
-    const result = await runtime.run("Hello!");
-
-    expect(result.success).toBe(false);
-
-    // Should emit showStatus with error
-    expect(mockRuntimeUI.showStatus).toHaveBeenCalledWith("error", "API error");
-
-    // Should emit workerUpdate with 'error' status
-    expect(mockRuntimeUI.updateWorker).toHaveBeenCalledWith(
-      expect.any(String),
-      "test-worker",
-      "error",
-      undefined,
-      0
-    );
-
-    // Should emit endSession with error
-    expect(mockRuntimeUI.endSession).toHaveBeenCalledWith("error", "API error");
-  });
-
-  it("emits tool events during tool execution", async () => {
-    mockGenerateText
-      .mockResolvedValueOnce({
-        text: "",
-        toolCalls: [
-          {
-            toolCallId: "call_1",
-            toolName: "read_file",
-            args: { path: "/workspace/test.txt" },
-          },
-        ],
-        finishReason: "tool-calls",
-        usage: { inputTokens: 10, outputTokens: 15 },
-      })
-      .mockResolvedValueOnce({
-        text: "Done!",
-        toolCalls: [],
-        finishReason: "stop",
-        usage: { inputTokens: 25, outputTokens: 20 },
-      });
-
-    const mockRuntimeUI = {
-      bus: {},
-      showMessage: vi.fn(),
-      showStatus: vi.fn(),
-      startStreaming: vi.fn(),
-      appendStreaming: vi.fn(),
-      endStreaming: vi.fn(),
-      showToolStarted: vi.fn(),
-      showToolResult: vi.fn(),
-      updateWorker: vi.fn(),
-      showManualTools: vi.fn(),
-      showDiffSummary: vi.fn(),
-      showDiffContent: vi.fn(),
-      endSession: vi.fn(),
-      requestApproval: vi.fn(),
-      getUserInput: vi.fn(),
-      onInterrupt: vi.fn(),
-      onManualToolInvoke: vi.fn(),
-      onGetDiff: vi.fn(),
-    };
-
-    const runtime = new WorkerRuntime({
-      worker: workerWithFilesystem,
-      useTestSandbox: true,
-      approvalMode: "approve_all",
-      model: TEST_MODEL,
-      runtimeUI: mockRuntimeUI,
-    });
-    await runtime.initialize();
-
-    // Create test file
-    const sandbox = runtime.getSandbox()!;
-    await sandbox.write("/workspace/test.txt", "file content");
-
-    const result = await runtime.run("Read the file");
-
-    expect(result.success).toBe(true);
-
-    // Should emit toolStarted
-    expect(mockRuntimeUI.showToolStarted).toHaveBeenCalledWith(
-      "call_1",
-      "read_file",
-      { path: "/workspace/test.txt" }
-    );
-
-    // Should emit toolResult
-    expect(mockRuntimeUI.showToolResult).toHaveBeenCalledWith(
-      "call_1",
-      "read_file",
-      "success",
-      expect.any(Number), // durationMs
-      expect.objectContaining({ kind: "file_content" }), // structured result
-      undefined // no error
-    );
   });
 });

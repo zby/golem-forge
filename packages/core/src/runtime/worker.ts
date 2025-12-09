@@ -18,6 +18,8 @@ import type { FileOperations } from "../sandbox-types.js";
 import type { RuntimeUI } from "../runtime-ui.js";
 import { ApprovalController } from "../approval/index.js";
 import { ToolExecutor } from "./tool-executor.js";
+import { getLLMTools } from "../tools/tool-info.js";
+import type { NamedTool } from "../tools/base.js";
 import type { RuntimeEventCallback, RuntimeEventData } from "./events.js";
 import type {
   WorkerResult,
@@ -420,8 +422,10 @@ export class WorkerRuntime implements WorkerRunner {
         messages.push({ role: "user", content: userContent });
       }
 
-      // Determine if we have tools to use
-      const hasTools = Object.keys(this.tools).length > 0;
+      // Filter to only LLM-invokable tools (excludes manual-only tools)
+      // Tools without manualExecution config are treated as LLM tools (default)
+      const llmTools = getLLMTools(this.tools as Record<string, NamedTool>);
+      const hasTools = Object.keys(llmTools).length > 0;
 
       for (let iteration = 0; iteration < maxIterations; iteration++) {
         // Check for interruption at the start of each iteration (before counting it)
@@ -455,10 +459,11 @@ export class WorkerRuntime implements WorkerRunner {
         });
 
         // Call generateText - SDK handles tool execution and approval
+        // Note: llmTools is filtered to exclude manual-only tools
         const result = await generateText({
           model: this.model,
           messages,
-          tools: hasTools ? this.tools : undefined,
+          tools: hasTools ? llmTools : undefined,
         });
 
         // Accumulate tokens

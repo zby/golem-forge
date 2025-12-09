@@ -10,13 +10,16 @@ import * as os from "os";
 // Mock modules
 vi.mock("../runtime/index.js", () => {
   const mockRun = vi.fn();
-  const mockCreateWorkerRuntime = vi.fn().mockResolvedValue({
+  const mockDispose = vi.fn().mockResolvedValue(undefined);
+  const mockCreateCLIWorkerRuntime = vi.fn().mockResolvedValue({
     run: mockRun,
+    dispose: mockDispose,
   });
   return {
-    createWorkerRuntime: mockCreateWorkerRuntime,
+    createCLIWorkerRuntime: mockCreateCLIWorkerRuntime,
     __mockRun: mockRun,
-    __mockCreateWorkerRuntime: mockCreateWorkerRuntime,
+    __mockDispose: mockDispose,
+    __mockCreateCLIWorkerRuntime: mockCreateCLIWorkerRuntime,
   };
 });
 
@@ -101,7 +104,8 @@ import * as runtimeModule from "../runtime/index.js";
 
 // Get mock references
 const mockRun = (runtimeModule as unknown as { __mockRun: ReturnType<typeof vi.fn> }).__mockRun;
-const mockCreateWorkerRuntime = (runtimeModule as unknown as { __mockCreateWorkerRuntime: ReturnType<typeof vi.fn> }).__mockCreateWorkerRuntime;
+const mockDispose = (runtimeModule as unknown as { __mockDispose: ReturnType<typeof vi.fn> }).__mockDispose;
+const mockCreateCLIWorkerRuntime = (runtimeModule as unknown as { __mockCreateCLIWorkerRuntime: ReturnType<typeof vi.fn> }).__mockCreateCLIWorkerRuntime;
 
 describe("runCLI", () => {
   let tempDir: string;
@@ -143,8 +147,9 @@ Test instructions
     });
 
     // Reset runtime mock
-    mockCreateWorkerRuntime.mockResolvedValue({
+    mockCreateCLIWorkerRuntime.mockResolvedValue({
       run: mockRun,
+      dispose: mockDispose,
     });
 
     // Reset UI event infrastructure mocks (they get cleared by vi.clearAllMocks)
@@ -241,7 +246,7 @@ Test instructions
     it("should find main.worker in specified directory", async () => {
       await runCLI(["node", "cli", workerDir, "--input", "test"]);
 
-      expect(mockCreateWorkerRuntime).toHaveBeenCalledWith(
+      expect(mockCreateCLIWorkerRuntime).toHaveBeenCalledWith(
         expect.objectContaining({
           worker: expect.objectContaining({ name: "test-worker" }),
           programRoot: workerDir,
@@ -616,7 +621,7 @@ Instructions
 
       await runCLI(["node", "cli", workerDir, "--input", "test"]);
 
-      expect(mockCreateWorkerRuntime).toHaveBeenCalledWith(
+      expect(mockCreateCLIWorkerRuntime).toHaveBeenCalledWith(
         expect.objectContaining({
           worker: expect.objectContaining({ name: "test-worker" }),
           model: "anthropic:claude-haiku-4-5",  // resolved from program config
@@ -643,7 +648,7 @@ Instructions
           response: "OK",
           toolCallCount: 0,
         });
-        mockCreateWorkerRuntime.mockResolvedValue({ run: mockRun });
+        mockCreateCLIWorkerRuntime.mockResolvedValue({ run: mockRun, dispose: mockDispose });
 
         await runCLI(["node", "cli", workerDir, "--approval", mode, "--input", "test"]);
 

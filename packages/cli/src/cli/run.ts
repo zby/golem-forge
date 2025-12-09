@@ -8,7 +8,7 @@
 import { Command } from "commander";
 import * as fs from "fs/promises";
 import * as path from "path";
-import { createWorkerRuntime, type WorkerRuntimeOptions, type Attachment, type RunInput, type WorkerResult } from "../runtime/index.js";
+import { createCLIWorkerRuntime, type CLIWorkerRuntimeOptions, type Attachment, type RunInput, type WorkerResult } from "../runtime/index.js";
 import { parseWorkerString, type WorkerDefinition } from "../worker/index.js";
 import { createRuntimeUIApprovalCallback } from "./approval.js";
 import { getEffectiveConfig, findProgramRoot, resolveSandboxConfig } from "./program.js";
@@ -529,28 +529,29 @@ async function executeWorker(
   // Initialize the adapter to start subscribing to events
   await adapter.initialize();
 
-  // Wrap in try/finally to ensure cleanup of readline and SIGINT handlers
+  // Create approval callback using RuntimeUI for event-driven approval
+  const approvalCallback = effectiveConfig.approvalMode === "interactive"
+    ? createRuntimeUIApprovalCallback(runtimeUI)
+    : undefined;
+
+  // Create runtime options - use detected program root
+  // Model is already resolved: CLI --model > env var > program config
+  const runtimeOptions: CLIWorkerRuntimeOptions = {
+    worker: workerDefinition,
+    model: options.model || effectiveConfig.model,
+    approvalMode: effectiveConfig.approvalMode as ApprovalMode,
+    approvalCallback,
+    programRoot,
+    mountSandboxConfig,
+    runtimeUI,
+  };
+
+  // Create and initialize runtime using CLI factory
+  const runtime = await createCLIWorkerRuntime(runtimeOptions);
+
+  // Wrap in try/finally to ensure cleanup of runtime and adapter
   let result: WorkerResult;
   try {
-    // Create approval callback using RuntimeUI for event-driven approval
-    const approvalCallback = effectiveConfig.approvalMode === "interactive"
-      ? createRuntimeUIApprovalCallback(runtimeUI)
-      : undefined;
-
-    // Create runtime options - use detected program root
-    // Model is already resolved: CLI --model > env var > program config
-    const runtimeOptions: WorkerRuntimeOptions = {
-      worker: workerDefinition,
-      model: options.model || effectiveConfig.model,
-      approvalMode: effectiveConfig.approvalMode as ApprovalMode,
-      approvalCallback,
-      programRoot,
-      mountSandboxConfig,
-      runtimeUI,
-    };
-
-    // Create and initialize runtime
-    const runtime = await createWorkerRuntime(runtimeOptions);
 
     // Prepare run input
     // When no text input is provided, use context-appropriate default prompt
@@ -573,6 +574,8 @@ async function executeWorker(
 
     result = await runtime.run(runInput);
   } finally {
+    // Clean up runtime resources (UI subscriptions, etc.)
+    await runtime.dispose();
     // Always shutdown the adapter to clean up resources
     await adapter.shutdown();
   }

@@ -125,6 +125,12 @@ export interface WorkerRunner {
    * Get the approval controller (for shared approval state).
    */
   getApprovalController(): ApprovalController;
+
+  /**
+   * Clean up resources (UI subscriptions, etc.).
+   * Should be called after run() completes.
+   */
+  dispose(): Promise<void>;
 }
 
 /**

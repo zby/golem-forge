@@ -326,7 +326,13 @@ async function executeWorkerDelegation(
         : input;
 
     // Execute the child worker
-    const result = await childRuntime.run(runInput);
+    let result;
+    try {
+      result = await childRuntime.run(runInput);
+    } finally {
+      // Clean up child runtime resources
+      await childRuntime.dispose();
+    }
 
     return {
       success: result.success,

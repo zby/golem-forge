@@ -17,6 +17,9 @@ export type {
 // Registry
 export { ToolsetRegistry } from "./registry.js";
 
+// Tool info utilities
+export { getLLMTools, getManualTools, isLLMTool, isManualTool } from "./tool-info.js";
+
 // Filesystem toolset (self-registers on import)
 export {
   FilesystemToolset,

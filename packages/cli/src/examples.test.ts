@@ -27,7 +27,7 @@ vi.mock("ai", async (importOriginal) => {
 });
 
 // Import after mock is set up
-import { createWorkerRuntime } from "./runtime/worker.js";
+import { createCLIWorkerRuntime } from "./runtime/factory.js";
 
 // Examples are at the repo root, not in the cli package
 const EXAMPLES_DIR = path.join(__dirname, "..", "..", "..", "examples");
@@ -153,7 +153,7 @@ describe("Example Workers Smoke Tests", () => {
           return;
         }
 
-        const runtime = await createWorkerRuntime({
+        const runtime = await createCLIWorkerRuntime({
           worker: result.worker,
           model: TEST_MODEL,
           approvalMode: "approve_all",
@@ -185,7 +185,7 @@ describe("Example Workers Smoke Tests", () => {
         const hasWorkersDelegation = parseResult.worker.toolsets?.workers !== undefined;
         if (hasWorkersDelegation) return;
 
-        const runtime = await createWorkerRuntime({
+        const runtime = await createCLIWorkerRuntime({
           worker: parseResult.worker,
           model: TEST_MODEL,
           approvalMode: "approve_all",
@@ -231,7 +231,7 @@ describe("Example Workers Smoke Tests", () => {
           usage: { inputTokens: 25, outputTokens: 20 },
         });
 
-      const runtime = await createWorkerRuntime({
+      const runtime = await createCLIWorkerRuntime({
         worker: parseResult.worker,
         model: TEST_MODEL,
         approvalMode: "approve_all",
@@ -277,7 +277,7 @@ describe("Example Workers Smoke Tests", () => {
           usage: { inputTokens: 25, outputTokens: 20 },
         });
 
-      const runtime = await createWorkerRuntime({
+      const runtime = await createCLIWorkerRuntime({
         worker: parseResult.worker,
         model: TEST_MODEL,
         approvalMode: "approve_all",
