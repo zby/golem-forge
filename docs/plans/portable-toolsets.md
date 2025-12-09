@@ -10,9 +10,9 @@ Enable the same tool plugin system in browser (Chrome extension) as in CLI. Tool
 >
 > **Phase 1**: ✅ COMPLETE - Filesystem toolset moved to core
 > **Phase 2**: ✅ COMPLETE - Worker-call toolset moved to core
-> **Phase 3**: ⏳ PENDING - Custom toolset
-> **Phase 4**: ⏳ PENDING - Git backend abstraction
-> **Phase 5**: ✅ PARTIAL - Chrome uses registry (filesystem works, workers skipped until registry impl)
+> **Phase 3**: ✅ COMPLETE - Custom toolset moved to core
+> **Phase 4**: ✅ COMPLETE - Git types, backend interface, merge utils, and tools moved to core
+> **Phase 5**: ✅ PARTIAL - Chrome uses registry (filesystem works, git/workers/custom skipped until impl)
 > **Phase 6**: ⏳ PENDING - Testing
 
 ## Current State
@@ -20,9 +20,9 @@ Enable the same tool plugin system in browser (Chrome extension) as in CLI. Tool
 | Toolset | CLI | Chrome | Browser-Compatible? |
 |---------|-----|--------|---------------------|
 | Filesystem | ✅ `core/src/tools/filesystem.ts` | ✅ Uses ToolsetRegistry | Yes |
-| Git | `cli/src/tools/git/` with `CLIGitBackend` | Missing | Yes (needs `IsomorphicGitBackend`) |
+| Git | ✅ `core/src/tools/git/` (types, tools, merge) | ⚠️ Skipped (needs IsomorphicGitBackend) | Yes (needs `IsomorphicGitBackend`) |
 | Workers | ✅ `core/src/tools/worker-call.ts` | ⚠️ Skipped (needs WorkerRegistry impl) | Yes (pure runtime delegation) |
-| Custom | `cli/src/tools/custom.ts` | Missing | Yes (ESM dynamic import) |
+| Custom | ✅ `core/src/tools/custom.ts` | ⚠️ Skipped (needs module loader impl) | Yes (ESM dynamic import) |
 | Shell | `cli/src/tools/shell.ts` | N/A (skipped with warning) | No (needs `child_process`) |
 
 ## Target State
@@ -209,23 +209,38 @@ export interface GitToolsetContext extends ToolsetContext {
 
 This spawns `git` processes and remains CLI-only.
 
-### 4.4 Create IsomorphicGitBackend
+### 4.4 Create IsomorphicGitBackend (Future Work)
 
 **File**: `core/src/tools/git/isomorphic.ts`
 
-Uses `isomorphic-git` library for pure-JS git operations:
+Uses `isomorphic-git` library for pure-JS git operations.
+
+**Important**: isomorphic-git does NOT support SSH protocol. Authentication options:
+- Personal Access Tokens (PAT)
+- OAuth2 tokens ("Login with GitHub")
+- Fine-grained GitHub tokens
+
+SSH keys will NOT work in browser. Users must configure a GitHub PAT in extension settings.
 
 ```typescript
 import * as git from 'isomorphic-git';
 import http from 'isomorphic-git/http/web';
 
 export class IsomorphicGitBackend implements GitBackend {
-  constructor(private fs: FileOperations) {}
+  constructor(
+    private fs: FileOperations,
+    private authToken?: string  // GitHub PAT or OAuth token
+  ) {}
 
-  async status(repoPath: string): Promise<GitStatusResult> {
-    // Use isomorphic-git API
+  async push(input: PushInput): Promise<PushResult> {
+    await git.push({
+      fs: this.fs,
+      http,
+      dir: '/',
+      onAuth: () => ({ username: 'token', password: this.authToken }),
+    });
+    // ...
   }
-  // ...
 }
 ```
 

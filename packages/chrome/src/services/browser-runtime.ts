@@ -6,7 +6,6 @@
  */
 
 import { streamText, type LanguageModel, type Tool } from 'ai';
-import { z } from 'zod';
 import type { WorkerDefinition } from './worker-manager';
 import { browserAIService } from './ai-service';
 import {
@@ -452,6 +451,20 @@ export class BrowserWorkerRuntime {
         continue;
       }
 
+      // Custom toolset requires bundled modules in browser
+      // TODO: Implement browser module loading strategy
+      if (toolsetName === 'custom') {
+        console.warn('Custom toolset is not yet fully implemented in browser - skipping');
+        continue;
+      }
+
+      // Git toolset requires GitBackend implementation
+      // TODO: Implement IsomorphicGitBackend for browser
+      if (toolsetName === 'git') {
+        console.warn('Git toolset requires IsomorphicGitBackend implementation - skipping');
+        continue;
+      }
+
       // Special handling for filesystem (requires sandbox)
       if (toolsetName === 'filesystem') {
         if (!this.sandbox) {
@@ -481,8 +494,13 @@ export class BrowserWorkerRuntime {
   /**
    * Create a core-compatible ApprovalController from the browser's IApprovalController.
    * This adapts the browser's approval interface to match core's expected interface.
+   *
+   * Note: We use 'as any' because we're creating a duck-typed object that implements
+   * the methods toolsets actually use, not a full ApprovalController instance.
+   * Toolsets only use requestApproval(), so this is safe.
    */
-  private createCoreApprovalController() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private createCoreApprovalController(): any {
     // The browser's IApprovalController has the same requestApproval signature
     // as core's ApprovalController, so we can use it directly.
     // We just need to add the mode property that core expects.
