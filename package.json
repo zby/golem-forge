@@ -16,6 +16,7 @@
     "test:integration": "npm run test:integration -w @golem-forge/cli",
     "test:live": "npm run test:live -w @golem-forge/cli",
     "lint": "npm run lint -w @golem-forge/cli",
+    "check:arch": "node scripts/check-architecture.mjs",
     "clean": "npm run clean -w @golem-forge/core -w @golem-forge/ui-react -w @golem-forge/cli"
   },
   "devDependencies": {

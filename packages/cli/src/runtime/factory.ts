@@ -21,11 +21,11 @@ import {
   WorkerRuntime as CoreWorkerRuntime,
   createWorkerRuntime as createCoreWorkerRuntime,
   type WorkerRunnerFactory,
+  type WorkerRunner,
   type NamedTool,
   type FileOperations,
   type RuntimeUI,
   type RuntimeEventCallback,
-  type WorkerRuntimeOptionsWithTools,
   type WorkerRunnerOptions,
   type WorkerResult,
   type RunInput,
@@ -40,6 +40,70 @@ import {
 
 // Re-export types
 export type { WorkerResult, RunInput, WorkerRunnerOptions };
+
+/**
+ * CLI Worker Runner - implements WorkerRunner interface with lazy initialization.
+ *
+ * This wrapper class allows the synchronous WorkerRunnerFactory.create() to return
+ * an uninitialized runner, which then performs async tool injection during initialize().
+ * This ensures delegated workers get their full toolset (filesystem, workers, custom, etc.).
+ */
+class CLIWorkerRunner implements WorkerRunner {
+  private options: CLIWorkerRuntimeOptions;
+  private registry: WorkerRegistry;
+  private runtime?: CoreWorkerRuntime;
+
+  constructor(options: CLIWorkerRuntimeOptions, registry: WorkerRegistry) {
+    this.options = options;
+    this.registry = registry;
+  }
+
+  async initialize(): Promise<void> {
+    // Create the runtime with proper tool injection
+    this.runtime = await createCLIWorkerRuntime({
+      ...this.options,
+      registry: this.registry,
+    });
+  }
+
+  async run(input: RunInput): Promise<WorkerResult> {
+    if (!this.runtime) {
+      throw new Error("CLIWorkerRunner not initialized. Call initialize() first.");
+    }
+    return this.runtime.run(input);
+  }
+
+  getModelId(): string {
+    if (!this.runtime) {
+      throw new Error("CLIWorkerRunner not initialized. Call initialize() first.");
+    }
+    return this.runtime.getModelId();
+  }
+
+  getTools(): Record<string, Tool> {
+    if (!this.runtime) {
+      return {};
+    }
+    return this.runtime.getTools();
+  }
+
+  getSandbox(): FileOperations | undefined {
+    return this.runtime?.getSandbox();
+  }
+
+  getApprovalController(): ApprovalController {
+    if (!this.runtime) {
+      throw new Error("CLIWorkerRunner not initialized. Call initialize() first.");
+    }
+    return this.runtime.getApprovalController() as ApprovalController;
+  }
+
+  async dispose(): Promise<void> {
+    if (this.runtime) {
+      await this.runtime.dispose();
+    }
+  }
+}
 
 /**
  * CLI-specific options for creating WorkerRuntime.
@@ -129,12 +193,12 @@ async function createTools(
           registry.addSearchPath(options.programRoot);
         }
 
-        // Create factory for child workers that uses this same factory
+        // Create factory for child workers that uses createCLIWorkerRuntime
+        // This ensures child workers get their tools injected properly
         const workerRunnerFactory: WorkerRunnerFactory = {
-          create(childOptions: WorkerRunnerOptions) {
-            // Return a runtime that will be initialized separately
-            // This is a sync factory, so we return an uninitialized runtime
-            return new CoreWorkerRuntime(childOptions as WorkerRuntimeOptionsWithTools);
+          create(childOptions: WorkerRunnerOptions): WorkerRunner {
+            // Return a lazy wrapper that calls createCLIWorkerRuntime during initialize()
+            return new CLIWorkerRunner(childOptions as CLIWorkerRuntimeOptions, registry);
           },
         };
 
@@ -293,10 +357,14 @@ export async function createCLIWorkerRuntime(
 /**
  * Default factory for creating CLI worker runners.
  * Used for worker delegation.
+ *
+ * Uses CLIWorkerRunner to ensure child workers get their tools injected
+ * properly during initialize().
  */
 export const defaultCLIWorkerRunnerFactory: WorkerRunnerFactory = {
-  create(options: WorkerRunnerOptions) {
-    // Return uninitialized runtime - caller must initialize
-    return new CoreWorkerRuntime(options as WorkerRuntimeOptionsWithTools);
+  create(options: WorkerRunnerOptions): WorkerRunner {
+    // Return a lazy wrapper that calls createCLIWorkerRuntime during initialize()
+    // This ensures child workers get their full toolset
+    return new CLIWorkerRunner(options as CLIWorkerRuntimeOptions, new WorkerRegistry());
   },
 };

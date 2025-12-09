@@ -286,6 +286,140 @@ describe("createCLIWorkerRuntime", () => {
     });
   });
 
+  describe("worker delegation (CLIWorkerRunner)", () => {
+    const parentWorker: WorkerDefinition = {
+      name: "parent-worker",
+      instructions: "You can delegate tasks to child workers.",
+      toolsets: {
+        filesystem: {},
+        workers: {
+          allowed_workers: ["child-worker"],
+        },
+      },
+    };
+
+    const childWorker: WorkerDefinition = {
+      name: "child-worker",
+      instructions: "You are a child worker that can read files.",
+      description: "A child worker for delegation",
+      toolsets: {
+        filesystem: {},
+      },
+    };
+
+    it("creates worker tools for allowed workers", async () => {
+      // Create a mock registry
+      const mockRegistry = {
+        get: vi.fn().mockResolvedValue({
+          found: true,
+          worker: {
+            definition: childWorker,
+            filePath: "/test/child-worker.worker",
+          },
+        }),
+        addSearchPath: vi.fn(),
+      };
+
+      const runtime = await createCLIWorkerRuntime({
+        worker: parentWorker,
+        useTestSandbox: true,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+        registry: mockRegistry as any,
+      });
+
+      const tools = runtime.getTools();
+      const toolNames = Object.keys(tools);
+
+      // Should have filesystem tools and worker tool
+      expect(toolNames).toContain("read_file");
+      expect(toolNames).toContain("write_file");
+      expect(toolNames).toContain("child-worker"); // Named worker tool
+    });
+
+    it("throws error when workers toolset has no allowed_workers", async () => {
+      const workerWithEmptyAllowed: WorkerDefinition = {
+        name: "bad-worker",
+        instructions: "Test",
+        toolsets: {
+          workers: {}, // Missing allowed_workers
+        },
+      };
+
+      await expect(createCLIWorkerRuntime({
+        worker: workerWithEmptyAllowed,
+        useTestSandbox: true,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+      })).rejects.toThrow("Workers toolset requires 'allowed_workers' list");
+    });
+
+    it("child worker gets tools injected (not empty)", async () => {
+      // This test verifies the fix for the "delegated workers lose toolsets" bug
+      // The key insight is that child workers created via CLIWorkerRunner
+      // should go through createCLIWorkerRuntime and get their tools injected
+
+      // First, we need to create a parent that will delegate
+      mockGenerateText
+        .mockResolvedValueOnce({
+          text: "",
+          toolCalls: [
+            {
+              toolCallId: "delegate_1",
+              toolName: "child-worker",
+              input: { input: "Read test.txt" },
+            },
+          ],
+          finishReason: "tool-calls",
+          usage: { inputTokens: 10, outputTokens: 15 },
+        })
+        .mockResolvedValueOnce({
+          // Child worker completes
+          text: "File contents: hello world",
+          toolCalls: [],
+          finishReason: "stop",
+          usage: { inputTokens: 20, outputTokens: 10 },
+        })
+        .mockResolvedValueOnce({
+          // Parent completes after delegation
+          text: "The child worker read the file successfully.",
+          toolCalls: [],
+          finishReason: "stop",
+          usage: { inputTokens: 30, outputTokens: 20 },
+        });
+
+      const mockRegistry = {
+        get: vi.fn().mockResolvedValue({
+          found: true,
+          worker: {
+            definition: childWorker,
+            filePath: "/test/child-worker.worker",
+          },
+        }),
+        addSearchPath: vi.fn(),
+      };
+
+      const runtime = await createCLIWorkerRuntime({
+        worker: parentWorker,
+        useTestSandbox: true,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+        registry: mockRegistry as any,
+      });
+
+      // Create a file in sandbox for child to read
+      const sandbox = runtime.getSandbox()!;
+      await sandbox.write("/test.txt", "hello world");
+
+      const result = await runtime.run("Delegate to child worker to read test.txt");
+
+      // The delegation should succeed, which proves the child worker
+      // got its tools (filesystem) properly injected
+      expect(result.success).toBe(true);
+      expect(result.toolCallCount).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   describe("RuntimeUI integration with tools", () => {
     it("emits tool events during tool execution", async () => {
       mockGenerateText

@@ -105,9 +105,11 @@ export class GitToolset {
       ...options.approvalConfig,
     };
 
+    // Create context with default target from config
     const ctx: GitToolContext = {
       backend: options.backend,
       sandbox: options.sandbox,
+      defaultTarget: options.config?.default_target,
     };
 
     // Create tools with needsApproval set based on config
@@ -170,7 +172,17 @@ export function gitToolsetFactory(ctx: ToolsetContext): NamedTool[] {
   }
 
   const config = ctx.config as GitToolsetConfig | undefined;
-  const approvalConfig = config?.credentials ? undefined : undefined; // TODO: map config to approval
+
+  // Map credentials config to approval config
+  // If explicit credentials are provided, mark push/pull as pre-approved
+  // (since they won't need user interaction for auth)
+  let approvalConfig: ApprovalConfig | undefined;
+  if (config?.credentials?.mode === 'explicit' && config.credentials.env) {
+    approvalConfig = {
+      git_push: { preApproved: true },
+      git_pull: { preApproved: true },
+    };
+  }
 
   return new GitToolset({
     backend: gitCtx.gitBackend,

@@ -557,7 +557,9 @@ export class BrowserWorkerRuntime {
             // Token can be provided via settings (future enhancement)
           });
 
-          (context.config as Record<string, unknown>).gitBackend = gitBackend;
+          // Set gitBackend directly on context (not in config)
+          // This matches the GitToolsetContext interface expected by gitToolsetFactory
+          (context as unknown as Record<string, unknown>).gitBackend = gitBackend;
         } catch (error) {
           console.warn('Failed to create git backend:', error);
         }

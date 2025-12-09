@@ -34,6 +34,8 @@ describe("WorkerRuntime", () => {
     name: "test-worker",
     instructions: "You are a helpful assistant.",
     description: "A test worker",
+    server_side_tools: [],
+    locked: false,
   };
 
   beforeEach(() => {
@@ -305,6 +307,8 @@ describe("RuntimeUI event emission", () => {
     name: "test-worker",
     instructions: "You are a helpful assistant.",
     description: "A test worker",
+    server_side_tools: [],
+    locked: false,
   };
 
   beforeEach(() => {
@@ -319,8 +323,15 @@ describe("RuntimeUI event emission", () => {
       usage: { inputTokens: 10, outputTokens: 5 },
     });
 
+    const mockBus = {
+      emit: vi.fn(),
+      on: vi.fn(() => vi.fn()),
+      off: vi.fn(),
+      clear: vi.fn(),
+    };
+
     const mockRuntimeUI = {
-      bus: {},
+      bus: mockBus,
       showMessage: vi.fn(),
       showStatus: vi.fn(),
       startStreaming: vi.fn(),
@@ -336,8 +347,8 @@ describe("RuntimeUI event emission", () => {
       requestApproval: vi.fn(),
       getUserInput: vi.fn(),
       onInterrupt: vi.fn(),
-      onManualToolInvoke: vi.fn(),
-      onGetDiff: vi.fn(),
+      onManualToolInvoke: vi.fn(() => vi.fn()),
+      onGetDiff: vi.fn(() => vi.fn()),
     };
 
     const runtime = new WorkerRuntime({
@@ -383,8 +394,15 @@ describe("RuntimeUI event emission", () => {
   it("emits error events on failure", async () => {
     mockGenerateText.mockRejectedValueOnce(new Error("API error"));
 
+    const mockBus = {
+      emit: vi.fn(),
+      on: vi.fn(() => vi.fn()),
+      off: vi.fn(),
+      clear: vi.fn(),
+    };
+
     const mockRuntimeUI = {
-      bus: {},
+      bus: mockBus,
       showMessage: vi.fn(),
       showStatus: vi.fn(),
       startStreaming: vi.fn(),
@@ -400,8 +418,8 @@ describe("RuntimeUI event emission", () => {
       requestApproval: vi.fn(),
       getUserInput: vi.fn(),
       onInterrupt: vi.fn(),
-      onManualToolInvoke: vi.fn(),
-      onGetDiff: vi.fn(),
+      onManualToolInvoke: vi.fn(() => vi.fn()),
+      onGetDiff: vi.fn(() => vi.fn()),
     };
 
     const runtime = new WorkerRuntime({

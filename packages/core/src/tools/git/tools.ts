@@ -25,6 +25,7 @@ import {
   type MergeResult,
   type BranchListResult,
   type PushResult,
+  type GitTarget,
 } from './types.js';
 import { merge as mergeContent, hasConflictMarkers } from './merge.js';
 
@@ -44,6 +45,8 @@ export interface GitToolContext {
   backend: GitBackend;
   /** Sandbox for file operations */
   sandbox: FileOperations;
+  /** Default target for push/pull when not specified in input (from config) */
+  defaultTarget?: GitTarget;
 }
 
 // ============================================================================

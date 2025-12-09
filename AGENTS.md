@@ -21,6 +21,7 @@ This is an npm workspaces monorepo with three packages:
 - `README.md` - setup, CLI usage, examples
 - `docs/concept.md` - design philosophy and core concepts
 - `docs/notes/` - working design documents and explorations (see Notes section)
+- `docs/notes/core-vs-platform.md` - **architecture boundary rules** (core vs platform packages)
 - `packages/*/README.md` - package-specific documentation
 - Uses [Vercel AI SDK](https://ai-sdk.dev/) for LLM abstraction
 
@@ -69,6 +70,15 @@ npm run dev -w @golem-forge/chrome   # Watch mode
 - Favor clear architecture over hacks; delete dead code when possible
 - If backcompat code is ever needed, mark it with `// BACKCOMPAT: <reason> - remove after <condition>` so it can be identified and removed later
 - **Fail early**: Throw errors on invalid input, typos in config, missing initialization, etc. Don't hide bugs by silently recovering - this is experimental code and explicit failures are easier to debug than subtle misbehavior
+
+### Architecture Boundary
+
+**Core = logic, platform packages = adapters.**
+
+- Runtime logic, AI SDK integration, and tool registries belong in `@golem-forge/core`
+- CLI and Chrome packages only provide adapters (sandbox, UI, backends)
+- Run `npm run check:arch` to verify no violations
+- See `docs/notes/core-vs-platform.md` for full guidelines
 
 ---
 
