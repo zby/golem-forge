@@ -91,46 +91,114 @@ These services are well-designed and don't need changes:
 
 ## Implementation Plan
 
-### Phase 1: Create ChromeAdapter
+### Phase 1: Update BrowserWorkerRuntime to Support RuntimeUI
+
+The current `browser-runtime.ts` uses callbacks (`onStream`, `onToolCall`, `approvalCallback`). We need to add an alternative mode that uses `RuntimeUI` from `@golem-forge/core`.
+
+**Modified: `services/browser-runtime.ts`**
+
+```typescript
+import { RuntimeUI, createRuntimeUI } from "@golem-forge/core";
+
+export interface BrowserRuntimeOptions {
+  worker: WorkerDefinition;
+  modelId?: string;
+  programId?: string;
+  maxIterations?: number;
+
+  // Option A: Callback-based (existing, for backwards compat)
+  approvalMode?: ApprovalMode;
+  approvalCallback?: ApprovalCallback;
+  onStream?: StreamCallback;
+  onToolCall?: ToolCallback;
+
+  // Option B: Event-based (new)
+  runtimeUI?: RuntimeUI;  // If provided, use events instead of callbacks
+}
+```
+
+**Key Changes:**
+1. If `runtimeUI` is provided, use `runtimeUI.requestApproval()` instead of `BrowserApprovalController`
+2. Emit streaming events via `runtimeUI.appendStreaming()` instead of `onStream` callback
+3. Emit tool events via `runtimeUI.showToolStarted()` and `runtimeUI.showToolResult()`
+4. Remove `BrowserApprovalController` usage when in event mode
+
+**Tasks:**
+- [ ] Add `runtimeUI?: RuntimeUI` to `BrowserRuntimeOptions`
+- [ ] Modify `run()` to check for `runtimeUI` and use events instead of callbacks
+- [ ] Use `runtimeUI.requestApproval()` for approval flow (replaces BrowserApprovalController)
+- [ ] Emit streaming events via `runtimeUI.appendStreaming()`
+- [ ] Emit tool events via `runtimeUI.showToolStarted()` and `runtimeUI.showToolResult()`
+
+### Phase 2: Create ChromeAdapter
 
 Create an adapter that bridges BrowserWorkerRuntime to the event bus.
 
 **New File: `services/chrome-adapter.ts`**
 
 ```typescript
-import { BaseUIImplementation, UIEventBus, createRuntimeUI } from "@golem-forge/core";
-import { BrowserWorkerRuntime, createBrowserRuntime } from "./browser-runtime.js";
+import {
+  BaseUIImplementation,
+  UIEventBus,
+  createRuntimeUI,
+  type RuntimeUI,
+  type WorkerDefinition
+} from "@golem-forge/core";
+import { createBrowserRuntime, type BrowserWorkerRuntime } from "./browser-runtime.js";
+
+export interface ChromeAdapterOptions {
+  programId?: string;
+  modelId?: string;
+}
 
 export class ChromeAdapter extends BaseUIImplementation {
-  private runtime?: BrowserWorkerRuntime;
+  private runtimeUI: RuntimeUI;
+  private options: ChromeAdapterOptions;
+
+  constructor(bus: UIEventBus, options: ChromeAdapterOptions = {}) {
+    super(bus);
+    this.runtimeUI = createRuntimeUI(bus);
+    this.options = options;
+  }
 
   async initialize(): Promise<void> {
-    // Set up event subscriptions
-    this.bus.on("userInput", (event) => this.handleUserInput(event));
-    this.bus.on("approvalResponse", (event) => this.handleApprovalResponse(event));
+    // ChromeAdapter is stateless - no initialization needed
+    // Event subscriptions are handled by UIProvider in React
   }
 
-  async runWorker(workerDef: WorkerDefinition, input: string): Promise<void> {
-    const runtimeUI = createRuntimeUI(this.bus);
+  async shutdown(): Promise<void> {
+    // Nothing to clean up
+  }
 
-    this.runtime = await createBrowserRuntime({
-      worker: workerDef,
-      runtimeUI,  // Event-based UI
-      // ... other options
+  /**
+   * Run a worker with the given input.
+   * Emits events to the bus for UI consumption.
+   */
+  async runWorker(worker: WorkerDefinition, input: string): Promise<void> {
+    const runtime = await createBrowserRuntime({
+      worker,
+      programId: this.options.programId,
+      modelId: this.options.modelId,
+      runtimeUI: this.runtimeUI,  // Event-based mode
     });
 
-    await this.runtime.run(input);
+    await runtime.run(input);
   }
+}
+
+export function createChromeAdapter(
+  bus: UIEventBus,
+  options?: ChromeAdapterOptions
+): ChromeAdapter {
+  return new ChromeAdapter(bus, options);
 }
 ```
 
 **Tasks:**
 - [ ] Create `services/chrome-adapter.ts`
-- [ ] Implement event subscriptions for userInput, approvalResponse, interrupt
-- [ ] Emit events: message, streaming, approvalRequired, toolResult, status
-- [ ] Wire BrowserWorkerRuntime to use RuntimeUI instead of callbacks
+- [ ] Export from `services/index.ts`
 
-### Phase 2: Update Sidepanel with UIProvider
+### Phase 3: Update Sidepanel with UIProvider
 
 Wrap the sidepanel in UIProvider and use ui-react hooks.
 
@@ -161,7 +229,7 @@ function SidepanelApp() {
 - [ ] Create ChromeUIStateProvider for chrome-specific state (selected program, etc.)
 - [ ] Initialize ChromeAdapter on mount
 
-### Phase 3: Refactor ChatTab
+### Phase 4: Refactor ChatTab
 
 Replace local state with ui-react hooks.
 
@@ -192,7 +260,7 @@ function ChatTab() {
 - [ ] Use useApprovalActions().respond() instead of Promise resolver
 - [ ] Update message rendering to use UIMessage type
 
-### Phase 4: Refactor ApprovalDialog
+### Phase 5: Refactor ApprovalDialog
 
 Convert from Promise-based to event-based approval.
 
@@ -230,7 +298,7 @@ function ApprovalDialog() {
 - [ ] Use useApprovalActions().respond() for decisions
 - [ ] Add "session" and "always" approval options
 
-### Phase 5: Create Chrome-Specific Context
+### Phase 6: Create Chrome-Specific Context
 
 For state that's unique to Chrome (selected program, settings UI state).
 
@@ -257,18 +325,6 @@ export function useChromeUIActions();
 - [ ] Export hooks for state and actions
 - [ ] Update components to use hooks
 
-### Phase 6: Update BrowserWorkerRuntime Integration
-
-Modify how BrowserWorkerRuntime integrates with the event system.
-
-**Current:** Callbacks (onStream, onToolCall)
-**Target:** RuntimeUI from event bus
-
-**Tasks:**
-- [ ] Update createBrowserRuntime to accept RuntimeUI
-- [ ] Remove callback-based streaming
-- [ ] Emit events through RuntimeUI.emit()
-- [ ] Handle approvals through RuntimeUI.requestApproval()
 
 ## File Changes Summary
 
@@ -278,13 +334,14 @@ Modify how BrowserWorkerRuntime integrates with the event system.
 | `services/chrome-adapter.ts` | Event bus bridge for BrowserWorkerRuntime |
 | `contexts/ChromeUIStateContext.tsx` | Chrome-specific UI state |
 | `contexts/index.ts` | Context exports |
+| `components/ApprovalDialog.tsx` | Refactored approval dialog using hooks |
 
 ### Modified Files
 | File | Changes |
 |------|---------|
-| `sidepanel.tsx` | Add UIProvider, event bus initialization |
-| `services/browser-runtime.ts` | Accept RuntimeUI, emit events |
-| Component files | Use ui-react hooks instead of local state |
+| `services/browser-runtime.ts` | Add `runtimeUI` option, emit events when provided |
+| `services/index.ts` | Export ChromeAdapter |
+| `sidepanel.tsx` | Add UIProvider, event bus initialization, use hooks |
 
 ### Unchanged Files
 | File | Reason |
