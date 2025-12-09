@@ -42,7 +42,7 @@ export interface ManualToolField {
 
 /**
  * UI representation of a manual tool.
- * Used by UIAdapter to display available manual tools.
+ * Used by UI implementations to display available manual tools.
  */
 export interface ManualToolInfo {
   /** Tool name (for invocation) */
@@ -307,7 +307,7 @@ export type ToolResultValue =
 
 /**
  * Typed tool result with status information.
- * Used by UIAdapter to display tool execution results.
+ * Used by UI implementations to display tool execution results.
  */
 export interface TypedToolResult {
   /** Tool name that produced this result */

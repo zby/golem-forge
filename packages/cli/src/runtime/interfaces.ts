@@ -13,7 +13,8 @@ import type { WorkerRegistry } from "../worker/registry.js";
 import type { DelegationContext } from "../tools/worker-call.js";
 import type { RuntimeEventCallback } from "./events.js";
 import type { Attachment } from "../ai/types.js";
-import type { UIAdapter, InterruptSignal } from "../ui/index.js";
+import type { InterruptSignal } from "../ui/index.js";
+import type { RuntimeUI } from "@golem-forge/core";
 
 /**
  * Result of a worker execution.
@@ -120,8 +121,8 @@ export interface WorkerRunnerOptions {
   useTestSandbox?: boolean;
   /** Callback for runtime events (for tracing/debugging) */
   onEvent?: RuntimeEventCallback;
-  /** UI adapter for platform-independent UI (optional) */
-  uiAdapter?: UIAdapter;
+  /** Runtime UI for event-driven UI communication (optional) */
+  runtimeUI?: RuntimeUI;
   /** Interrupt signal for graceful termination */
   interruptSignal?: InterruptSignal;
   /** Worker depth in the delegation tree (0 = root) */

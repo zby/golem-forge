@@ -529,3 +529,221 @@ describe("matchModelPattern", () => {
     expect(matchModelPattern("openai:gpt-4x5", "openai:gpt-4.5")).toBe(false);
   });
 });
+
+describe("RuntimeUI event emission", () => {
+  const simpleWorker: WorkerDefinition = {
+    name: "test-worker",
+    instructions: "You are a helpful assistant.",
+    description: "A test worker",
+  };
+
+  const workerWithFilesystem: WorkerDefinition = {
+    name: "fs-worker",
+    instructions: "You can read and write files.",
+    toolsets: {
+      filesystem: {},
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("emits workerUpdate and message events on successful run", async () => {
+    mockGenerateText.mockResolvedValueOnce({
+      text: "Hello there!",
+      toolCalls: [],
+      finishReason: "stop",
+      usage: { inputTokens: 10, outputTokens: 5 },
+    });
+
+    const mockRuntimeUI = {
+      bus: {},
+      showMessage: vi.fn(),
+      showStatus: vi.fn(),
+      startStreaming: vi.fn(),
+      appendStreaming: vi.fn(),
+      endStreaming: vi.fn(),
+      showToolStarted: vi.fn(),
+      showToolResult: vi.fn(),
+      updateWorker: vi.fn(),
+      showManualTools: vi.fn(),
+      showDiffSummary: vi.fn(),
+      showDiffContent: vi.fn(),
+      endSession: vi.fn(),
+      requestApproval: vi.fn(),
+      getUserInput: vi.fn(),
+      onInterrupt: vi.fn(),
+      onManualToolInvoke: vi.fn(),
+      onGetDiff: vi.fn(),
+    };
+
+    const runtime = new WorkerRuntime({
+      worker: simpleWorker,
+      approvalMode: "approve_all",
+      model: TEST_MODEL,
+      runtimeUI: mockRuntimeUI,
+    });
+    await runtime.initialize();
+
+    const result = await runtime.run("Hello!");
+
+    expect(result.success).toBe(true);
+
+    // Should emit workerUpdate with 'running' status at start
+    expect(mockRuntimeUI.updateWorker).toHaveBeenCalledWith(
+      expect.any(String), // workerId
+      "test-worker",
+      "running",
+      undefined,
+      0
+    );
+
+    // Should emit showMessage with assistant response
+    expect(mockRuntimeUI.showMessage).toHaveBeenCalledWith({
+      role: "assistant",
+      content: "Hello there!",
+    });
+
+    // Should emit workerUpdate with 'complete' status
+    expect(mockRuntimeUI.updateWorker).toHaveBeenCalledWith(
+      expect.any(String), // workerId
+      "test-worker",
+      "complete",
+      undefined,
+      0
+    );
+
+    // Should emit endSession for root worker
+    expect(mockRuntimeUI.endSession).toHaveBeenCalledWith("completed");
+  });
+
+  it("emits error events on failure", async () => {
+    mockGenerateText.mockRejectedValueOnce(new Error("API error"));
+
+    const mockRuntimeUI = {
+      bus: {},
+      showMessage: vi.fn(),
+      showStatus: vi.fn(),
+      startStreaming: vi.fn(),
+      appendStreaming: vi.fn(),
+      endStreaming: vi.fn(),
+      showToolStarted: vi.fn(),
+      showToolResult: vi.fn(),
+      updateWorker: vi.fn(),
+      showManualTools: vi.fn(),
+      showDiffSummary: vi.fn(),
+      showDiffContent: vi.fn(),
+      endSession: vi.fn(),
+      requestApproval: vi.fn(),
+      getUserInput: vi.fn(),
+      onInterrupt: vi.fn(),
+      onManualToolInvoke: vi.fn(),
+      onGetDiff: vi.fn(),
+    };
+
+    const runtime = new WorkerRuntime({
+      worker: simpleWorker,
+      approvalMode: "approve_all",
+      model: TEST_MODEL,
+      runtimeUI: mockRuntimeUI,
+    });
+    await runtime.initialize();
+
+    const result = await runtime.run("Hello!");
+
+    expect(result.success).toBe(false);
+
+    // Should emit showStatus with error
+    expect(mockRuntimeUI.showStatus).toHaveBeenCalledWith("error", "API error");
+
+    // Should emit workerUpdate with 'error' status
+    expect(mockRuntimeUI.updateWorker).toHaveBeenCalledWith(
+      expect.any(String),
+      "test-worker",
+      "error",
+      undefined,
+      0
+    );
+
+    // Should emit endSession with error
+    expect(mockRuntimeUI.endSession).toHaveBeenCalledWith("error", "API error");
+  });
+
+  it("emits tool events during tool execution", async () => {
+    mockGenerateText
+      .mockResolvedValueOnce({
+        text: "",
+        toolCalls: [
+          {
+            toolCallId: "call_1",
+            toolName: "read_file",
+            args: { path: "/workspace/test.txt" },
+          },
+        ],
+        finishReason: "tool-calls",
+        usage: { inputTokens: 10, outputTokens: 15 },
+      })
+      .mockResolvedValueOnce({
+        text: "Done!",
+        toolCalls: [],
+        finishReason: "stop",
+        usage: { inputTokens: 25, outputTokens: 20 },
+      });
+
+    const mockRuntimeUI = {
+      bus: {},
+      showMessage: vi.fn(),
+      showStatus: vi.fn(),
+      startStreaming: vi.fn(),
+      appendStreaming: vi.fn(),
+      endStreaming: vi.fn(),
+      showToolStarted: vi.fn(),
+      showToolResult: vi.fn(),
+      updateWorker: vi.fn(),
+      showManualTools: vi.fn(),
+      showDiffSummary: vi.fn(),
+      showDiffContent: vi.fn(),
+      endSession: vi.fn(),
+      requestApproval: vi.fn(),
+      getUserInput: vi.fn(),
+      onInterrupt: vi.fn(),
+      onManualToolInvoke: vi.fn(),
+      onGetDiff: vi.fn(),
+    };
+
+    const runtime = new WorkerRuntime({
+      worker: workerWithFilesystem,
+      useTestSandbox: true,
+      approvalMode: "approve_all",
+      model: TEST_MODEL,
+      runtimeUI: mockRuntimeUI,
+    });
+    await runtime.initialize();
+
+    // Create test file
+    const sandbox = runtime.getSandbox()!;
+    await sandbox.write("/workspace/test.txt", "file content");
+
+    const result = await runtime.run("Read the file");
+
+    expect(result.success).toBe(true);
+
+    // Should emit toolStarted
+    expect(mockRuntimeUI.showToolStarted).toHaveBeenCalledWith(
+      "call_1",
+      "read_file",
+      { path: "/workspace/test.txt" }
+    );
+
+    // Should emit toolResult
+    expect(mockRuntimeUI.showToolResult).toHaveBeenCalledWith(
+      "call_1",
+      "read_file",
+      "success",
+      expect.any(Number), // durationMs
+      expect.objectContaining({ kind: "file_content" }), // structured result
+      undefined // no error
+    );
+  });
+});

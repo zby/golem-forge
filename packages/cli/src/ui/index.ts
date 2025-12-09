@@ -2,6 +2,7 @@
  * UI Abstraction Layer
  *
  * Platform-independent UI for worker execution.
+ * Uses event-driven architecture via UIEventBus and RuntimeUI from @golem-forge/core.
  */
 
 // Types
@@ -33,15 +34,12 @@ export type {
   TypedToolResult,
 } from "./types.js";
 
-// Adapter interface
-export type { UIAdapter } from "./adapter.js";
-
-// CLI implementation
+// Event-based CLI implementation
 export {
-  CLIAdapter,
-  createCLIAdapter,
-  type CLIAdapterOptions,
-} from "./cli-adapter.js";
+  EventCLIAdapter,
+  createEventCLIAdapter,
+  type EventCLIAdapterOptions,
+} from "./event-cli-adapter.js";
 
 // Interrupt handling
 export {

@@ -8,7 +8,7 @@
 import type { Tool, ModelMessage } from "ai";
 import type { ApprovalController } from "../approval/index.js";
 import type { RuntimeEventCallback, RuntimeEventData } from "./events.js";
-import type { UIAdapter } from "../ui/index.js";
+import type { RuntimeUI } from "@golem-forge/core";
 import { isToolResultValue, toTypedToolResult } from "../ui/index.js";
 
 /**
@@ -54,8 +54,8 @@ export interface ToolExecutorOptions {
   approvalController: ApprovalController;
   /** Optional event callback for observability */
   onEvent?: RuntimeEventCallback;
-  /** Optional UI adapter for displaying tool results */
-  uiAdapter?: UIAdapter;
+  /** Optional RuntimeUI for event-driven UI communication */
+  runtimeUI?: RuntimeUI;
 }
 
 /**
@@ -73,13 +73,13 @@ export class ToolExecutor {
   private tools: Record<string, Tool>;
   private approvalController: ApprovalController;
   private onEvent?: RuntimeEventCallback;
-  private uiAdapter?: UIAdapter;
+  private runtimeUI?: RuntimeUI;
 
   constructor(options: ToolExecutorOptions) {
     this.tools = options.tools;
     this.approvalController = options.approvalController;
     this.onEvent = options.onEvent;
-    this.uiAdapter = options.uiAdapter;
+    this.runtimeUI = options.runtimeUI;
   }
 
   /**
@@ -112,6 +112,11 @@ export class ToolExecutor {
       toolName,
       toolArgs,
     });
+
+    // Emit UI toolStarted event
+    if (this.runtimeUI) {
+      this.runtimeUI.showToolStarted(toolCallId, toolName, toolArgs);
+    }
 
     let output: unknown;
     let isError = false;
@@ -204,11 +209,23 @@ export class ToolExecutor {
       });
     }
 
-    // Display structured tool result via UI adapter if available
-    // Only display if the result is a structured ToolResultValue (has kind field)
-    if (this.uiAdapter && isToolResultValue(output)) {
-      const typedResult = toTypedToolResult(toolName, toolCallId, output, isError, durationMs);
-      await this.uiAdapter.displayToolResult(typedResult);
+    // Emit UI tool result event
+    if (this.runtimeUI) {
+      const status = isError ? 'error' : 'success';
+      // Convert output to structured value if possible
+      const value = isToolResultValue(output)
+        ? toTypedToolResult(toolName, toolCallId, output, isError, durationMs).value
+        : undefined;
+      const error = isError ? (typeof output === 'string' ? output : String(output)) : undefined;
+
+      this.runtimeUI.showToolResult(
+        toolCallId,
+        toolName,
+        status,
+        durationMs,
+        value,
+        error
+      );
     }
 
     return {

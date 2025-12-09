@@ -13,7 +13,6 @@ export * from "./worker/index.js";
 
 // UI abstraction layer (selective exports to avoid conflicts)
 export type {
-  UIAdapter,
   FieldType,
   ManualToolField,
   ManualToolInfo,
@@ -29,7 +28,7 @@ export type {
   DiffContent,
   InterruptSignal,
   ToolResult,
-  CLIAdapterOptions,
+  EventCLIAdapterOptions,
   ParsedCommand,
   BuiltinCommand,
   CommandType,
@@ -45,8 +44,8 @@ export type {
 } from "./ui/index.js";
 
 export {
-  CLIAdapter,
-  createCLIAdapter,
+  EventCLIAdapter,
+  createEventCLIAdapter,
   createInterruptSignal,
   InterruptError,
   isInterruptError,

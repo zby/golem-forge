@@ -21,7 +21,42 @@ vi.mock("../runtime/index.js", () => {
 });
 
 vi.mock("./approval.js", () => ({
-  createCLIApprovalCallback: vi.fn().mockReturnValue(vi.fn()),
+  createRuntimeUIApprovalCallback: vi.fn().mockReturnValue(vi.fn()),
+}));
+
+// Mock @golem-forge/core UI event infrastructure
+// We need stable mock objects that survive vi.clearAllMocks()
+// Only mock UI-related functions, let others pass through (like WorkerDefinitionSchema)
+const mockEventBus = {
+  subscribe: vi.fn(),
+  publish: vi.fn(),
+  subscribeAll: vi.fn(),
+};
+const mockRuntimeUI = {
+  showMessage: vi.fn(),
+  showToolStarted: vi.fn(),
+  showToolResult: vi.fn(),
+  updateWorker: vi.fn(),
+  endSession: vi.fn(),
+  showStatus: vi.fn(),
+  requestApproval: vi.fn().mockResolvedValue({ approved: true }),
+};
+vi.mock("@golem-forge/core", async () => {
+  const actual = await vi.importActual<typeof import("@golem-forge/core")>("@golem-forge/core");
+  return {
+    ...actual,
+    createUIEventBus: vi.fn(() => mockEventBus),
+    createRuntimeUI: vi.fn(() => mockRuntimeUI),
+  };
+});
+
+// Mock EventCLIAdapter
+const mockCLIAdapter = {
+  initialize: vi.fn().mockResolvedValue(undefined),
+  shutdown: vi.fn().mockResolvedValue(undefined),
+};
+vi.mock("../ui/event-cli-adapter.js", () => ({
+  createEventCLIAdapter: vi.fn(() => mockCLIAdapter),
 }));
 
 vi.mock("./program.js", () => {
@@ -49,13 +84,6 @@ vi.mock("./program.js", () => {
   };
 });
 
-const { mockCreateTraceFormatter } = vi.hoisted(() => ({
-  mockCreateTraceFormatter: vi.fn(() => vi.fn()),
-}));
-
-vi.mock("./trace.js", () => ({
-  createTraceFormatter: mockCreateTraceFormatter,
-}));
 
 // Import after mocks
 import { runCLI } from "./run.js";
@@ -109,6 +137,11 @@ Test instructions
     mockCreateWorkerRuntime.mockResolvedValue({
       run: mockRun,
     });
+
+    // Reset UI event infrastructure mocks (they get cleared by vi.clearAllMocks)
+    mockCLIAdapter.initialize.mockResolvedValue(undefined);
+    mockCLIAdapter.shutdown.mockResolvedValue(undefined);
+    mockRuntimeUI.requestApproval.mockResolvedValue({ approved: true });
   });
 
   afterEach(async () => {
@@ -228,7 +261,7 @@ Test instructions
   });
 
   describe("worker execution", () => {
-    it("should output successful response", async () => {
+    it("should complete successfully", async () => {
       mockRun.mockResolvedValue({
         success: true,
         response: "Hello from worker",
@@ -237,9 +270,8 @@ Test instructions
         cost: 0.005,
       });
 
+      // Should complete without throwing (response is shown via EventCLIAdapter)
       await runCLI(["node", "cli", workerDir, "--trace", "quiet", "--input", "test"]);
-
-      expect(consoleLogSpy).toHaveBeenCalledWith("Hello from worker");
     });
 
     it("should output stats at summary trace level", async () => {
@@ -253,7 +285,8 @@ Test instructions
 
       await runCLI(["node", "cli", workerDir, "--trace", "summary", "--input", "test"]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("Response");
+      // Response is displayed by EventCLIAdapter via events, not console.log
+      // Here we just verify stats are shown
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tool calls: 3"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tokens: 100 in / 50 out"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Cost: $0.012300"));
@@ -266,35 +299,15 @@ Test instructions
         toolCallCount: 1,
       });
 
+      // Should call process.exit(1) on failure
+      // Error display is handled by EventCLIAdapter via the event bus
       await expect(
         runCLI(["node", "cli", workerDir, "--trace", "quiet", "--input", "test"])
       ).rejects.toThrow("process.exit called");
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("Worker failed: Worker execution failed")
-      );
     });
   });
 
   describe("trace levels", () => {
-    it("should create trace formatter for full trace level", async () => {
-      await runCLI(["node", "cli", workerDir, "--trace", "full", "--input", "test"]);
-
-      expect(mockCreateTraceFormatter).toHaveBeenCalledTimes(1);
-    });
-
-    it("should create trace formatter for debug trace level", async () => {
-      await runCLI(["node", "cli", workerDir, "--trace", "debug", "--input", "test"]);
-
-      expect(mockCreateTraceFormatter).toHaveBeenCalledTimes(1);
-    });
-
-    it.each(["quiet", "summary"])('should not create trace formatter for %s trace level', async (level) => {
-      await runCLI(["node", "cli", workerDir, "--trace", level, "--input", "test"]);
-
-      expect(mockCreateTraceFormatter).not.toHaveBeenCalled();
-    });
-
     it.each(["full", "debug"])('should not print inline stats for %s trace level', async (level) => {
       mockRun.mockResolvedValue({
         success: true,

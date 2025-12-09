@@ -6,6 +6,7 @@
 
 import * as readline from "readline";
 import type { ApprovalCallback, ApprovalRequest, ApprovalDecision } from "../approval/index.js";
+import type { RuntimeUI } from "@golem-forge/core";
 
 /**
  * Trust level indicators for display.
@@ -243,5 +244,54 @@ export function createAutoDenyCallback(reason?: string): ApprovalCallback {
       remember: "none",
       note: reason || "Auto-denied in auto_deny mode",
     };
+  };
+}
+
+/**
+ * Create an approval callback that uses RuntimeUI for event-driven approval.
+ *
+ * This callback emits an approvalRequired event via RuntimeUI and waits
+ * for an approvalResponse event from the UI implementation.
+ *
+ * @param runtimeUI - The RuntimeUI instance to use for approval
+ * @returns ApprovalCallback that delegates to RuntimeUI
+ *
+ * @example
+ * ```typescript
+ * const eventBus = createUIEventBus();
+ * const runtimeUI = createRuntimeUI(eventBus);
+ * const callback = createRuntimeUIApprovalCallback(runtimeUI);
+ *
+ * const controller = new ApprovalController({
+ *   mode: "interactive",
+ *   approvalCallback: callback,
+ * });
+ * ```
+ */
+export function createRuntimeUIApprovalCallback(runtimeUI: RuntimeUI): ApprovalCallback {
+  return async (request: ApprovalRequest): Promise<ApprovalDecision> => {
+    // Map request to RuntimeUI format
+    const result = await runtimeUI.requestApproval(
+      "tool_call",
+      request.description,
+      request.toolArgs,
+      "medium", // Default risk level - could be derived from tool metadata
+      [] // Worker path - could be passed via request if needed
+    );
+
+    // Map RuntimeUI result to ApprovalDecision
+    // Note: RuntimeUI supports "always" but current ApprovalController only supports "session"
+    // so we map "always" to "session" for now
+    if (result.approved === true) {
+      return { approved: true, remember: "none" };
+    } else if (result.approved === "session" || result.approved === "always") {
+      return { approved: true, remember: "session" };
+    } else {
+      return {
+        approved: false,
+        remember: "none",
+        note: result.reason,
+      };
+    }
   };
 }

@@ -10,11 +10,12 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { createWorkerRuntime, type WorkerRuntimeOptions, type Attachment, type RunInput } from "../runtime/index.js";
 import { parseWorkerString, type WorkerDefinition } from "../worker/index.js";
-import { createCLIApprovalCallback } from "./approval.js";
+import { createRuntimeUIApprovalCallback } from "./approval.js";
 import { getEffectiveConfig, findProgramRoot, resolveSandboxConfig } from "./program.js";
-import { createTraceFormatter } from "./trace.js";
 import type { ApprovalMode } from "../approval/index.js";
 import type { MountSandboxConfig } from "../sandbox/index.js";
+import { createUIEventBus, createRuntimeUI } from "@golem-forge/core";
+import { createEventCLIAdapter, type TraceLevel as AdapterTraceLevel } from "../ui/event-cli-adapter.js";
 
 /**
  * Trace levels control output verbosity.
@@ -448,11 +449,6 @@ async function executeWorker(
     console.log("");
   }
 
-  // Create approval callback
-  const approvalCallback = effectiveConfig.approvalMode === "interactive"
-    ? createCLIApprovalCallback()
-    : undefined;
-
   // Build mount-based sandbox configuration from program config
   let mountSandboxConfig: MountSandboxConfig | undefined;
   if (effectiveConfig.sandbox) {
@@ -472,10 +468,20 @@ async function executeWorker(
     }
   }
 
-  const isStreamingTrace = options.trace === 'full' || options.trace === 'debug';
+  // Create event-based UI infrastructure
+  const eventBus = createUIEventBus();
+  const runtimeUI = createRuntimeUI(eventBus);
+  const cliAdapter = createEventCLIAdapter(eventBus, {
+    traceLevel: options.trace as AdapterTraceLevel,
+  });
 
-  // Create trace formatter for full/debug levels (real-time streaming)
-  const onEvent = isStreamingTrace ? createTraceFormatter() : undefined;
+  // Initialize the CLI adapter to start subscribing to events
+  await cliAdapter.initialize();
+
+  // Create approval callback using RuntimeUI for event-driven approval
+  const approvalCallback = effectiveConfig.approvalMode === "interactive"
+    ? createRuntimeUIApprovalCallback(runtimeUI)
+    : undefined;
 
   // Create runtime options - use detected program root
   // Model is already resolved: CLI --model > env var > program config
@@ -486,7 +492,7 @@ async function executeWorker(
     approvalCallback,
     programRoot,
     mountSandboxConfig,
-    onEvent,
+    runtimeUI,
   };
 
   // Create and initialize runtime
@@ -513,33 +519,23 @@ async function executeWorker(
 
   const result = await runtime.run(runInput);
 
-  // Output based on trace level
-  const showResponse = options.trace === 'quiet' || options.trace === 'summary';
-  // Summary level prints stats inline; streaming levels show them via trace formatter output
-  const showStats = options.trace === 'summary' || (!isStreamingTrace && options.trace !== 'quiet');
+  // Shutdown the CLI adapter
+  await cliAdapter.shutdown();
 
-  if (result.success) {
-    // For quiet/summary, print the response (full/debug shows it via streaming)
-    if (showResponse) {
-      console.log(result.response);
+  // EventCLIAdapter handles all output via the event bus.
+  // For 'summary' mode, also show stats after the response.
+  if (options.trace === 'summary') {
+    console.log("\n" + "─".repeat(30));
+    console.log(`Tool calls: ${result.toolCallCount}`);
+    if (result.tokens) {
+      console.log(`Tokens: ${result.tokens.input} in / ${result.tokens.output} out`);
     }
+    if (result.cost) {
+      console.log(`Cost: $${result.cost.toFixed(6)}`);
+    }
+  }
 
-    // Show stats for summary/full/debug levels
-    if (showStats) {
-      console.log("\n" + "─".repeat(30));
-      console.log(`Tool calls: ${result.toolCallCount}`);
-      if (result.tokens) {
-        console.log(`Tokens: ${result.tokens.input} in / ${result.tokens.output} out`);
-      }
-      if (result.cost) {
-        console.log(`Cost: $${result.cost.toFixed(6)}`);
-      }
-    }
-  } else {
-    // For quiet/summary, print error (full/debug shows it via streaming)
-    if (showResponse) {
-      console.error(`Worker failed: ${result.error}`);
-    }
+  if (!result.success) {
     process.exit(1);
   }
 }

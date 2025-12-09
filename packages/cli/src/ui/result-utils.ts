@@ -42,7 +42,7 @@ export function isToolResultValue(value: unknown): value is ToolResultValue {
  * @param output - Raw tool output
  * @param isError - Whether the execution errored
  * @param durationMs - Execution duration in ms
- * @returns TypedToolResult suitable for UIAdapter.displayToolResult
+ * @returns TypedToolResult suitable for RuntimeUI.showToolResult
  */
 export function toTypedToolResult(
   toolName: string,

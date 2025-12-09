@@ -37,6 +37,7 @@ import type {
   WorkerResult,
   RunInput,
 } from "./interfaces.js";
+import type { RuntimeUI } from "@golem-forge/core";
 
 // Re-export types from interfaces.ts
 export type { WorkerResult, RunInput, WorkerRunner, WorkerRunnerFactory, WorkerRunnerOptions } from "./interfaces.js";
@@ -191,9 +192,11 @@ export class WorkerRuntime implements WorkerRunner {
   private approvalController: ApprovalController;
   private sandbox?: FileOperations;
   private onEvent?: RuntimeEventCallback;
+  private runtimeUI?: RuntimeUI;
   private initialized = false;
   private toolExecutor?: ToolExecutor;
   private depth: number;
+  private workerId: string;
 
   constructor(options: WorkerRuntimeOptions) {
     this.worker = options.worker;
@@ -239,6 +242,12 @@ export class WorkerRuntime implements WorkerRunner {
 
     // Store event callback for tracing
     this.onEvent = options.onEvent;
+
+    // Store RuntimeUI for UI events
+    this.runtimeUI = options.runtimeUI;
+
+    // Generate worker ID for UI tracking
+    this.workerId = `worker-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   }
 
   /**
@@ -284,7 +293,7 @@ export class WorkerRuntime implements WorkerRunner {
       tools: this.tools,
       approvalController: this.approvalController,
       onEvent: this.onEvent,
-      uiAdapter: this.options.uiAdapter,
+      runtimeUI: this.options.runtimeUI,
     });
 
     this.initialized = true;
@@ -456,6 +465,17 @@ export class WorkerRuntime implements WorkerRunner {
       model: this.resolvedModelId,
     });
 
+    // Emit UI worker update event
+    if (this.runtimeUI) {
+      this.runtimeUI.updateWorker(
+        this.workerId,
+        this.worker.name,
+        'running',
+        undefined,
+        this.depth
+      );
+    }
+
     try {
       // Build initial messages
       const messages: ModelMessage[] = [
@@ -559,6 +579,27 @@ export class WorkerRuntime implements WorkerRunner {
             totalTokens: { input: totalInputTokens, output: totalOutputTokens },
             durationMs: Date.now() - startTime,
           });
+
+          // Emit UI events for completion
+          if (this.runtimeUI) {
+            // Show the assistant's response
+            if (response) {
+              this.runtimeUI.showMessage({ role: 'assistant', content: response });
+            }
+            // Update worker status to complete
+            this.runtimeUI.updateWorker(
+              this.workerId,
+              this.worker.name,
+              'complete',
+              undefined,
+              this.depth
+            );
+            // Signal session end (only for root worker)
+            if (this.depth === 0) {
+              this.runtimeUI.endSession('completed');
+            }
+          }
+
           return {
             success: true,
             response,
@@ -624,6 +665,16 @@ export class WorkerRuntime implements WorkerRunner {
         totalToolCalls: toolCallCount,
         durationMs: Date.now() - startTime,
       });
+
+      // Emit UI error events
+      if (this.runtimeUI) {
+        this.runtimeUI.showStatus('error', maxIterError);
+        this.runtimeUI.updateWorker(this.workerId, this.worker.name, 'error', undefined, this.depth);
+        if (this.depth === 0) {
+          this.runtimeUI.endSession('error', maxIterError);
+        }
+      }
+
       return {
         success: false,
         error: maxIterError,
@@ -640,6 +691,16 @@ export class WorkerRuntime implements WorkerRunner {
         totalToolCalls: toolCallCount,
         durationMs: Date.now() - startTime,
       });
+
+      // Emit UI error events
+      if (this.runtimeUI) {
+        this.runtimeUI.showStatus('error', errorMsg);
+        this.runtimeUI.updateWorker(this.workerId, this.worker.name, 'error', undefined, this.depth);
+        if (this.depth === 0) {
+          this.runtimeUI.endSession('error', errorMsg);
+        }
+      }
+
       return {
         success: false,
         error: errorMsg,
