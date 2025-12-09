@@ -6,23 +6,23 @@ Enable the same tool plugin system in browser (Chrome extension) as in CLI. Tool
 
 ## Implementation Status
 
-> **Last Updated**: 2024-12-09
+> **Last Updated**: 2025-12-09
 >
 > **Phase 1**: ✅ COMPLETE - Filesystem toolset moved to core
 > **Phase 2**: ✅ COMPLETE - Worker-call toolset moved to core
 > **Phase 3**: ✅ COMPLETE - Custom toolset moved to core
-> **Phase 4**: ✅ COMPLETE - Git types, backend interface, merge utils, and tools moved to core
-> **Phase 5**: ✅ PARTIAL - Chrome uses registry (filesystem works, git/workers/custom skipped until impl)
-> **Phase 6**: ⏳ PENDING - Testing
+> **Phase 4**: ✅ COMPLETE - Git types, backend interface, merge utils, tools, and IsomorphicGitBackend
+> **Phase 5**: ✅ COMPLETE - Chrome uses registry with platform-specific implementations
+> **Phase 6**: ✅ COMPLETE - Core tests pass, CLI tests pass, Chrome builds
 
 ## Current State
 
 | Toolset | CLI | Chrome | Browser-Compatible? |
 |---------|-----|--------|---------------------|
 | Filesystem | ✅ `core/src/tools/filesystem.ts` | ✅ Uses ToolsetRegistry | Yes |
-| Git | ✅ `core/src/tools/git/` (types, tools, merge) | ⚠️ Skipped (needs IsomorphicGitBackend) | Yes (needs `IsomorphicGitBackend`) |
-| Workers | ✅ `core/src/tools/worker-call.ts` | ⚠️ Skipped (needs WorkerRegistry impl) | Yes (pure runtime delegation) |
-| Custom | ✅ `core/src/tools/custom.ts` | ⚠️ Skipped (needs module loader impl) | Yes (ESM dynamic import) |
+| Git | ✅ `core/src/tools/git/` + `CLIGitBackend` (SSH) | ✅ `opfs-git-adapter.ts` + `IsomorphicGitBackend` | Yes (HTTPS/PAT only, no SSH) |
+| Workers | ✅ `core/src/tools/worker-call.ts` | ✅ `browser-worker-registry.ts` + `BrowserWorkerRuntime` | Yes (pure runtime delegation) |
+| Custom | ✅ `core/src/tools/custom.ts` | ✅ `browser-module-loader.ts` (bundled modules) | Yes (ESM dynamic import) |
 | Shell | `cli/src/tools/shell.ts` | N/A (skipped with warning) | No (needs `child_process`) |
 
 ## Target State
@@ -390,6 +390,6 @@ Note: isomorphic-git is ~300KB minified. Consider lazy loading if bundle size is
 
 ## Future Work (Out of Scope)
 
-- Runtime consolidation (CLI using Core's WorkerRuntime)
+- **Runtime consolidation** - See `docs/plans/core-runtime-refactor.md` for CLI/Chrome using Core's WorkerRuntime
 - Lazy loading of toolsets for bundle size optimization
 - Web worker execution for heavy git operations

@@ -60,3 +60,25 @@ export {
   type ChromeAdapterOptions,
   type WorkerExecutionState,
 } from './chrome-adapter';
+
+// OPFS Git Adapter (for isomorphic-git integration)
+export {
+  createOPFSGitAdapter,
+  createSandboxGitAdapter,
+} from './opfs-git-adapter';
+
+// Browser Worker Registry (for worker delegation)
+export {
+  BrowserWorkerRegistry,
+  createBrowserWorkerRegistry,
+  bundledWorkerRegistry,
+} from './browser-worker-registry';
+
+// Browser Module Loader (for custom tools)
+export {
+  browserModuleLoader,
+  bundledModules,
+  createModuleLoader,
+  registerModule,
+  registerModules,
+} from './browser-module-loader';

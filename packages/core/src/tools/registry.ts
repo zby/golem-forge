@@ -19,10 +19,12 @@ class ToolsetRegistryImpl {
    * Register a toolset factory.
    * @param name - Unique toolset name (e.g., 'filesystem', 'git')
    * @param factory - Factory function that creates tools
-   * @throws If toolset with same name is already registered
+   * @param options - Registration options
+   * @param options.allowReplace - If true, allows replacing existing registration (default: false)
+   * @throws If toolset with same name is already registered and allowReplace is false
    */
-  register(name: string, factory: ToolsetFactory): void {
-    if (this.factories.has(name)) {
+  register(name: string, factory: ToolsetFactory, options?: { allowReplace?: boolean }): void {
+    if (this.factories.has(name) && !options?.allowReplace) {
       throw new Error(`Toolset "${name}" already registered`);
     }
     this.factories.set(name, factory);

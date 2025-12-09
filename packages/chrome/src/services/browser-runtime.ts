@@ -13,8 +13,11 @@ import {
   type FileOperations,
   createOPFSSandbox,
 } from './opfs-sandbox';
-import type { RuntimeUI, ApprovalResult, WorkerInfo, ToolsetContext } from '@golem-forge/core';
-import { ToolsetRegistry, type NamedTool } from '@golem-forge/core';
+import type { RuntimeUI, ApprovalResult, WorkerInfo, ToolsetContext, WorkerRunnerFactory, WorkerRunner, WorkerRunnerOptions } from '@golem-forge/core';
+import { ToolsetRegistry, IsomorphicGitBackend, type NamedTool } from '@golem-forge/core';
+import { createSandboxGitAdapter } from './opfs-git-adapter';
+import { createBrowserWorkerRegistry } from './browser-worker-registry';
+import { browserModuleLoader } from './browser-module-loader';
 
 // Re-export core types for convenience
 import type {
@@ -438,32 +441,9 @@ export class BrowserWorkerRuntime {
     await import('@golem-forge/core/tools');
 
     for (const [toolsetName, toolsetConfig] of Object.entries(toolsetsConfig)) {
-      // Shell is not available in browser
+      // Shell is not available in browser (requires child_process)
       if (toolsetName === 'shell') {
         console.warn('Shell toolset is not available in browser - skipping');
-        continue;
-      }
-
-      // Workers toolset requires additional setup (registry, factory)
-      // TODO: Implement browser WorkerRegistry and WorkerRunnerFactory
-      if (toolsetName === 'workers') {
-        console.warn('Workers toolset is not yet fully implemented in browser - skipping');
-        continue;
-      }
-
-      // Custom toolset requires bundled modules in browser
-      // TODO: Implement browser module loading strategy
-      if (toolsetName === 'custom') {
-        console.warn('Custom toolset is not yet fully implemented in browser - skipping');
-        continue;
-      }
-
-      // Git toolset requires OPFS-to-fs adapter for isomorphic-git
-      // IsomorphicGitBackend exists in core, but needs fs adapter (e.g., memfs)
-      // to bridge OPFS API to node:fs-like interface that isomorphic-git expects.
-      // See: https://github.com/streamich/memfs for OPFS adapter
-      if (toolsetName === 'git') {
-        console.warn('Git toolset requires OPFS-to-fs adapter (memfs) - skipping for now');
         continue;
       }
 
@@ -474,8 +454,7 @@ export class BrowserWorkerRuntime {
         }
       }
 
-      // Create context for toolset factory
-      // Note: We create a wrapper ApprovalController that adapts IApprovalController to ApprovalController
+      // Build context for toolset factory
       const context: ToolsetContext = {
         sandbox: this.sandbox,
         approvalController: this.createCoreApprovalController(),
@@ -484,6 +463,9 @@ export class BrowserWorkerRuntime {
         config: (toolsetConfig as Record<string, unknown>) || {},
       };
 
+      // Add toolset-specific context
+      await this.enrichToolsetContext(toolsetName, context, toolsetConfig);
+
       // Load tools from registry
       const tools = await loadToolsFromRegistry(toolsetName, context);
       if (Object.keys(tools).length > 0) {
@@ -491,6 +473,110 @@ export class BrowserWorkerRuntime {
         log(`Loaded ${Object.keys(tools).length} tools from "${toolsetName}" toolset`);
       }
     }
+  }
+
+  /**
+   * Enrich toolset context with platform-specific dependencies.
+   */
+  private async enrichToolsetContext(
+    toolsetName: string,
+    context: ToolsetContext,
+    toolsetConfig: unknown
+  ): Promise<void> {
+    const programRoot = this.options.programId ? `/projects/${this.options.programId}` : undefined;
+
+    switch (toolsetName) {
+      case 'git': {
+        // Git toolset needs IsomorphicGitBackend with OPFS adapter
+        if (!programRoot) {
+          console.warn('Git toolset requires a program. Set programId in options.');
+          return;
+        }
+
+        try {
+          const fs = await createSandboxGitAdapter(programRoot);
+          const gitBackend = new IsomorphicGitBackend({
+            fs,
+            dir: programRoot,
+            // Token can be provided via settings (future enhancement)
+          });
+
+          (context.config as Record<string, unknown>).gitBackend = gitBackend;
+        } catch (error) {
+          console.warn('Failed to create git backend:', error);
+        }
+        break;
+      }
+
+      case 'workers': {
+        // Workers toolset needs registry and runner factory
+        const config = toolsetConfig as { allow?: string[] } | undefined;
+        const allowedWorkers = config?.allow || [];
+
+        if (allowedWorkers.length === 0) {
+          log('Workers toolset has no allowed workers configured');
+          return;
+        }
+
+        // Create browser worker registry
+        const registry = createBrowserWorkerRegistry('bundled');
+
+        // Create a simple runner factory that creates BrowserWorkerRuntime instances
+        const workerRunnerFactory: WorkerRunnerFactory = {
+          create: (options: WorkerRunnerOptions): WorkerRunner => {
+            // Return a minimal WorkerRunner implementation
+            // Note: Full delegation support would require recursive runtime creation
+            return this.createChildWorkerRunner(options);
+          },
+        };
+
+        Object.assign(context.config as Record<string, unknown>, {
+          allowedWorkers,
+          registry,
+          workerRunnerFactory,
+          approvalMode: this.options.approvalMode || 'interactive',
+          approvalCallback: this.options.approvalCallback,
+          runtimeUI: this.options.runtimeUI,
+        });
+        break;
+      }
+
+      case 'custom': {
+        // Custom toolset needs module loader
+        (context.config as Record<string, unknown>).moduleLoader = browserModuleLoader;
+        break;
+      }
+    }
+  }
+
+  /**
+   * Create a child worker runner for delegation.
+   * This is a simplified implementation for browser.
+   */
+  private createChildWorkerRunner(options: WorkerRunnerOptions): WorkerRunner {
+    // Create a new BrowserWorkerRuntime for the child worker
+    const childRuntime = new BrowserWorkerRuntime({
+      worker: options.worker,
+      modelId: options.model,
+      programId: this.options.programId,
+      approvalMode: options.approvalMode,
+      approvalCallback: options.approvalCallback,
+      runtimeUI: options.runtimeUI,
+      maxIterations: options.maxIterations,
+    });
+
+    // Wrap as WorkerRunner interface
+    return {
+      initialize: () => childRuntime.initialize(),
+      run: (input) => {
+        const content = typeof input === 'string' ? input : input.content;
+        return childRuntime.run(content);
+      },
+      getModelId: () => options.model || 'unknown',
+      getTools: () => childRuntime.getTools(),
+      getSandbox: () => childRuntime.getSandbox(),
+      getApprovalController: () => this.createCoreApprovalController(),
+    };
   }
 
   /**

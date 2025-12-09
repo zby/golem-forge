@@ -109,7 +109,9 @@ async function gitToolsetFactory(ctx: ToolsetContext): Promise<NamedTool[]> {
 }
 
 // Register on module load
-ToolsetRegistry.register('git', gitToolsetFactory);
+// allowReplace: true because core may have already registered a git toolset
+// CLI's version uses CLIGitBackend (native git with SSH support)
+ToolsetRegistry.register('git', gitToolsetFactory, { allowReplace: true });
 
 // ============================================================================
 // Exports
