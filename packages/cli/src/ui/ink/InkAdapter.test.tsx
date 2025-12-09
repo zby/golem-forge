@@ -5,13 +5,13 @@
  */
 
 import React from "react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
 import { createUIEventBus, type UIEventBus } from "@golem-forge/core";
 import { UIProvider } from "@golem-forge/ui-react";
 import { ThemeProvider } from "./contexts/ThemeContext.js";
 import { InkUIStateProvider, useInkUIState } from "./contexts/InkUIStateContext.js";
-import { Footer } from "./components/layout/Footer.js";
+// Footer import removed - not used in tests
 import { MainContent } from "./components/layout/MainContent.js";
 
 // Helper component to display messages for testing
@@ -144,16 +144,7 @@ describe("InkAdapter UI Components", () => {
     });
 
     it("should update model name via InkUIStateContext", async () => {
-      // Create a component that updates model name on mount
-      function ModelNameUpdater({ name }: { name: string }) {
-        const state = useInkUIState();
-        React.useEffect(() => {
-          // The context should have a setter - we need to test through the provider
-        }, []);
-        return <>{state.modelName}</>;
-      }
-
-      const { lastFrame, rerender } = render(
+      const { lastFrame } = render(
         <ThemeProvider>
           <UIProvider bus={bus}>
             <InkUIStateProvider initialModelName="claude-haiku-4-5">

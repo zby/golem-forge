@@ -127,6 +127,9 @@ export interface RuntimeUI {
   /** Notify session end */
   endSession(reason: 'completed' | 'error' | 'interrupted', message?: string): void;
 
+  /** Update context usage (for chat mode) */
+  updateContextUsage(tokensUsed: number, tokenLimit: number): void;
+
   // -------------------------------------------------------------------------
   // Blocking Methods (emit request, await response)
   // -------------------------------------------------------------------------
@@ -294,6 +297,14 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
       message?: string
     ): void {
       bus.emit('sessionEnd', { reason, message });
+    },
+
+    updateContextUsage(tokensUsed: number, tokenLimit: number): void {
+      bus.emit('contextUsage', {
+        tokensUsed,
+        tokenLimit,
+        exceeded: tokensUsed > tokenLimit,
+      });
     },
 
     // -------------------------------------------------------------------------

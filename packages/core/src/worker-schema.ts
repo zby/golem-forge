@@ -86,12 +86,26 @@ export const ToolsetsConfigSchema = z.record(
 export type ToolsetsConfig = z.infer<typeof ToolsetsConfigSchema>;
 
 /**
+ * Worker execution mode.
+ * - 'single': Run once and complete (default)
+ * - 'chat': Interactive chat loop - waits for user input between LLM turns
+ */
+export const WorkerModeSchema = z.enum(['single', 'chat']);
+
+export type WorkerMode = z.infer<typeof WorkerModeSchema>;
+
+/**
  * Worker frontmatter configuration
  * This is what appears in the YAML section of a .worker file
  */
 export const WorkerFrontmatterSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
+  /**
+   * Execution mode. Default: 'single' (run once and complete).
+   * Use 'chat' for interactive multi-turn conversations.
+   */
+  mode: WorkerModeSchema.default('single'),
   /**
    * Model compatibility constraints. Supports wildcards like "anthropic:*".
    * If undefined, any model is compatible.
@@ -104,6 +118,11 @@ export const WorkerFrontmatterSchema = z.object({
   attachment_policy: AttachmentPolicySchema.optional(),
   server_side_tools: z.array(ServerSideToolConfigSchema).default([]),
   locked: z.boolean().default(false),
+  /**
+   * Maximum context tokens for chat mode. Default: 8000.
+   * When exceeded, user is warned and can use /new to reset.
+   */
+  max_context_tokens: z.number().positive().default(8000),
 }).strict();
 
 export type WorkerFrontmatter = z.infer<typeof WorkerFrontmatterSchema>;

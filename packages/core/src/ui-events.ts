@@ -394,6 +394,18 @@ export interface SessionEndEvent {
   message?: string;
 }
 
+/**
+ * Context usage update (for chat mode)
+ */
+export interface ContextUsageEvent {
+  /** Tokens used so far */
+  tokensUsed: number;
+  /** Maximum token limit */
+  tokenLimit: number;
+  /** Whether limit has been exceeded */
+  exceeded: boolean;
+}
+
 // ============================================================================
 // Action Events (UI -> Runtime)
 // ============================================================================
@@ -461,6 +473,7 @@ export interface DisplayEvents {
   diffContent: DiffContentEvent;
   inputPrompt: InputPromptEvent;
   sessionEnd: SessionEndEvent;
+  contextUsage: ContextUsageEvent;
 }
 
 /**

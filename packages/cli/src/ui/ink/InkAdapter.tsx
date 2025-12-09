@@ -172,6 +172,17 @@ export class InkAdapter extends BaseUIImplementation {
       })
     );
 
+    // Subscribe to context usage events from runtime (chat mode)
+    this.subscriptions.push(
+      this.bus.on("contextUsage", (event) => {
+        // Convert tokens to percentage
+        const percentage = event.tokenLimit > 0
+          ? Math.round((event.tokensUsed / event.tokenLimit) * 100)
+          : 0;
+        this.actions!.inkUI.setContextUsage(percentage);
+      })
+    );
+
     // Subscribe to sessionEnd to know when the worker is done
     this.subscriptions.push(
       this.bus.on("sessionEnd", () => {
