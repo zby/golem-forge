@@ -2,13 +2,14 @@
 
 ## Package Structure
 
-golem-forge is organized as a monorepo with three packages:
+golem-forge is organized as a monorepo with four packages:
 
 | Package | Description |
 |---------|-------------|
-| [`@golem-forge/core`](../packages/core/) | Shared types and utilities |
-| [`@golem-forge/cli`](../packages/cli/) | CLI tool and Node.js runtime |
-| [`@golem-forge/chrome`](../packages/chrome/) | Chrome extension |
+| [`@golem-forge/core`](../packages/core/) | Runtime engine, tools, approval system, AI SDK integration |
+| [`@golem-forge/ui-react`](../packages/ui-react/) | React-based UI state management |
+| [`@golem-forge/cli`](../packages/cli/) | CLI tool with Node.js adapters |
+| [`@golem-forge/chrome`](../packages/chrome/) | Chrome extension with browser adapters |
 
 ---
 
@@ -24,25 +25,29 @@ golem-forge is organized as a monorepo with three packages:
 The CLI is the **proving ground** - we validate the core abstractions (sandbox, approval, workers) in an environment where debugging is straightforward. Once stable, the same core runs in the browser with a different backend.
 
 ```
-                 @golem-forge/core
-                 ┌─────────────────────────────┐
-                 │  • Sandbox types & errors   │
-                 │  • Shared interfaces        │
-                 └──────────────┬──────────────┘
-                                │
-           ┌────────────────────┴────────────────────┐
-           │                                         │
-           ▼                                         ▼
-    ┌─────────────────────┐              ┌─────────────────────────┐
-    │  @golem-forge/cli   │              │  @golem-forge/chrome    │
-    │                     │              │                         │
-    │  • Node.js fs       │              │  • OPFS storage         │
-    │  • Terminal UI      │              │  • Popup/sidebar UI     │
-    │  • Local git        │              │  • GitHub API sync      │
-    │                     │              │  • Web content access   │
-    │  Development &      │              │  Production powerhouse  │
-    │  Testing focus      │              │                         │
-    └─────────────────────┘              └─────────────────────────┘
+                       @golem-forge/core
+        ┌───────────────────────────────────────────────┐
+        │  • WorkerRuntime (AI SDK integration)         │
+        │  • ToolsetRegistry & portable toolsets        │
+        │  • ApprovalController & ApprovalMemory        │
+        │  • UIEventBus & RuntimeUI                     │
+        │  • Worker schema & parser                     │
+        │  • IsomorphicGitBackend                       │
+        └──────────────────────┬────────────────────────┘
+                               │
+           ┌───────────────────┴───────────────────┐
+           │                                       │
+           ▼                                       ▼
+    ┌─────────────────────┐            ┌─────────────────────────┐
+    │  @golem-forge/cli   │            │  @golem-forge/chrome    │
+    │                     │            │                         │
+    │  Adapters:          │            │  Adapters:              │
+    │  • MountSandbox     │            │  • OPFS Sandbox         │
+    │  • File registry    │            │  • Bundled registry     │
+    │  • CLIGitBackend    │            │  • IsomorphicGit+OPFS   │
+    │  • ShellToolset     │            │  • React/Web UI         │
+    │  • Ink terminal UI  │            │                         │
+    └─────────────────────┘            └─────────────────────────┘
 ```
 
 ### Why Browser Extension is the Goal

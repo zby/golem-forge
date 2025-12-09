@@ -6,13 +6,14 @@ Key expectations that frequently trip up automation agents. See `README.md` for 
 
 ## Monorepo Structure
 
-This is an npm workspaces monorepo with three packages:
+This is an npm workspaces monorepo with four packages:
 
 | Package | Path | Purpose |
 |---------|------|---------|
-| `@golem-forge/core` | `packages/core/` | Shared types and utilities (sandbox types, errors) |
-| `@golem-forge/cli` | `packages/cli/` | CLI tool and Node.js runtime |
-| `@golem-forge/chrome` | `packages/chrome/` | Chrome extension |
+| `@golem-forge/core` | `packages/core/` | Runtime engine, tools, approval system, AI SDK integration |
+| `@golem-forge/ui-react` | `packages/ui-react/` | React-based UI state management (used by CLI Ink and Chrome) |
+| `@golem-forge/cli` | `packages/cli/` | CLI tool with Node.js adapters (fs sandbox, shell tools, git CLI backend) |
+| `@golem-forge/chrome` | `packages/chrome/` | Chrome extension with browser adapters (OPFS sandbox, isomorphic-git) |
 
 ---
 

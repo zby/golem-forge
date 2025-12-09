@@ -1,5 +1,9 @@
 # Browser Extension Architecture Specification
 
+> **Note:** This document describes the target architecture. The extension shares the runtime engine
+> with CLI via `@golem-forge/core`. Browser-specific adapters are in `@golem-forge/chrome`.
+> See `docs/notes/core-vs-platform.md` for architecture boundaries.
+
 ## Overview
 
 This document specifies the architecture for **Golem Forge**, a browser-based LLM worker system. It uses OPFS (Origin Private File System) for local storage and GitHub as the synchronization layer, enabling a "Project" based workflow where each project maps to a GitHub repository.
@@ -279,9 +283,30 @@ interface ProjectManager {
 ```
 
 ### WorkerRuntime
+
+The browser extension uses `@golem-forge/core`'s `WorkerRuntime` with browser-specific adapters:
+
 ```typescript
-interface WorkerRuntime {
-  execute(workerId: string, input: any, context: SessionContext): Promise<Result>;
-  createSession(project: Project, trigger: SiteTrigger): Session;
+import { WorkerRuntime, createWorkerRuntime } from '@golem-forge/core';
+
+// Browser-specific factory
+async function createBrowserWorkerRuntime(options) {
+  // Create OPFS sandbox
+  const sandbox = await createOPFSSandbox(projectPath);
+
+  // Create tools using core's ToolsetRegistry with browser adapters
+  const tools = await createTools(worker.toolsets, {
+    sandbox,
+    gitBackend: new IsomorphicGitBackend({ fs: opfsAdapter }),
+    // ...browser-specific context
+  });
+
+  // Use core's runtime
+  return createWorkerRuntime({
+    worker,
+    tools,
+    sandbox,
+    approvalController,
+  });
 }
 ```
