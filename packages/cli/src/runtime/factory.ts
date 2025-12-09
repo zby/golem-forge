@@ -6,7 +6,7 @@
  */
 
 import * as path from "path";
-import type { Tool } from "ai";
+import type { Tool } from "@golem-forge/core";
 import type { WorkerDefinition } from "../worker/schema.js";
 import { ApprovalController } from "../approval/index.js";
 import {

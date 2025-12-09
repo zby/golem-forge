@@ -5,10 +5,10 @@
  * These provide the interface between our tool system and the SDK.
  */
 
-import type { Tool } from "ai";
+import type { Tool } from "@golem-forge/core";
 
 /**
- * Re-export Tool from AI SDK as our tool type.
+ * Re-export Tool from core (which re-exports from AI SDK).
  */
 export type { Tool };
 

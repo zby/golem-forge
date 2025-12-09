@@ -122,6 +122,8 @@ export class InkAdapter extends BaseUIImplementation {
   private initialized = false;
   private subscriptions: Unsubscribe[] = [];
   private sigintHandler?: () => void;
+  private sessionEnded = false;
+  private sessionEndResolve?: () => void;
 
   constructor(bus: UIEventBus, options: InkAdapterOptions = {}) {
     super(bus);
@@ -169,9 +171,32 @@ export class InkAdapter extends BaseUIImplementation {
         this.actions!.ui.setMode("input");
       })
     );
+
+    // Subscribe to sessionEnd to know when the worker is done
+    this.subscriptions.push(
+      this.bus.on("sessionEnd", () => {
+        this.sessionEnded = true;
+        if (this.sessionEndResolve) {
+          this.sessionEndResolve();
+        }
+      })
+    );
   }
 
   async shutdown(): Promise<void> {
+    // Wait for sessionEnd event if not already received (with timeout)
+    if (!this.sessionEnded) {
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          this.sessionEndResolve = resolve;
+        }),
+        new Promise<void>((resolve) => setTimeout(resolve, 5000)), // 5s timeout
+      ]);
+    }
+
+    // Give React a tick to process any pending state updates and render
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
     // Unsubscribe from all events
     for (const unsubscribe of this.subscriptions) {
       unsubscribe();
@@ -192,6 +217,8 @@ export class InkAdapter extends BaseUIImplementation {
 
     this.actions = undefined;
     this.initialized = false;
+    this.sessionEnded = false;
+    this.sessionEndResolve = undefined;
   }
 
   private ensureInitialized(): void {

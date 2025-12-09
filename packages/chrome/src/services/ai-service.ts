@@ -2,15 +2,18 @@
  * Browser AI Service
  *
  * Provider management for LLM APIs in the browser extension.
- * Uses Vercel AI SDK with browser-specific configuration.
+ * Uses core's model factory with browser-specific configuration.
  *
  * See docs/notes/ai-sdk-browser-lessons.md for validation details.
  */
 
-import { createAnthropic } from '@ai-sdk/anthropic';
-import { createOpenAI } from '@ai-sdk/openai';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import type { LanguageModel } from 'ai';
+import {
+  createModelWithOptions,
+  parseModelId,
+  type LanguageModel,
+  type AIProvider,
+  type ProviderOptions,
+} from '@golem-forge/core';
 import { settingsManager } from '../storage/settings-manager';
 import type { LLMProvider } from '../storage/types';
 
@@ -38,81 +41,34 @@ export interface ModelInfo {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Model ID Parsing
+// Browser-specific Provider Options
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Parse a model identifier like "anthropic:claude-sonnet-4-20250514"
- * into provider and model parts.
+ * Get browser-specific options for a provider.
+ * Adds required headers for browser access.
  */
-export function parseModelId(modelId: string): ModelInfo {
-  const parts = modelId.split(':');
-  if (parts.length !== 2) {
-    throw new Error(
-      `Invalid model ID format: ${modelId}. Expected format: provider:model`
-    );
+function getBrowserProviderOptions(provider: AIProvider, apiKey: string): ProviderOptions {
+  const baseOptions: ProviderOptions = { apiKey };
+
+  switch (provider) {
+    case 'anthropic':
+      // Anthropic requires special header for browser access
+      return {
+        ...baseOptions,
+        headers: {
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+      };
+    case 'openrouter':
+      // OpenRouter uses OpenAI-compatible API with different base URL
+      return {
+        ...baseOptions,
+        baseURL: 'https://openrouter.ai/api/v1',
+      };
+    default:
+      return baseOptions;
   }
-
-  const provider = parts[0] as LLMProvider;
-  if (!['anthropic', 'openai', 'google', 'openrouter'].includes(provider)) {
-    throw new Error(
-      `Unsupported provider: ${provider}. Supported: anthropic, openai, google, openrouter`
-    );
-  }
-
-  return { provider, model: parts[1] };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Provider Creation
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Create an Anthropic provider with browser-safe configuration.
- *
- * Requires the `anthropic-dangerous-direct-browser-access` header.
- */
-function createAnthropicProvider(apiKey: string) {
-  return createAnthropic({
-    apiKey,
-    headers: {
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-  });
-}
-
-/**
- * Create an OpenAI provider with browser-safe configuration.
- *
- * Note: AI SDK v6 beta may not support dangerouslyAllowBrowser yet.
- * The extension's host_permissions should handle CORS.
- */
-function createOpenAIProvider(apiKey: string) {
-  return createOpenAI({
-    apiKey,
-    // dangerouslyAllowBrowser is handled by extension host_permissions
-  });
-}
-
-/**
- * Create a Google provider.
- */
-function createGoogleProvider(apiKey: string) {
-  return createGoogleGenerativeAI({
-    apiKey,
-  });
-}
-
-/**
- * Create an OpenRouter provider.
- *
- * OpenRouter uses OpenAI-compatible API with a different base URL.
- */
-function createOpenRouterProvider(apiKey: string) {
-  return createOpenAI({
-    apiKey,
-    baseURL: 'https://openrouter.ai/api/v1',
-  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,8 +96,8 @@ export class BrowserAIService {
   async createModel(modelId: string): Promise<LanguageModel> {
     log('Creating model:', modelId);
 
-    const { provider, model } = parseModelId(modelId);
-    const apiKey = await settingsManager.getAPIKey(provider);
+    const { provider } = parseModelId(modelId);
+    const apiKey = await settingsManager.getAPIKey(provider as LLMProvider);
 
     if (!apiKey) {
       const errorMsg = `No API key configured for ${provider}. Please add your API key in Settings.`;
@@ -152,30 +108,11 @@ export class BrowserAIService {
     log('API key found for provider:', provider, '(length:', apiKey.length, ')');
 
     try {
-      switch (provider) {
-        case 'anthropic': {
-          const anthropicProvider = createAnthropicProvider(apiKey);
-          log('Created Anthropic provider, model:', model);
-          return anthropicProvider(model);
-        }
-        case 'openai': {
-          const openaiProvider = createOpenAIProvider(apiKey);
-          log('Created OpenAI provider, model:', model);
-          return openaiProvider(model);
-        }
-        case 'google': {
-          const googleProvider = createGoogleProvider(apiKey);
-          log('Created Google provider, model:', model);
-          return googleProvider(model);
-        }
-        case 'openrouter': {
-          const openrouterProvider = createOpenRouterProvider(apiKey);
-          log('Created OpenRouter provider, model:', model);
-          return openrouterProvider(model);
-        }
-        default:
-          throw new Error(`Unsupported provider: ${provider}`);
-      }
+      // Use core's model factory with browser-specific options
+      const options = getBrowserProviderOptions(provider, apiKey);
+      const model = createModelWithOptions(modelId, options);
+      log('Created model via core factory:', modelId);
+      return model;
     } catch (error) {
       logError('Error creating model:', error);
       throw error;
@@ -198,32 +135,20 @@ export class BrowserAIService {
     try {
       // Try to create a provider instance - this validates basic key format
       // but does NOT verify the key is actually valid with the provider
-      let testModel: LanguageModel;
+      const testModelIds: Record<LLMProvider, string> = {
+        anthropic: 'anthropic:claude-haiku-4-20250514',
+        openai: 'openai:gpt-4o-mini',
+        google: 'google:gemini-1.5-flash',
+        openrouter: 'openrouter:anthropic/claude-3.5-haiku',
+      };
 
-      switch (provider) {
-        case 'anthropic': {
-          const anthropicProvider = createAnthropicProvider(apiKey);
-          testModel = anthropicProvider('claude-haiku-4-20250514');
-          break;
-        }
-        case 'openai': {
-          const openaiProvider = createOpenAIProvider(apiKey);
-          testModel = openaiProvider('gpt-4o-mini');
-          break;
-        }
-        case 'google': {
-          const googleProvider = createGoogleProvider(apiKey);
-          testModel = googleProvider('gemini-1.5-flash');
-          break;
-        }
-        case 'openrouter': {
-          const openrouterProvider = createOpenRouterProvider(apiKey);
-          testModel = openrouterProvider('anthropic/claude-3.5-haiku');
-          break;
-        }
-        default:
-          return false;
+      const modelId = testModelIds[provider];
+      if (!modelId) {
+        return false;
       }
+
+      const options = getBrowserProviderOptions(provider as AIProvider, apiKey);
+      const testModel = createModelWithOptions(modelId, options);
 
       return testModel !== null;
     } catch {

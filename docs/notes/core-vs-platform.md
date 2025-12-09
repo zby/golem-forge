@@ -108,18 +108,22 @@ Ask these questions before adding a new service or feature:
 
 Current known exemptions that need future refactoring:
 
-### `packages/chrome/src/services/browser-runtime.ts`
+### `packages/chrome/src/services/browser-runtime.ts` (Warning)
 
-**Issue:** Contains full runtime loop with `streamText` calls.
+**Issue:** Contains full runtime loop with `streamText` calls and defines `BrowserWorkerRuntime` class.
 **Reason:** Chrome extension was built before core's runtime was abstracted.
+**Current state:** Imports now go through `@golem-forge/core` (fixed), but the runtime logic is still duplicated.
 **Plan:** Refactor to use `createWorkerRuntime` from core with a streaming adapter.
-**Tracking:** TODO - create issue for browser runtime consolidation.
 
-### `packages/cli/src/ai/types.ts`
+### Resolved Exemptions (Fixed)
 
-**Issue:** Imports `Tool` type directly from `ai`.
-**Reason:** Type re-export convenience.
-**Plan:** Re-export `Tool` type from core's public API.
+The following have been fixed and no longer require exemptions:
+
+- `packages/cli/src/ai/types.ts` - Now imports `Tool` from `@golem-forge/core`
+- `packages/cli/src/runtime/factory.ts` - Now imports `Tool` from `@golem-forge/core`
+- `packages/cli/src/tools/shell.ts` - Now imports `ToolExecutionOptions` from `@golem-forge/core`
+- `packages/cli/src/tools/git/tools.ts` - Now imports `ToolExecutionOptions` from `@golem-forge/core`
+- `packages/chrome/src/services/ai-service.ts` - Now uses `createModelWithOptions` from `@golem-forge/core`
 
 ---
 

@@ -5,7 +5,6 @@
  * Uses streamText for real-time streaming responses.
  */
 
-import { streamText, type LanguageModel, type Tool } from 'ai';
 import type { WorkerDefinition } from './worker-manager';
 import { browserAIService } from './ai-service';
 import {
@@ -13,8 +12,23 @@ import {
   type FileOperations,
   createOPFSSandbox,
 } from './opfs-sandbox';
-import type { RuntimeUI, ApprovalResult, WorkerInfo, ToolsetContext, WorkerRunnerFactory, WorkerRunner, WorkerRunnerOptions, RunInput, Attachment } from '@golem-forge/core';
-import { ToolsetRegistry, IsomorphicGitBackend, type NamedTool } from '@golem-forge/core';
+import {
+  streamText,
+  ToolsetRegistry,
+  IsomorphicGitBackend,
+  type LanguageModel,
+  type Tool,
+  type NamedTool,
+  type RuntimeUI,
+  type ApprovalResult,
+  type WorkerInfo,
+  type ToolsetContext,
+  type WorkerRunnerFactory,
+  type WorkerRunner,
+  type WorkerRunnerOptions,
+  type RunInput,
+  type Attachment,
+} from '@golem-forge/core';
 import { createSandboxGitAdapter } from './opfs-git-adapter';
 import { createBrowserWorkerRegistry } from './browser-worker-registry';
 import { browserModuleLoader } from './browser-module-loader';

@@ -549,6 +549,14 @@ async function executeWorker(
   // Create and initialize runtime using CLI factory
   const runtime = await createCLIWorkerRuntime(runtimeOptions);
 
+  // Update UI with the resolved model name
+  if ('setModelName' in adapter && typeof adapter.setModelName === 'function') {
+    // Extract short model name from full ID (e.g., "anthropic:claude-haiku-4-5" -> "claude-haiku-4-5")
+    const modelId = runtime.getModelId();
+    const shortName = modelId.includes(':') ? modelId.split(':')[1] : modelId;
+    adapter.setModelName(shortName);
+  }
+
   // Wrap in try/finally to ensure cleanup of runtime and adapter
   let result: WorkerResult;
   try {

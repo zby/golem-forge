@@ -160,6 +160,12 @@ export {
   createWorkerRuntime,
   defaultWorkerRunnerFactory,
   matchModelPattern,
+  // Re-exported AI SDK types and functions (platform packages should use these)
+  type Tool,
+  type ToolExecutionOptions,
+  type LanguageModel,
+  streamText,
+  generateText,
   type Attachment,
   type InterruptSignal,
   type DelegationContext,
@@ -189,6 +195,17 @@ export {
   type ToolCallErrorEvent,
   type ExecutionEndEvent,
   type ExecutionErrorEvent,
+  // Model Factory
+  createModelWithOptions,
+  createDefaultModelFactory,
+  parseModelId,
+  DefaultModelFactory,
+  EnvironmentAPIKeyProvider,
+  type ModelFactory,
+  type APIKeyProvider,
+  type AIProvider,
+  type ParsedModelId,
+  type ProviderOptions,
 } from './runtime/index.js';
 
 // ============================================================================

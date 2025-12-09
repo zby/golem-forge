@@ -5,8 +5,7 @@
  * Follow the established NamedTool pattern from filesystem tools.
  */
 
-import type { ToolExecutionOptions } from 'ai';
-import type { NamedTool, FileOperations } from '@golem-forge/core';
+import type { NamedTool, FileOperations, ToolExecutionOptions } from '@golem-forge/core';
 import type { GitBackend } from './backend.js';
 import type {
   GitStatusInput,
