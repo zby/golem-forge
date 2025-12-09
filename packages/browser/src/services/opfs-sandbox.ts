@@ -465,15 +465,15 @@ export class OPFSSandbox implements MountSandbox {
  * Create an OPFS-backed sandbox.
  *
  * @example
- * // Project sandbox
+ * // Program sandbox
  * const sandbox = await createOPFSSandbox({
- *   root: '/projects/my-project'
+ *   root: '/projects/my-program'
  * });
  *
  * @example
  * // Read-only access
  * const sandbox = await createOPFSSandbox({
- *   root: '/projects/my-project',
+ *   root: '/projects/my-program',
  *   readonly: true
  * });
  */
@@ -522,17 +522,17 @@ export async function createOPFSSandbox(
 }
 
 /**
- * Create a project-specific sandbox.
+ * Create a program-specific sandbox.
  *
- * @param projectId - The project ID
+ * @param programId - The program ID
  * @param readonly - Whether the sandbox is read-only
  */
-export async function createProjectSandbox(
-  projectId: string,
+export async function createProgramSandbox(
+  programId: string,
   readonly = false
 ): Promise<OPFSSandbox> {
   return createOPFSSandbox({
-    root: `/projects/${projectId}`,
+    root: `/projects/${programId}`, // Path kept as 'projects' for backwards compatibility
     readonly,
   });
 }
@@ -567,16 +567,17 @@ export async function cleanupSessionSandbox(sessionId: string): Promise<void> {
 }
 
 /**
- * Clean up a project sandbox and all its files.
+ * Clean up a program sandbox and all its files.
  *
- * @param projectId - The project ID to clean up
+ * @param programId - The program ID to clean up
  */
-export async function cleanupProjectSandbox(projectId: string): Promise<void> {
+export async function cleanupProgramSandbox(programId: string): Promise<void> {
   const root = await navigator.storage.getDirectory();
 
   try {
-    const projects = await root.getDirectoryHandle('projects');
-    await projects.removeEntry(projectId, { recursive: true });
+    // Path kept as 'projects' for backwards compatibility
+    const programs = await root.getDirectoryHandle('projects');
+    await programs.removeEntry(programId, { recursive: true });
   } catch {
     // Ignore if doesn't exist
   }

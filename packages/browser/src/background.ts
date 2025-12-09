@@ -39,15 +39,15 @@ chrome.runtime.onInstalled.addListener((details) => {
       }
     });
 
-    // Create default project
+    // Create default program (storage key kept as 'projects' for backwards compatibility)
     chrome.storage.local.get('projects', (result) => {
       if (!result.projects || result.projects.length === 0) {
         chrome.storage.local.set({
           projects: [
             {
               id: `default-${now}`,
-              name: 'Default Project',
-              description: 'Your first Golem Forge project',
+              name: 'Default Program',
+              description: 'Your first Golem Forge program',
               workerSources: [],
               githubBranch: 'main',
               triggers: [],
@@ -56,7 +56,7 @@ chrome.runtime.onInstalled.addListener((details) => {
             },
           ],
         });
-        console.log('Created default project');
+        console.log('Created default program');
       }
     });
   } else if (details.reason === 'update') {
@@ -67,10 +67,10 @@ chrome.runtime.onInstalled.addListener((details) => {
 // Handle messages from popup/sidepanel
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'getState') {
-    // Return current extension state
+    // Return current extension state (storage key kept as 'projects' for backwards compatibility)
     chrome.storage.local.get(['projects', 'settings', 'apiKeys'], (result) => {
       sendResponse({
-        projects: result.projects || [],
+        programs: result.projects || [], // Renamed from projects to programs
         settings: result.settings || {},
         hasAPIKeys: (result.apiKeys || []).length > 0,
       });
@@ -97,9 +97,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'openProject') {
-    // Store project ID for sidepanel to read on load
-    chrome.storage.local.set({ pendingProjectId: message.projectId });
+  if (message.type === 'openProgram') {
+    // Store program ID for sidepanel to read on load
+    chrome.storage.local.set({ pendingProgramId: message.programId });
     sendResponse({ success: true });
     return true;
   }

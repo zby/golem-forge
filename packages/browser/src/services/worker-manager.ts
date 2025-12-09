@@ -17,7 +17,7 @@ import {
   type ParseWorkerResult,
 } from '@golem-forge/core';
 import type { WorkerSource, GitHubWorkerSource } from '../storage/types';
-import { projectManager } from '../storage/project-manager';
+import { programManager } from '../storage/program-manager';
 import { settingsManager } from '../storage/settings-manager';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -225,13 +225,13 @@ export interface WorkerInfo {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bundled Projects
+// Bundled Programs
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * A bundled project with its main worker.
+ * A bundled program with its main worker.
  */
-export interface BundledProject {
+export interface BundledProgram {
   id: string;
   name: string;
   description: string;
@@ -240,10 +240,10 @@ export interface BundledProject {
 }
 
 /**
- * Bundled projects - each project has its main.worker.
- * Projects are derived from examples in the main golem-forge repo.
+ * Bundled programs - each program has its main.worker.
+ * Programs are derived from examples in the main golem-forge repo.
  */
-export const BUNDLED_PROJECTS: BundledProject[] = [
+export const BUNDLED_PROGRAMS: BundledProgram[] = [
   {
     id: 'greeter',
     name: 'Greeter',
@@ -407,7 +407,7 @@ Be constructive and specific in your feedback.
  * Worker Manager for the browser extension.
  *
  * Manages worker discovery and loading from:
- * - Bundled projects (included in extension)
+ * - Bundled programs (included in extension)
  * - GitHub sources (fetched and cached)
  */
 export class WorkerManager {
@@ -415,29 +415,29 @@ export class WorkerManager {
   private githubWorkerCache = new Map<string, string>(); // sourceId:name -> content
 
   /**
-   * Get all bundled projects.
+   * Get all bundled programs.
    */
-  getBundledProjects(): BundledProject[] {
-    return BUNDLED_PROJECTS;
+  getBundledPrograms(): BundledProgram[] {
+    return BUNDLED_PROGRAMS;
   }
 
   /**
-   * Get the index worker for a bundled project.
+   * Get the main worker for a bundled program.
    */
-  getBundledProjectWorker(projectId: string): WorkerDefinition {
-    const cacheKey = `bundled:${projectId}`;
+  getBundledProgramWorker(programId: string): WorkerDefinition {
+    const cacheKey = `bundled:${programId}`;
 
     // Check cache first
     if (this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
     }
 
-    const project = BUNDLED_PROJECTS.find((p) => p.id === projectId);
-    if (!project) {
-      throw new Error(`Bundled project not found: ${projectId}`);
+    const program = BUNDLED_PROGRAMS.find((p) => p.id === programId);
+    if (!program) {
+      throw new Error(`Bundled program not found: ${programId}`);
     }
 
-    const result = parseWorkerString(project.mainWorker, `${projectId}/main.worker`);
+    const result = parseWorkerString(program.mainWorker, `${programId}/main.worker`);
     if (!result.success) {
       throw new Error(result.error);
     }
@@ -447,17 +447,17 @@ export class WorkerManager {
   }
 
   /**
-   * Check if a bundled project exists.
+   * Check if a bundled program exists.
    */
-  hasBundledProject(projectId: string): boolean {
-    return BUNDLED_PROJECTS.some((p) => p.id === projectId);
+  hasBundledProgram(programId: string): boolean {
+    return BUNDLED_PROGRAMS.some((p) => p.id === programId);
   }
 
   /**
    * Get all available worker sources.
    */
   async getSources(): Promise<WorkerSource[]> {
-    const sources = await projectManager.listWorkerSources();
+    const sources = await programManager.listWorkerSources();
 
     // Always include the bundled source
     const bundledSource: WorkerSource = {
@@ -474,11 +474,11 @@ export class WorkerManager {
    */
   async listWorkers(sourceId: string): Promise<WorkerInfo[]> {
     if (sourceId === 'bundled') {
-      return BUNDLED_PROJECTS.map((project) => {
-        const result = parseWorkerString(project.mainWorker);
+      return BUNDLED_PROGRAMS.map((program) => {
+        const result = parseWorkerString(program.mainWorker);
         return {
-          name: project.id,
-          description: result.success ? result.worker.description : project.description,
+          name: program.id,
+          description: result.success ? result.worker.description : program.description,
           sourceId: 'bundled',
           sourceType: 'bundled' as const,
           path: 'main.worker',
@@ -487,7 +487,7 @@ export class WorkerManager {
     }
 
     // GitHub source
-    const source = await projectManager.getWorkerSource(sourceId);
+    const source = await programManager.getWorkerSource(sourceId);
     if (!source || source.type !== 'github') {
       return [];
     }
@@ -525,12 +525,12 @@ export class WorkerManager {
     let content: string;
 
     if (sourceId === 'bundled') {
-      // For bundled source, workerId is the project ID
-      const project = BUNDLED_PROJECTS.find((p) => p.id === workerId);
-      if (!project) {
-        throw new Error(`Bundled project not found: ${workerId}`);
+      // For bundled source, workerId is the program ID
+      const program = BUNDLED_PROGRAMS.find((p) => p.id === workerId);
+      if (!program) {
+        throw new Error(`Bundled program not found: ${workerId}`);
       }
-      content = project.mainWorker;
+      content = program.mainWorker;
     } else {
       // GitHub source
       const githubContent = this.githubWorkerCache.get(cacheKey);
@@ -555,7 +555,7 @@ export class WorkerManager {
    * Fetches all .worker files from the repository and caches them.
    */
   async syncGitHubSource(sourceId: string): Promise<void> {
-    const source = await projectManager.getWorkerSource(sourceId);
+    const source = await programManager.getWorkerSource(sourceId);
     if (!source || source.type !== 'github') {
       throw new Error(`GitHub source not found: ${sourceId}`);
     }
@@ -604,7 +604,7 @@ export class WorkerManager {
     }
 
     // Update last sync timestamp
-    await projectManager.updateWorkerSource(sourceId, {
+    await programManager.updateWorkerSource(sourceId, {
       lastSync: Date.now(),
     });
   }

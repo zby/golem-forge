@@ -8,7 +8,7 @@
 export {
   OPFSSandbox,
   createOPFSSandbox,
-  createProjectSandbox,
+  createProgramSandbox,
   createSessionSandbox,
   cleanupSessionSandbox,
   SandboxError,

@@ -6,7 +6,7 @@
 
 // Types
 export type {
-  Project,
+  Program,
   WorkerSource,
   BundledWorkerSource,
   GitHubWorkerSource,
@@ -18,7 +18,7 @@ export type {
 } from './types';
 
 export {
-  ProjectSchema,
+  ProgramSchema,
   WorkerSourceSchema,
   BundledWorkerSourceSchema,
   GitHubWorkerSourceSchema,
@@ -31,5 +31,5 @@ export {
 } from './types';
 
 // Managers
-export { ProjectManager, projectManager } from './project-manager';
+export { ProgramManager, programManager } from './program-manager';
 export { SettingsManager, settingsManager } from './settings-manager';

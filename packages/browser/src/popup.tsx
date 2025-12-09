@@ -2,14 +2,14 @@
  * Popup Component
  *
  * Quick access menu for the Golem Forge extension.
- * Provides shortcuts to open sidepanel, manage projects, and settings.
+ * Provides shortcuts to open sidepanel, manage programs, and settings.
  */
 
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { projectManager } from './storage/project-manager';
+import { programManager } from './storage/program-manager';
 import { settingsManager } from './storage/settings-manager';
-import type { Project } from './storage/types';
+import type { Program } from './storage/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles
@@ -143,7 +143,7 @@ const styles = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function PopupApp() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [programs, setPrograms] = useState<Program[]>([]);
   const [hasAPIKeys, setHasAPIKeys] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -153,12 +153,12 @@ function PopupApp() {
 
   async function loadData() {
     try {
-      const [projectList, apiKeys] = await Promise.all([
-        projectManager.listProjects(),
+      const [programList, apiKeys] = await Promise.all([
+        programManager.listPrograms(),
         settingsManager.getAPIKeys(),
       ]);
 
-      setProjects(projectList);
+      setPrograms(programList);
       setHasAPIKeys(apiKeys.length > 0);
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -178,11 +178,11 @@ function PopupApp() {
     window.close();
   }
 
-  function openProject(projectId: string) {
-    // Send message to open project in sidepanel
+  function openProgram(programId: string) {
+    // Send message to open program in sidepanel
     chrome.runtime.sendMessage({
-      type: 'openProject',
-      projectId,
+      type: 'openProgram',
+      programId,
     });
     openSidePanel();
   }
@@ -227,20 +227,20 @@ function PopupApp() {
         </button>
       </div>
 
-      {/* Projects */}
+      {/* Programs */}
       <div style={styles.section}>
-        <div style={styles.sectionTitle}>Recent Projects</div>
-        {projects.length === 0 ? (
+        <div style={styles.sectionTitle}>Recent Programs</div>
+        {programs.length === 0 ? (
           <div style={styles.emptyState}>
-            No projects yet. Create one in the sidepanel.
+            No programs yet. Create one in the sidepanel.
           </div>
         ) : (
           <div style={styles.projectList}>
-            {projects.slice(0, 5).map((project) => (
+            {programs.slice(0, 5).map((program) => (
               <div
-                key={project.id}
+                key={program.id}
                 style={styles.projectItem}
-                onClick={() => openProject(project.id)}
+                onClick={() => openProgram(program.id)}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor = '#f3f4f6';
                 }}
@@ -248,9 +248,9 @@ function PopupApp() {
                   e.currentTarget.style.backgroundColor = '#f9fafb';
                 }}
               >
-                <div style={styles.projectName}>{project.name}</div>
-                {project.description && (
-                  <div style={styles.projectDesc}>{project.description}</div>
+                <div style={styles.projectName}>{program.name}</div>
+                {program.description && (
+                  <div style={styles.projectDesc}>{program.description}</div>
                 )}
               </div>
             ))}
