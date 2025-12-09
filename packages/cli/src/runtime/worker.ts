@@ -270,9 +270,9 @@ export class WorkerRuntime implements WorkerRunner {
     } else if (this.options.useTestSandbox) {
       // Create temp sandbox for testing
       this.sandbox = await createTestSandbox();
-    } else if (this.options.projectRoot) {
-      // Default: mount project root at /
-      this.sandbox = createMountSandbox({ root: this.options.projectRoot });
+    } else if (this.options.programRoot) {
+      // Default: mount program root at /
+      this.sandbox = createMountSandbox({ root: this.options.programRoot });
     }
 
     // Register tools based on worker config
@@ -301,7 +301,7 @@ export class WorkerRuntime implements WorkerRunner {
       switch (toolsetName) {
         case "filesystem": {
           if (!this.sandbox) {
-            throw new Error("Filesystem toolset requires a sandbox. Set projectRoot or mountSandboxConfig.");
+            throw new Error("Filesystem toolset requires a sandbox. Set programRoot or mountSandboxConfig.");
           }
 
           // FilesystemToolset creates tools with needsApproval set based on config
@@ -325,8 +325,8 @@ export class WorkerRuntime implements WorkerRunner {
           }
 
           const registry = this.options.registry || new WorkerRegistry();
-          if (this.options.projectRoot) {
-            registry.addSearchPath(this.options.projectRoot);
+          if (this.options.programRoot) {
+            registry.addSearchPath(this.options.programRoot);
           }
 
           // Use async factory to create named tools for each worker
@@ -338,7 +338,7 @@ export class WorkerRuntime implements WorkerRunner {
             approvalCallback: this.options.approvalCallback,
             approvalMode: this.options.approvalMode || "interactive",
             delegationContext: this.options.delegationContext,
-            projectRoot: this.options.projectRoot,
+            programRoot: this.options.programRoot,
             model: this.options.model,
             workerRunnerFactory: defaultWorkerRunnerFactory,
             // Propagate event callback to child workers for nested tracing
@@ -361,16 +361,16 @@ export class WorkerRuntime implements WorkerRunner {
 
           const customConfig: CustomToolsetConfig = parseResult.data;
 
-          // Resolve module path relative to worker file or project root
+          // Resolve module path relative to worker file or program root
           let modulePath = customConfig.module;
           if (!path.isAbsolute(modulePath)) {
             const baseDir = this.options.workerFilePath
               ? path.dirname(this.options.workerFilePath)
-              : this.options.projectRoot;
+              : this.options.programRoot;
 
             if (!baseDir) {
               throw new Error(
-                "Custom toolset requires workerFilePath or projectRoot to resolve relative module paths."
+                "Custom toolset requires workerFilePath or programRoot to resolve relative module paths."
               );
             }
 
@@ -410,7 +410,7 @@ export class WorkerRuntime implements WorkerRunner {
               sandbox: this.sandbox,
               approvalController: this.approvalController,
               workerFilePath: this.options.workerFilePath,
-              projectRoot: this.options.projectRoot,
+              programRoot: this.options.programRoot,
               config: (toolsetConfig as Record<string, unknown>) || {},
             });
             for (const tool of registeredTools) {

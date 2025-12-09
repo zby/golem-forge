@@ -61,8 +61,8 @@ export interface WorkerCallToolsetOptions {
   approvalMode: ApprovalMode;
   /** Delegation context from parent */
   delegationContext?: DelegationContext;
-  /** Project root for child worker sandbox */
-  projectRoot?: string;
+  /** Program root for child worker sandbox */
+  programRoot?: string;
   /** Maximum delegation depth (default: 5) */
   maxDelegationDepth?: number;
   /** Model to pass to child workers (already resolved from CLI/env/config) */
@@ -177,7 +177,7 @@ interface ExecuteDelegationOptions {
   approvalCallback?: ApprovalCallback;
   approvalMode: ApprovalMode;
   delegationContext?: DelegationContext;
-  projectRoot?: string;
+  programRoot?: string;
   maxDelegationDepth: number;
   /** Model to pass to child worker (already resolved) */
   model?: string;
@@ -204,7 +204,7 @@ async function executeWorkerDelegation(
     approvalCallback,
     approvalMode,
     delegationContext,
-    projectRoot,
+    programRoot,
     maxDelegationDepth,
     model,
     workerRunnerFactory,
@@ -299,7 +299,7 @@ async function executeWorkerDelegation(
       model: model,
       approvalMode: approvalMode,
       approvalCallback: approvalCallback,
-      projectRoot: projectRoot,
+      programRoot: programRoot,
       sharedApprovalController: approvalController,
       // Pass the restricted sandbox (or undefined for pure functions)
       sharedSandbox: childSandbox,
@@ -369,7 +369,7 @@ export function createNamedWorkerTool(
     approvalCallback,
     approvalMode,
     delegationContext,
-    projectRoot,
+    programRoot,
     maxDelegationDepth = DEFAULT_MAX_DELEGATION_DEPTH,
     model,
     workerRunnerFactory,
@@ -398,7 +398,7 @@ export function createNamedWorkerTool(
         approvalCallback,
         approvalMode,
         delegationContext,
-        projectRoot,
+        programRoot,
         maxDelegationDepth,
         model,
         workerRunnerFactory,

@@ -1,17 +1,17 @@
 /**
- * Project Manager
+ * Program Manager
  *
- * CRUD operations for Projects in chrome.storage.local.
+ * CRUD operations for Programs in chrome.storage.local.
  */
 
 import {
-  Project,
-  ProjectSchema,
+  Program,
+  ProgramSchema,
   WorkerSource,
   WorkerSourceSchema,
   STORAGE_KEYS,
 } from './types';
-import { cleanupProjectSandbox } from '../services/opfs-sandbox';
+import { cleanupProgramSandbox } from '../services/opfs-sandbox';
 
 /**
  * Generate a unique ID.
@@ -21,38 +21,38 @@ function generateId(): string {
 }
 
 /**
- * Project Manager service for managing Golem Forge projects.
+ * Program Manager service for managing Golem Forge programs.
  */
-export class ProjectManager {
+export class ProgramManager {
   // ─────────────────────────────────────────────────────────────────────────
-  // Project CRUD
+  // Program CRUD
   // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Get all projects.
+   * Get all programs.
    */
-  async listProjects(): Promise<Project[]> {
-    const result = await chrome.storage.local.get(STORAGE_KEYS.PROJECTS);
-    const projects = result[STORAGE_KEYS.PROJECTS] || [];
-    return projects.map((p: unknown) => ProjectSchema.parse(p));
+  async listPrograms(): Promise<Program[]> {
+    const result = await chrome.storage.local.get(STORAGE_KEYS.PROGRAMS);
+    const programs = result[STORAGE_KEYS.PROGRAMS] || [];
+    return programs.map((p: unknown) => ProgramSchema.parse(p));
   }
 
   /**
-   * Get a project by ID.
+   * Get a program by ID.
    */
-  async getProject(id: string): Promise<Project | null> {
-    const projects = await this.listProjects();
-    return projects.find((p) => p.id === id) || null;
+  async getProgram(id: string): Promise<Program | null> {
+    const programs = await this.listPrograms();
+    return programs.find((p) => p.id === id) || null;
   }
 
   /**
-   * Create a new project.
+   * Create a new program.
    */
-  async createProject(
-    data: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>
-  ): Promise<Project> {
+  async createProgram(
+    data: Omit<Program, 'id' | 'createdAt' | 'updatedAt'>
+  ): Promise<Program> {
     const now = Date.now();
-    const project: Project = {
+    const program: Program = {
       ...data,
       id: generateId(),
       createdAt: now,
@@ -62,75 +62,75 @@ export class ProjectManager {
       githubBranch: data.githubBranch || 'main',
     };
 
-    const validated = ProjectSchema.parse(project);
-    const projects = await this.listProjects();
-    projects.push(validated);
+    const validated = ProgramSchema.parse(program);
+    const programs = await this.listPrograms();
+    programs.push(validated);
 
-    await chrome.storage.local.set({ [STORAGE_KEYS.PROJECTS]: projects });
+    await chrome.storage.local.set({ [STORAGE_KEYS.PROGRAMS]: programs });
     return validated;
   }
 
   /**
-   * Update an existing project.
+   * Update an existing program.
    */
-  async updateProject(
+  async updateProgram(
     id: string,
-    updates: Partial<Omit<Project, 'id' | 'createdAt'>>
-  ): Promise<Project> {
-    const projects = await this.listProjects();
-    const index = projects.findIndex((p) => p.id === id);
+    updates: Partial<Omit<Program, 'id' | 'createdAt'>>
+  ): Promise<Program> {
+    const programs = await this.listPrograms();
+    const index = programs.findIndex((p) => p.id === id);
 
     if (index === -1) {
-      throw new Error(`Project not found: ${id}`);
+      throw new Error(`Program not found: ${id}`);
     }
 
-    const updated: Project = {
-      ...projects[index],
+    const updated: Program = {
+      ...programs[index],
       ...updates,
       updatedAt: Date.now(),
     };
 
-    const validated = ProjectSchema.parse(updated);
-    projects[index] = validated;
+    const validated = ProgramSchema.parse(updated);
+    programs[index] = validated;
 
-    await chrome.storage.local.set({ [STORAGE_KEYS.PROJECTS]: projects });
+    await chrome.storage.local.set({ [STORAGE_KEYS.PROGRAMS]: programs });
     return validated;
   }
 
   /**
-   * Delete a project.
+   * Delete a program.
    */
-  async deleteProject(id: string): Promise<void> {
-    const projects = await this.listProjects();
-    const filtered = projects.filter((p) => p.id !== id);
+  async deleteProgram(id: string): Promise<void> {
+    const programs = await this.listPrograms();
+    const filtered = programs.filter((p) => p.id !== id);
 
-    if (filtered.length === projects.length) {
-      throw new Error(`Project not found: ${id}`);
+    if (filtered.length === programs.length) {
+      throw new Error(`Program not found: ${id}`);
     }
 
-    await chrome.storage.local.set({ [STORAGE_KEYS.PROJECTS]: filtered });
+    await chrome.storage.local.set({ [STORAGE_KEYS.PROGRAMS]: filtered });
 
-    // Clean up OPFS storage for this project
-    await cleanupProjectSandbox(id);
+    // Clean up OPFS storage for this program
+    await cleanupProgramSandbox(id);
   }
 
   /**
-   * Ensure at least one default project exists.
+   * Ensure at least one default program exists.
    * This handles the case where the extension was installed before
-   * default project creation was added, or storage was cleared.
+   * default program creation was added, or storage was cleared.
    */
-  async ensureDefaultProject(): Promise<Project> {
-    const projects = await this.listProjects();
+  async ensureDefaultProgram(): Promise<Program> {
+    const programs = await this.listPrograms();
 
-    if (projects.length > 0) {
-      return projects[0];
+    if (programs.length > 0) {
+      return programs[0];
     }
 
-    // Create default project
-    console.log('[GolemForge] Creating default project');
-    return this.createProject({
-      name: 'Default Project',
-      description: 'Your first Golem Forge project',
+    // Create default program
+    console.log('[GolemForge] Creating default program');
+    return this.createProgram({
+      name: 'Default Program',
+      description: 'Your first Golem Forge program',
       workerSources: [],
       githubBranch: 'main',
       triggers: [],
@@ -216,26 +216,26 @@ export class ProjectManager {
 
     await chrome.storage.local.set({ [STORAGE_KEYS.WORKER_SOURCES]: filtered });
 
-    // Remove this source from all projects
-    const projects = await this.listProjects();
-    const updatedProjects = projects.map((p) => ({
+    // Remove this source from all programs
+    const programs = await this.listPrograms();
+    const updatedPrograms = programs.map((p) => ({
       ...p,
       workerSources: p.workerSources.filter((sid) => sid !== id),
     }));
 
-    await chrome.storage.local.set({ [STORAGE_KEYS.PROJECTS]: updatedProjects });
+    await chrome.storage.local.set({ [STORAGE_KEYS.PROGRAMS]: updatedPrograms });
   }
 
   /**
-   * Add a worker source to a project.
+   * Add a worker source to a program.
    */
-  async addSourceToProject(
-    projectId: string,
+  async addSourceToProgram(
+    programId: string,
     sourceId: string
-  ): Promise<Project> {
-    const project = await this.getProject(projectId);
-    if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+  ): Promise<Program> {
+    const program = await this.getProgram(programId);
+    if (!program) {
+      throw new Error(`Program not found: ${programId}`);
     }
 
     const source = await this.getWorkerSource(sourceId);
@@ -243,32 +243,32 @@ export class ProjectManager {
       throw new Error(`Worker source not found: ${sourceId}`);
     }
 
-    if (project.workerSources.includes(sourceId)) {
-      return project; // Already added
+    if (program.workerSources.includes(sourceId)) {
+      return program; // Already added
     }
 
-    return this.updateProject(projectId, {
-      workerSources: [...project.workerSources, sourceId],
+    return this.updateProgram(programId, {
+      workerSources: [...program.workerSources, sourceId],
     });
   }
 
   /**
-   * Remove a worker source from a project.
+   * Remove a worker source from a program.
    */
-  async removeSourceFromProject(
-    projectId: string,
+  async removeSourceFromProgram(
+    programId: string,
     sourceId: string
-  ): Promise<Project> {
-    const project = await this.getProject(projectId);
-    if (!project) {
-      throw new Error(`Project not found: ${projectId}`);
+  ): Promise<Program> {
+    const program = await this.getProgram(programId);
+    if (!program) {
+      throw new Error(`Program not found: ${programId}`);
     }
 
-    return this.updateProject(projectId, {
-      workerSources: project.workerSources.filter((id) => id !== sourceId),
+    return this.updateProgram(programId, {
+      workerSources: program.workerSources.filter((id) => id !== sourceId),
     });
   }
 }
 
 // Singleton instance
-export const projectManager = new ProjectManager();
+export const programManager = new ProgramManager();

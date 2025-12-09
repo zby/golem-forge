@@ -24,7 +24,7 @@ golem-forge greeter "Tell me a joke"
 
 ## Worker Definition
 
-See `index.worker`:
+See `main.worker`:
 
 ```yaml
 name: greeter

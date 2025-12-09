@@ -2,20 +2,20 @@
  * Sidepanel Component
  *
  * Main interface for the Golem Forge extension.
- * Provides chat interface for running workers and managing projects.
+ * Provides chat interface for running workers and managing programs.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { settingsManager } from './storage/settings-manager';
-import { projectManager } from './storage/project-manager';
-import { workerManager, type BundledProject } from './services/worker-manager';
+import { programManager } from './storage/program-manager';
+import { workerManager, type BundledProgram } from './services/worker-manager';
 import {
   createBrowserRuntime,
   type ApprovalRequest,
   type ApprovalDecision,
 } from './services/browser-runtime';
-import type { LLMProvider, Project } from './storage/types';
+import type { LLMProvider, Program } from './storage/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles
@@ -356,19 +356,19 @@ function SettingsTab() {
   const [defaultProvider, setDefaultProvider] = useState<LLMProvider>('anthropic');
   const [defaultModel, setDefaultModel] = useState('claude-sonnet-4-20250514');
 
-  // Projects
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [newProjectName, setNewProjectName] = useState('');
+  // Programs
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [newProgramName, setNewProgramName] = useState('');
 
   // UI state
   const [saved, setSaved] = useState(false);
-  const [activeSection, setActiveSection] = useState<'api' | 'model' | 'projects'>('api');
+  const [activeSection, setActiveSection] = useState<'api' | 'model' | 'programs'>('api');
 
   useEffect(() => {
     async function init() {
       await loadSettings();
-      await projectManager.ensureDefaultProject();
-      await loadProjects();
+      await programManager.ensureDefaultProgram();
+      await loadPrograms();
     }
     init();
   }, []);
@@ -399,9 +399,9 @@ function SettingsTab() {
     }
   }
 
-  async function loadProjects() {
-    const projectList = await projectManager.listProjects();
-    setProjects(projectList);
+  async function loadPrograms() {
+    const programList = await programManager.listPrograms();
+    setPrograms(programList);
   }
 
   async function handleSaveAPIKeys() {
@@ -460,25 +460,25 @@ function SettingsTab() {
     }
   }
 
-  async function handleCreateProject() {
-    if (!newProjectName.trim()) return;
+  async function handleCreateProgram() {
+    if (!newProgramName.trim()) return;
 
-    await projectManager.createProject({
-      name: newProjectName.trim(),
+    await programManager.createProgram({
+      name: newProgramName.trim(),
       workerSources: [],
       githubBranch: 'main',
       triggers: [],
     });
 
-    setNewProjectName('');
-    await loadProjects();
+    setNewProgramName('');
+    await loadPrograms();
   }
 
-  async function handleDeleteProject(projectId: string) {
-    if (!confirm('Are you sure you want to delete this project?')) return;
+  async function handleDeleteProgram(programId: string) {
+    if (!confirm('Are you sure you want to delete this program?')) return;
 
-    await projectManager.deleteProject(projectId);
-    await loadProjects();
+    await programManager.deleteProgram(programId);
+    await loadPrograms();
   }
 
   const sectionButtonStyle = (section: typeof activeSection) => ({
@@ -502,8 +502,8 @@ function SettingsTab() {
         <button style={sectionButtonStyle('model')} onClick={() => setActiveSection('model')}>
           Model
         </button>
-        <button style={sectionButtonStyle('projects')} onClick={() => setActiveSection('projects')}>
-          Projects
+        <button style={sectionButtonStyle('programs')} onClick={() => setActiveSection('programs')}>
+          Programs
         </button>
       </div>
 
@@ -610,27 +610,27 @@ function SettingsTab() {
         </>
       )}
 
-      {/* Projects Section */}
-      {activeSection === 'projects' && (
+      {/* Programs Section */}
+      {activeSection === 'programs' && (
         <>
           <div style={styles.formGroup}>
-            <label style={styles.label}>Create New Project</label>
+            <label style={styles.label}>Create New Program</label>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input
                 type="text"
                 style={{ ...styles.formInput, flex: 1 }}
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-                placeholder="Project name..."
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateProject()}
+                value={newProgramName}
+                onChange={(e) => setNewProgramName(e.target.value)}
+                placeholder="Program name..."
+                onKeyDown={(e) => e.key === 'Enter' && handleCreateProgram()}
               />
               <button
                 style={{
                   ...styles.saveButton,
                   padding: '10px 16px',
                 }}
-                onClick={handleCreateProject}
-                disabled={!newProjectName.trim()}
+                onClick={handleCreateProgram}
+                disabled={!newProgramName.trim()}
               >
                 Create
               </button>
@@ -638,14 +638,14 @@ function SettingsTab() {
           </div>
 
           <div style={styles.formGroup}>
-            <label style={styles.label}>Existing Projects</label>
-            {projects.length === 0 ? (
+            <label style={styles.label}>Existing Programs</label>
+            {programs.length === 0 ? (
               <p style={{ color: '#6b7280', fontSize: '13px', margin: '8px 0' }}>
-                No projects yet. Create one above.
+                No programs yet. Create one above.
               </p>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {projects.map((p) => (
+                {programs.map((p) => (
                   <div
                     key={p.id}
                     style={{
@@ -673,7 +673,7 @@ function SettingsTab() {
                         cursor: 'pointer',
                         fontSize: '12px',
                       }}
-                      onClick={() => handleDeleteProject(p.id)}
+                      onClick={() => handleDeleteProgram(p.id)}
                     >
                       Delete
                     </button>
@@ -696,19 +696,19 @@ function ChatTab() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
-  const [bundledProjects, setBundledProjects] = useState<BundledProject[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [bundledPrograms, setBundledPrograms] = useState<BundledProgram[]>([]);
+  const [selectedProgramId, setSelectedProgramId] = useState<string>('');
   const [approvalRequest, setApprovalRequest] = useState<ApprovalRequest | null>(null);
   const [approvalResolver, setApprovalResolver] = useState<((decision: ApprovalDecision) => void) | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load bundled projects on mount
+  // Load bundled programs on mount
   useEffect(() => {
-    const projects = workerManager.getBundledProjects();
-    setBundledProjects(projects);
-    // Select first project by default
-    if (projects.length > 0) {
-      setSelectedProjectId(projects[0].id);
+    const programs = workerManager.getBundledPrograms();
+    setBundledPrograms(programs);
+    // Select first program by default
+    if (programs.length > 0) {
+      setSelectedProgramId(programs[0].id);
     }
   }, []);
 
@@ -716,10 +716,10 @@ function ChatTab() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle project change - clear messages
-  function handleProjectChange(projectId: string) {
-    setSelectedProjectId(projectId);
-    setMessages([]); // Clear messages when project changes
+  // Handle program change - clear messages
+  function handleProgramChange(programId: string) {
+    setSelectedProgramId(programId);
+    setMessages([]); // Clear messages when program changes
   }
 
   const handleApproval = useCallback(
@@ -741,7 +741,7 @@ function ChatTab() {
   }
 
   async function handleSend() {
-    if (!input.trim() || isRunning || !selectedProjectId) return;
+    if (!input.trim() || isRunning || !selectedProgramId) return;
 
     const userMessage: Message = {
       id: generateMessageId(),
@@ -754,13 +754,13 @@ function ChatTab() {
     setIsRunning(true);
 
     try {
-      // Get worker definition from the bundled project's index.worker
-      const worker = workerManager.getBundledProjectWorker(selectedProjectId);
+      // Get worker definition from the bundled program's main.worker
+      const worker = workerManager.getBundledProgramWorker(selectedProgramId);
 
-      // Create runtime - use projectId for sandbox
+      // Create runtime - use programId for sandbox
       const runtime = await createBrowserRuntime({
         worker,
-        projectId: selectedProjectId,
+        programId: selectedProgramId,
         approvalMode: 'interactive',
         approvalCallback: handleApproval,
         onStream: (text) => {
@@ -822,21 +822,21 @@ function ChatTab() {
     }
   }
 
-  // Get the selected project for display
-  const selectedProject = bundledProjects.find((p) => p.id === selectedProjectId);
+  // Get the selected program for display
+  const selectedProgram = bundledPrograms.find((p) => p.id === selectedProgramId);
 
   return (
     <div style={styles.chatContainer}>
-      {/* Project Selector */}
+      {/* Program Selector */}
       <div style={styles.workerSelector}>
-        <label style={styles.label}>Project</label>
+        <label style={styles.label}>Program</label>
         <select
           style={styles.select}
-          value={selectedProjectId}
-          onChange={(e) => handleProjectChange(e.target.value)}
+          value={selectedProgramId}
+          onChange={(e) => handleProgramChange(e.target.value)}
           disabled={isRunning}
         >
-          {bundledProjects.map((p) => (
+          {bundledPrograms.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name} - {p.description}
             </option>
@@ -848,9 +848,9 @@ function ChatTab() {
       <div style={styles.messages}>
         {messages.length === 0 ? (
           <div style={styles.emptyState}>
-            <p><strong>{selectedProject?.name}</strong></p>
+            <p><strong>{selectedProgram?.name}</strong></p>
             <p style={{ marginTop: '4px', fontSize: '13px', color: '#6b7280' }}>
-              {selectedProject?.description}
+              {selectedProgram?.description}
             </p>
             <p style={{ marginTop: '12px', fontSize: '13px' }}>
               Send a message to start chatting.
@@ -891,10 +891,10 @@ function ChatTab() {
           <button
             style={{
               ...styles.sendButton,
-              ...(isRunning || !input.trim() || !selectedProjectId ? styles.sendButtonDisabled : {}),
+              ...(isRunning || !input.trim() || !selectedProgramId ? styles.sendButtonDisabled : {}),
             }}
             onClick={handleSend}
-            disabled={isRunning || !input.trim() || !selectedProjectId}
+            disabled={isRunning || !input.trim() || !selectedProgramId}
           >
             {isRunning ? 'Running...' : 'Send'}
           </button>

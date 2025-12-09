@@ -90,14 +90,17 @@ export const SiteTriggerSchema = z.object({
 export type SiteTrigger = z.infer<typeof SiteTriggerSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Project
+// Program
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * A Golem Forge project in the browser extension.
+ * A Golem Forge program in the browser extension.
+ *
+ * A program is a runnable composition of workers - a directory with a main.worker
+ * entry point and optional additional workers.
  */
-export const ProjectSchema = z.object({
-  /** Unique project ID */
+export const ProgramSchema = z.object({
+  /** Unique program ID */
   id: z.string(),
   /** Display name */
   name: z.string(),
@@ -107,9 +110,9 @@ export const ProjectSchema = z.object({
   githubRepo: z.string().optional(),
   /** GitHub branch */
   githubBranch: z.string().default('main'),
-  /** Worker sources enabled for this project */
+  /** Worker sources enabled for this program */
   workerSources: z.array(z.string()).default([]), // source IDs
-  /** Site triggers for this project */
+  /** Site triggers for this program */
   triggers: z.array(SiteTriggerSchema).default([]),
   /** Creation timestamp */
   createdAt: z.number(),
@@ -117,7 +120,7 @@ export const ProjectSchema = z.object({
   updatedAt: z.number(),
 });
 
-export type Project = z.infer<typeof ProjectSchema>;
+export type Program = z.infer<typeof ProgramSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API Key Storage
@@ -169,9 +172,13 @@ export type ExtensionSettings = z.infer<typeof ExtensionSettingsSchema>;
 
 /**
  * Keys used in chrome.storage.local
+ *
+ * Note: The underlying storage keys remain 'projects' for backwards compatibility
+ * with existing chrome.storage data, but the constant is named PROGRAMS to match
+ * the Program terminology.
  */
 export const STORAGE_KEYS = {
-  PROJECTS: 'projects',
+  PROGRAMS: 'projects', // Storage key kept as 'projects' for backwards compatibility
   WORKER_SOURCES: 'workerSources',
   API_KEYS: 'apiKeys',
   SETTINGS: 'settings',

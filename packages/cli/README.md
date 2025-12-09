@@ -11,25 +11,25 @@ npm install @golem-forge/cli
 Or run directly with npx:
 
 ```bash
-npx golem-forge ./my-project "input message"
+npx golem-forge ./my-program "input message"
 ```
 
 ## Usage
 
-### Running Projects
+### Running Programs
 
 ```bash
-# Run a project (finds main.worker in directory)
-npx golem-forge ./my-project "input message" --model anthropic:claude-haiku-4-5
+# Run a program (finds main.worker in directory)
+npx golem-forge ./my-program "input message" --model anthropic:claude-haiku-4-5
 
 # Run with different entry point
-npx golem-forge ./my-project --entry analyzer "input" --model anthropic:claude-haiku-4-5
+npx golem-forge ./my-program --entry analyzer "input" --model anthropic:claude-haiku-4-5
 
 # Run single worker file directly
 npx golem-forge ./standalone.worker "input" --model anthropic:claude-haiku-4-5
 
 # Override config at runtime
-npx golem-forge ./my-project "input" --model anthropic:claude-sonnet-4 --set locked=true
+npx golem-forge ./my-program "input" --model anthropic:claude-sonnet-4 --set locked=true
 ```
 
 ### Attach Files
@@ -38,10 +38,10 @@ npx golem-forge ./my-project "input" --model anthropic:claude-sonnet-4 --set loc
 npx golem-forge ./examples/greeter --attach assets/spec.png "Describe this image"
 ```
 
-### Create New Project
+### Create New Program
 
 ```bash
-npx golem-forge init my-project
+npx golem-forge init my-program
 ```
 
 ## Environment Variables

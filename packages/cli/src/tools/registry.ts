@@ -21,8 +21,8 @@ export interface ToolsetContext {
   approvalController: ApprovalController;
   /** Path to the worker file (for resolving relative paths). */
   workerFilePath?: string;
-  /** Project root directory. */
-  projectRoot?: string;
+  /** Program root directory. */
+  programRoot?: string;
   /** Toolset-specific configuration from worker YAML. */
   config: Record<string, unknown>;
 }

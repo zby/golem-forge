@@ -32,7 +32,7 @@ cat plans/your-whiteboard.md
 
 ```
 whiteboard_planner/
-  index.worker                    # Orchestrator
+  main.worker                     # Orchestrator
   workers/
     whiteboard_analyzer.worker    # Image analysis sub-worker
   input/                          # Put whiteboard images here (read-only)

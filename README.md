@@ -27,11 +27,11 @@ Workers are platform-agnostic. The same `.worker` files run in both environments
 
 ## The Model
 
-A **project** is a directory with a `main.worker` entry point. Workers are focused prompt units that compose like functions:
+A **program** is a directory with a `main.worker` entry point. Workers are focused prompt units that compose like functions:
 
 | Programming | golem-forge |
 |-------------|-------------|
-| Program | Project directory |
+| Program | Program directory |
 | `main()` | `main.worker` |
 | Function | `.worker` file |
 | Function call | Worker as tool (e.g., `greeter`, `analyzer`) |
@@ -57,7 +57,7 @@ npx golem-forge ./examples/greeter "Tell me a joke"
 npx golem-forge ./examples/greeter "Tell me a joke" --model anthropic:claude-haiku-4-5
 ```
 
-That's it. The CLI finds `main.worker` in the project directory and runs it.
+That's it. The CLI finds `main.worker` in the program directory and runs it.
 
 ### Attach files
 
@@ -69,21 +69,21 @@ npx golem-forge ./examples/greeter --attach assets/spec.png --attach ../shared/l
 
 `--attach` can be repeated. Relative paths resolve against the worker directory first, then your current working directory. Workers can further constrain attachments through their `attachment_policy`, and actual LLM support depends on the provider/model you run against.
 
-## Project Structure
+## Program Structure
 
-Projects grow organically from simple to complex:
+Programs grow organically from simple to complex:
 
 **Minimal** - just an entry point:
 ```
-my-project/
+my-program/
 └── main.worker
 ```
 
 **With helpers** - main delegates to focused workers:
 ```
-my-project/
+my-program/
 ├── main.worker               # Orchestrator
-├── golem-forge.config.yaml   # Project config (model, sandbox zones)
+├── golem-forge.config.yaml   # Program config (model, sandbox zones)
 └── workers/
     ├── analyzer.worker       # Focused worker
     └── formatter.worker      # Another focused worker
@@ -91,9 +91,9 @@ my-project/
 
 **With hardened operations** - extract reliable logic to TypeScript:
 ```
-my-project/
+my-program/
 ├── main.worker
-├── project.yaml
+├── golem-forge.config.yaml
 ├── tools.ts              # Deterministic operations as functions
 ├── workers/
 │   └── specialist/
@@ -106,32 +106,32 @@ my-project/
 
 This progression reflects **progressive hardening**: initially you might prompt the LLM to "rename the file to remove special characters". Once you see it works, extract that to a TypeScript function - deterministic, testable, no LLM variability.
 
-## Running Projects
+## Running Programs
 
 ```bash
-# Run project (finds main.worker)
-npx golem-forge ./my-project "input message" --model anthropic:claude-haiku-4-5
+# Run program (finds main.worker)
+npx golem-forge ./my-program "input message" --model anthropic:claude-haiku-4-5
 
 # Run with different entry point
-npx golem-forge ./my-project --entry analyzer "input" --model anthropic:claude-haiku-4-5
+npx golem-forge ./my-program --entry analyzer "input" --model anthropic:claude-haiku-4-5
 
 # Run single worker file directly
 npx golem-forge ./standalone.worker "input" --model anthropic:claude-haiku-4-5
 
 # Override config at runtime
-npx golem-forge ./my-project "input" --model anthropic:claude-sonnet-4 --set locked=true
+npx golem-forge ./my-program "input" --model anthropic:claude-sonnet-4 --set locked=true
 ```
 
-Create a new project:
+Create a new program:
 ```bash
-npx golem-forge init my-project
+npx golem-forge init my-program
 ```
 
 ## Workers
 
 Workers are `.worker` files: YAML front matter (config) + body (instructions). They call other workers directly as tools - each allowed worker becomes a callable tool (e.g., `greeter`, `analyzer`), making worker delegation feel like function calls.
 
-Add custom tools by creating `tools.ts` in your project root:
+Add custom tools by creating `tools.ts` in your program directory:
 
 ```typescript
 // tools.ts
@@ -158,8 +158,8 @@ Functions become LLM-callable tools. Reference them in your worker's toolsets co
 Models are configured with a simple priority system:
 
 1. **CLI flag** (`--model`) - highest priority, overrides everything
-2. **Environment variable** (`GOLEM_FORGE_MODEL`) - default for all projects
-3. **Project config** (`golem-forge.config.yaml`) - project-specific default
+2. **Environment variable** (`GOLEM_FORGE_MODEL`) - default for all programs
+3. **Program config** (`golem-forge.config.yaml`) - program-specific default
 
 ```bash
 # Set globally via environment
@@ -190,9 +190,9 @@ compatible_models:
   - "anthropic:claude-sonnet-4"  # Only this model allowed
 ```
 
-## Project Configuration
+## Program Configuration
 
-Create a `golem-forge.config.yaml` in your project root to configure sandbox zones and other settings:
+Create a `golem-forge.config.yaml` in your program directory to configure sandbox zones and other settings:
 
 ```yaml
 # golem-forge.config.yaml

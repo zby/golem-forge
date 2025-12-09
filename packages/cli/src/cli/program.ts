@@ -1,54 +1,54 @@
 /**
- * Project Detection
+ * Program Detection
  *
- * Find project root and load configuration.
+ * Find program root and load configuration.
  * Supports both legacy JSON format and new YAML format.
  */
 
 import * as fs from "fs/promises";
 import * as path from "path";
 import {
-  findProjectConfig as findYamlProjectConfig,
-  type ProjectConfig as YamlProjectConfig,
+  findProgramConfig as findYamlProgramConfig,
+  type ProgramConfig as YamlProgramConfig,
   resolveSandboxConfig,
   mergeWithCLIOptions,
 } from "../config/index.js";
 
 /**
- * Project configuration - supports both legacy JSON and new YAML format.
+ * Program configuration - supports both legacy JSON and new YAML format.
  */
-export interface ProjectConfig {
+export interface ProgramConfig {
   /** Default model to use */
   model?: string;
   /** Default trust level (legacy) */
   trustLevel?: "untrusted" | "session" | "workspace" | "full";
-  /** Worker search paths relative to project root */
+  /** Worker search paths relative to program root */
   workerPaths?: string[];
   /** Default approval mode */
   approvalMode?: "interactive" | "approve_all" | "auto_deny";
   /** Sandbox configuration (from YAML config) */
-  sandbox?: YamlProjectConfig["sandbox"];
+  sandbox?: YamlProgramConfig["sandbox"];
   /** Delegation configuration (from YAML config) */
-  delegation?: YamlProjectConfig["delegation"];
+  delegation?: YamlProgramConfig["delegation"];
 }
 
 /**
- * Detected project information.
+ * Detected program information.
  */
-export interface ProjectInfo {
-  /** Absolute path to project root */
+export interface ProgramInfo {
+  /** Absolute path to program root */
   root: string;
-  /** How the project was detected */
+  /** How the program was detected */
   detectedBy: string;
-  /** Project configuration (if found) */
-  config?: ProjectConfig;
+  /** Program configuration (if found) */
+  config?: ProgramConfig;
 }
 
 /**
- * Markers that indicate a project root, in order of priority.
+ * Markers that indicate a program root, in order of priority.
  * YAML config files are checked first (new format), then JSON (legacy).
  */
-const PROJECT_MARKERS = [
+const PROGRAM_MARKERS = [
   { file: "golem-forge.config.yaml", type: "yaml-config" },
   { file: "golem-forge.config.yml", type: "yaml-config" },
   { file: ".golem-forge.json", type: "json-config" },
@@ -59,24 +59,24 @@ const PROJECT_MARKERS = [
 ];
 
 /**
- * Find the project root by walking up from the given directory.
+ * Find the program root by walking up from the given directory.
  *
  * @param startDir - Directory to start searching from (default: cwd)
- * @returns Project info if found, null otherwise
+ * @returns Program info if found, null otherwise
  */
-export async function findProjectRoot(startDir?: string): Promise<ProjectInfo | null> {
+export async function findProgramRoot(startDir?: string): Promise<ProgramInfo | null> {
   let currentDir = path.resolve(startDir || process.cwd());
   const root = path.parse(currentDir).root;
 
   while (currentDir !== root) {
-    for (const marker of PROJECT_MARKERS) {
+    for (const marker of PROGRAM_MARKERS) {
       const markerPath = path.join(currentDir, marker.file);
 
       try {
         await fs.access(markerPath);
 
         // Found a marker
-        const info: ProjectInfo = {
+        const info: ProgramInfo = {
           root: currentDir,
           detectedBy: marker.file,
         };
@@ -84,7 +84,7 @@ export async function findProjectRoot(startDir?: string): Promise<ProjectInfo | 
         // Load config based on type
         if (marker.type === "yaml-config") {
           try {
-            const yamlResult = await findYamlProjectConfig(currentDir);
+            const yamlResult = await findYamlProgramConfig(currentDir);
             if (yamlResult) {
               info.config = {
                 model: yamlResult.config.model,
@@ -102,7 +102,7 @@ export async function findProjectRoot(startDir?: string): Promise<ProjectInfo | 
         } else if (marker.type === "json-config") {
           try {
             const content = await fs.readFile(markerPath, "utf-8");
-            info.config = JSON.parse(content) as ProjectConfig;
+            info.config = JSON.parse(content) as ProgramConfig;
           } catch (err) {
             console.warn(
               `Warning: Failed to parse JSON config file ${markerPath}: ${err instanceof Error ? err.message : String(err)}`
@@ -128,12 +128,12 @@ export async function findProjectRoot(startDir?: string): Promise<ProjectInfo | 
 }
 
 /**
- * Load project configuration from a specific file.
+ * Load program configuration from a specific file.
  */
-export async function loadProjectConfig(configPath: string): Promise<ProjectConfig | null> {
+export async function loadProgramConfig(configPath: string): Promise<ProgramConfig | null> {
   try {
     const content = await fs.readFile(configPath, "utf-8");
-    return JSON.parse(content) as ProjectConfig;
+    return JSON.parse(content) as ProgramConfig;
   } catch {
     return null;
   }
@@ -154,21 +154,21 @@ function filterUndefined<T extends object>(obj: T | undefined): Partial<T> {
 }
 
 /**
- * Get effective configuration by merging project config with defaults.
+ * Get effective configuration by merging program config with defaults.
  *
  * Priority order for model:
  *   1. CLI --model flag (in overrides)
- *   2. Project config model
+ *   2. Program config model
  *   3. GOLEM_FORGE_MODEL environment variable
  */
 export function getEffectiveConfig(
-  projectConfig?: ProjectConfig,
-  overrides?: Partial<ProjectConfig>
-): ProjectConfig {
+  programConfig?: ProgramConfig,
+  overrides?: Partial<ProgramConfig>
+): ProgramConfig {
   // Environment variable serves as fallback default for model
   const envModel = process.env.GOLEM_FORGE_MODEL;
 
-  const defaults: ProjectConfig = {
+  const defaults: ProgramConfig = {
     model: envModel,
     trustLevel: "session",
     approvalMode: "interactive",
@@ -176,21 +176,21 @@ export function getEffectiveConfig(
   };
 
   // Filter out undefined values to avoid overwriting defaults with undefined
-  const filteredProjectConfig = filterUndefined(projectConfig);
+  const filteredProgramConfig = filterUndefined(programConfig);
   const filteredOverrides = filterUndefined(overrides);
 
   return {
     ...defaults,
-    ...filteredProjectConfig,
+    ...filteredProgramConfig,
     ...filteredOverrides,
   };
 }
 
 /**
- * Resolve worker paths relative to project root.
+ * Resolve worker paths relative to program root.
  */
-export function resolveWorkerPaths(projectRoot: string, workerPaths: string[]): string[] {
-  return workerPaths.map((p) => path.resolve(projectRoot, p));
+export function resolveWorkerPaths(programRoot: string, workerPaths: string[]): string[] {
+  return workerPaths.map((p) => path.resolve(programRoot, p));
 }
 
 // Re-export the sandbox config resolver for use by CLI

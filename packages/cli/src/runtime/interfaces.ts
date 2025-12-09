@@ -98,8 +98,8 @@ export interface WorkerRunnerOptions {
   approvalMode?: ApprovalMode;
   /** Approval callback for interactive mode */
   approvalCallback?: ApprovalCallback;
-  /** Project root for CLI sandbox */
-  projectRoot?: string;
+  /** Program root for CLI sandbox */
+  programRoot?: string;
   /** Path to the worker file (for resolving relative module paths) */
   workerFilePath?: string;
   /** Maximum tool call iterations */

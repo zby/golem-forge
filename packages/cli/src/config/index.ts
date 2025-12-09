@@ -1,22 +1,22 @@
 /**
  * Config Module
  *
- * Project configuration schema and loading.
+ * Program configuration schema and loading.
  */
 
 export {
-  ProjectConfigSchema,
-  SandboxProjectConfigSchema,
-  ApprovalProjectConfigSchema,
-  DelegationProjectConfigSchema,
-  type ProjectConfig,
-  type SandboxProjectConfig,
-  type ApprovalProjectConfig,
-  type DelegationProjectConfig,
+  ProgramConfigSchema,
+  SandboxProgramConfigSchema,
+  ApprovalProgramConfigSchema,
+  DelegationProgramConfigSchema,
+  type ProgramConfig,
+  type SandboxProgramConfig,
+  type ApprovalProgramConfig,
+  type DelegationProgramConfig,
   type ResolvedSandboxConfig,
-  loadProjectConfigFile,
-  findProjectConfig,
+  loadProgramConfigFile,
+  findProgramConfig,
   resolveSandboxConfig,
-  getDefaultProjectConfig,
+  getDefaultProgramConfig,
   mergeWithCLIOptions,
-} from "./project.js";
+} from "./program.js";

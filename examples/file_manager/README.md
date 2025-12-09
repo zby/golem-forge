@@ -39,7 +39,7 @@ golem-forge file_manager "Create test.txt" --approval strict
 
 ## Worker Definition
 
-See `index.worker`:
+See `main.worker`:
 
 ```yaml
 name: file_manager

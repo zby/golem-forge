@@ -24,28 +24,28 @@ vi.mock("./approval.js", () => ({
   createCLIApprovalCallback: vi.fn().mockReturnValue(vi.fn()),
 }));
 
-vi.mock("./project.js", () => {
+vi.mock("./program.js", () => {
   const mockGetEffectiveConfig = vi.fn().mockReturnValue({
     model: "anthropic:claude-haiku-4-5",
     trustLevel: "session",
     approvalMode: "interactive",
     workerPaths: ["workers"],
   });
-  const mockFindProjectRoot = vi.fn().mockResolvedValue(null);
-  const mockResolveSandboxConfig = vi.fn().mockImplementation((projectRoot, config) => ({
+  const mockFindProgramRoot = vi.fn().mockResolvedValue(null);
+  const mockResolveSandboxConfig = vi.fn().mockImplementation((programRoot, config) => ({
     mode: config?.mode ?? "sandboxed",
-    root: projectRoot,
+    root: programRoot,
     zones: new Map(Object.entries(config?.zones ?? {}).map(([name, zone]) => [
       name,
-      { name, absolutePath: `${projectRoot}/${(zone as { path: string }).path}`, relativePath: (zone as { path: string }).path, mode: (zone as { mode: string }).mode },
+      { name, absolutePath: `${programRoot}/${(zone as { path: string }).path}`, relativePath: (zone as { path: string }).path, mode: (zone as { mode: string }).mode },
     ])),
   }));
   return {
     getEffectiveConfig: mockGetEffectiveConfig,
-    findProjectRoot: mockFindProjectRoot,
+    findProgramRoot: mockFindProgramRoot,
     resolveSandboxConfig: mockResolveSandboxConfig,
     __mockGetEffectiveConfig: mockGetEffectiveConfig,
-    __mockFindProjectRoot: mockFindProjectRoot,
+    __mockFindProgramRoot: mockFindProgramRoot,
   };
 });
 
@@ -59,7 +59,7 @@ vi.mock("./trace.js", () => ({
 
 // Import after mocks
 import { runCLI } from "./run.js";
-import { getEffectiveConfig } from "./project.js";
+import { getEffectiveConfig } from "./program.js";
 import * as runtimeModule from "../runtime/index.js";
 
 // Get mock references
@@ -84,7 +84,7 @@ Test instructions
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "cli-run-test-"));
     workerDir = path.join(tempDir, "test-worker");
     await fs.mkdir(workerDir);
-    await fs.writeFile(path.join(workerDir, "index.worker"), workerContent);
+    await fs.writeFile(path.join(workerDir, "main.worker"), workerContent);
 
     cwdSpy = vi.spyOn(process, "cwd").mockReturnValue(tempDir);
 
@@ -120,15 +120,15 @@ Test instructions
   });
 
   describe("argument parsing", () => {
-    it("should run worker from directory with index.worker", async () => {
+    it("should run worker from directory with main.worker", async () => {
       await runCLI(["node", "cli", workerDir, "--input", "hello"]);
 
       expect(mockRun).toHaveBeenCalledWith("hello");
     });
 
     it("should use current directory as default", async () => {
-      // Create index.worker in temp dir
-      await fs.writeFile(path.join(tempDir, "index.worker"), workerContent);
+      // Create main.worker in temp dir
+      await fs.writeFile(path.join(tempDir, "main.worker"), workerContent);
 
       await runCLI(["node", "cli", "--input", "test input"]);
 
@@ -192,18 +192,18 @@ Test instructions
   });
 
   describe("worker directory handling", () => {
-    it("should find index.worker in specified directory", async () => {
+    it("should find main.worker in specified directory", async () => {
       await runCLI(["node", "cli", workerDir, "--input", "test"]);
 
       expect(mockCreateWorkerRuntime).toHaveBeenCalledWith(
         expect.objectContaining({
           worker: expect.objectContaining({ name: "test-worker" }),
-          projectRoot: workerDir,
+          programRoot: workerDir,
         })
       );
     });
 
-    it("should exit with error when directory has no index.worker", async () => {
+    it("should exit with error when directory has no main.worker", async () => {
       const emptyDir = path.join(tempDir, "empty");
       await fs.mkdir(emptyDir);
 
@@ -212,7 +212,7 @@ Test instructions
       ).rejects.toThrow("process.exit called");
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("No index.worker file found")
+        expect.stringContaining("No main.worker file found")
       );
     });
 
@@ -222,7 +222,7 @@ Test instructions
       ).rejects.toThrow("process.exit called");
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining("No index.worker file found")
+        expect.stringContaining("No main.worker file found")
       );
     });
   });
@@ -372,7 +372,7 @@ sandbox:
 ---
 Process files in the workspace.
 `;
-      await fs.writeFile(path.join(workerDir, "index.worker"), sandboxWorker);
+      await fs.writeFile(path.join(workerDir, "main.worker"), sandboxWorker);
 
       // Save original isTTY
       const originalIsTTY = process.stdin.isTTY;
@@ -390,16 +390,16 @@ Process files in the workspace.
       }
     });
 
-    it("should allow running sandbox-only workers without input (project-config sandbox)", async () => {
+    it("should allow running sandbox-only workers without input (program-config sandbox)", async () => {
       // Worker without sandbox configuration
       const plainWorker = `---
 name: plain-worker
 ---
 Process files.
 `;
-      await fs.writeFile(path.join(workerDir, "index.worker"), plainWorker);
+      await fs.writeFile(path.join(workerDir, "main.worker"), plainWorker);
 
-      // Mock project config with sandbox (mount-based)
+      // Mock program config with sandbox (mount-based)
       vi.mocked(getEffectiveConfig).mockReturnValueOnce({
         model: "anthropic:claude-haiku-4-5",
         trustLevel: "session",
@@ -497,7 +497,7 @@ attachment_policy:
 ---
 Policy instructions
 `;
-      await fs.writeFile(path.join(workerDir, "index.worker"), policyWorker);
+      await fs.writeFile(path.join(workerDir, "main.worker"), policyWorker);
 
       const assetsDir = path.join(workerDir, "assets");
       await fs.mkdir(assetsDir);
@@ -558,7 +558,7 @@ attachment_policy:
 ---
 Instructions
 `;
-      await fs.writeFile(path.join(workerDir, "index.worker"), restrictedWorker);
+      await fs.writeFile(path.join(workerDir, "main.worker"), restrictedWorker);
       await fs.writeFile(path.join(workerDir, "notes.pdf"), "content");
 
       await expect(
@@ -593,7 +593,7 @@ Instructions
       expect(mockCreateWorkerRuntime).toHaveBeenCalledWith(
         expect.objectContaining({
           worker: expect.objectContaining({ name: "test-worker" }),
-          model: "anthropic:claude-haiku-4-5",  // resolved from project config
+          model: "anthropic:claude-haiku-4-5",  // resolved from program config
           approvalMode: "approve_all",
         })
       );

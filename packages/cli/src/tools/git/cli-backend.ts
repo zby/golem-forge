@@ -80,14 +80,14 @@ function hashContent(content: Buffer): string {
 }
 
 /**
- * Resolve a target path relative to project root.
+ * Resolve a target path relative to program root.
  */
-function resolveTargetPath(targetPath: string, projectRoot?: string): string {
+function resolveTargetPath(targetPath: string, programRoot?: string): string {
   if (path.isAbsolute(targetPath)) {
     return targetPath;
   }
-  if (projectRoot) {
-    return path.resolve(projectRoot, targetPath);
+  if (programRoot) {
+    return path.resolve(programRoot, targetPath);
   }
   return path.resolve(process.cwd(), targetPath);
 }
@@ -96,8 +96,8 @@ function resolveTargetPath(targetPath: string, projectRoot?: string): string {
  * Options for creating a CLI git backend.
  */
 export interface CLIGitBackendOptions {
-  /** Project root directory for resolving relative paths */
-  projectRoot?: string;
+  /** Program root directory for resolving relative paths */
+  programRoot?: string;
   /**
    * Additional environment variables to pass to git commands.
    * These are merged with process.env (explicit vars take precedence).
@@ -123,11 +123,11 @@ export interface CLIGitBackendOptions {
  */
 export class CLIGitBackend implements GitBackend {
   private stagedCommits: Map<string, StagedCommitData> = new Map();
-  private projectRoot?: string;
+  private programRoot?: string;
   private env?: Record<string, string>;
 
   constructor(options: CLIGitBackendOptions = {}) {
-    this.projectRoot = options.projectRoot;
+    this.programRoot = options.programRoot;
     this.env = options.env;
   }
 
@@ -234,7 +234,7 @@ export class CLIGitBackend implements GitBackend {
    * Push to a local git repository using native git CLI.
    */
   private async pushToLocal(staged: StagedCommitData, target: LocalTarget): Promise<PushResult> {
-    const repoPath = resolveTargetPath(target.path, this.projectRoot);
+    const repoPath = resolveTargetPath(target.path, this.programRoot);
 
     // Verify it's a git repository
     try {
@@ -488,7 +488,7 @@ export class CLIGitBackend implements GitBackend {
     source: LocalTarget,
     paths: string[]
   ): Promise<Array<{ path: string; content: Buffer }>> {
-    const repoPath = resolveTargetPath(source.path, this.projectRoot);
+    const repoPath = resolveTargetPath(source.path, this.programRoot);
     const results: Array<{ path: string; content: Buffer }> = [];
 
     for (const filePath of paths) {
@@ -654,7 +654,7 @@ export class CLIGitBackend implements GitBackend {
    * List branches in a local repository.
    */
   private async listLocalBranches(target: LocalTarget): Promise<BranchListResult> {
-    const repoPath = resolveTargetPath(target.path, this.projectRoot);
+    const repoPath = resolveTargetPath(target.path, this.programRoot);
 
     try {
       // Get all branches using safe array args

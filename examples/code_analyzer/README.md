@@ -30,7 +30,7 @@ golem-forge code_analyzer "Find configuration files and explain their settings"
 
 ```
 code_analyzer/
-  index.worker      # Worker definition
+  main.worker       # Worker definition
   codebase/         # Put code here to analyze (read-only)
   reports/          # Analysis reports are saved here (read-write)
 ```

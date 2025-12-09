@@ -2,18 +2,51 @@
 
 ## Core Idea
 
-**Projects are programs. Workers are functions.**
+**Workers are functions. Programs compose workers.**
 
 Just like programs compose focused functions, LLM workflows compose focused workers. Each worker does one thing well with tight context—no bloated multi-purpose prompts.
 
 | Programming | golem-forge |
 |-------------|-------------|
-| Program | Project directory |
+| Program | Program directory |
 | `main()` | `main.worker` |
 | Function | `.worker` file |
 | Function call | Worker as tool (e.g., `greeter(input: "...")`) |
 
-A **project** is a directory with a `main.worker` entry point. A **worker** is a prompt template + configuration + tools, packaged as an executable unit that the LLM interprets.
+A **program** is a directory with a `main.worker` entry point. A **worker** is a prompt template + configuration + tools, packaged as an executable unit that the LLM interprets.
+
+## Terminology
+
+### Naming Hierarchy
+
+golem-forge uses three levels of abstraction:
+
+| Level | Term | Analogy | Description |
+|-------|------|---------|-------------|
+| 1 | **Worker** | Function | Smallest executable unit. A prompt + tools + config. |
+| 2 | **Program** | Program | A runnable composition of workers implementing a user-facing capability. |
+| 3 | **Project** | Workspace | Top-level container with programs, shared workers, docs, tests. |
+
+**Worker** is the building block. **Program** is what you run. **Project** is how you organize multiple programs (future).
+
+### Why "Worker" (Not "Agent")
+
+We use **worker** as our core term instead of "agent" because:
+
+1. **Precision**: "Agent" is overloaded in the AI space—sometimes meaning a single LLM call with tools, sometimes an autonomous loop with goals/memory/planning, sometimes multi-agent swarms. "Worker" is precise.
+
+2. **Mental model**: "Worker" signals it does work on behalf of the user, closer to function/job/task than "semi-autonomous being". No implication of autonomy or "will".
+
+3. **Consistency**: Workers are functions. Programs are compositions. This analogy is clean and understandable.
+
+For those coming from other frameworks:
+
+> **Worker** (called "agent" in some frameworks)
+>
+> A worker is a prompt + tools + config, treated as an executable function.
+> Workers can call other workers, but they don't run autonomously or indefinitely.
+
+We reserve "agent" for potential future use: a control loop around workers that maintains memory, decides next calls, and stops when a goal is satisfied.
 
 ## Run Anywhere
 
@@ -26,15 +59,15 @@ golem-forge is designed from the start to run in two environments:
 
 The same `.worker` files work in both environments. Platform-specific tools (filesystem vs web APIs) are available through toolsets that adapt to the runtime.
 
-## What Is a Project?
+## What Is a Program?
 
-A **project** is a directory that packages workers together:
+A **program** is a directory that packages workers together:
 
 ```
-my-project/
+my-program/
 ├── main.worker           # Entry point (required)
-├── project.yaml          # Shared config (optional)
-├── tools.ts              # Project-wide TypeScript tools (optional)
+├── golem-forge.config.yaml  # Shared config (optional)
+├── tools.ts              # Program-wide TypeScript tools (optional)
 ├── templates/            # Shared templates (optional)
 ├── workers/              # Helper workers (optional)
 │   ├── analyzer.worker
@@ -45,7 +78,7 @@ my-project/
 └── output/               # Output sandbox (convention)
 ```
 
-**Configuration inheritance**: `project.yaml` provides defaults (model, sandbox, toolsets) inherited by all workers. Workers can override.
+**Configuration inheritance**: `golem-forge.config.yaml` provides defaults (model, sandbox, toolsets) inherited by all workers. Workers can override.
 
 ## What Is a Worker?
 
@@ -71,7 +104,7 @@ Single-file workers are intentionally limited to enable **truly portable LLM exe
 1. **Definition** - `.worker` file describes instructions, sandbox boundaries, tool policies
 2. **Loading** - Registry resolves prompts, validates configuration
 3. **Invocation** - Runtime builds execution context (sandboxes, approvals, tools)
-4. **Execution** - Agent runs with worker's instructions and constraints
+4. **Execution** - LLM runs with worker's instructions and constraints
 5. **Result** - Structured output with message logs
 
 ### Why Workers? (vs Raw LLM Calls)
@@ -84,7 +117,7 @@ Single-file workers are intentionally limited to enable **truly portable LLM exe
 | Version-controllable, lockable | Managed by developer code |
 | Structured execution results | Returns raw output |
 
-**The worker abstraction packages the rules and artifacts that make an agent safe, repeatable, and composable.**
+**The worker abstraction packages the rules and artifacts that make LLM execution safe, repeatable, and composable.**
 
 ## Why This Matters
 
@@ -157,7 +190,7 @@ Workers start flexible, then harden as patterns stabilize:
 
 ## Design Principles
 
-1. **Projects as programs** — A project directory is the executable unit, `main.worker` is the entry point
+1. **Programs as executables** — A program directory is the executable unit, `main.worker` is the entry point
 
 2. **Workers as functions** — Focused, composable units that do one thing well
 

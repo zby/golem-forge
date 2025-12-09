@@ -11,7 +11,7 @@ import * as path from "path";
 import { createWorkerRuntime, type WorkerRuntimeOptions, type Attachment, type RunInput } from "../runtime/index.js";
 import { parseWorkerString, type WorkerDefinition } from "../worker/index.js";
 import { createCLIApprovalCallback } from "./approval.js";
-import { getEffectiveConfig, findProjectRoot, resolveSandboxConfig } from "./project.js";
+import { getEffectiveConfig, findProgramRoot, resolveSandboxConfig } from "./program.js";
 import { createTraceFormatter } from "./trace.js";
 import type { ApprovalMode } from "../approval/index.js";
 import type { MountSandboxConfig } from "../sandbox/index.js";
@@ -35,7 +35,7 @@ interface CLIOptions {
   approval?: ApprovalMode;
   input?: string;
   file?: string;
-  project?: string;
+  program?: string;
   trace: TraceLevel;
   attach?: string[];
 }
@@ -77,16 +77,16 @@ async function readInput(options: CLIOptions, textArgs: string[]): Promise<strin
 }
 
 /**
- * Find index.worker file in directory.
+ * Find main.worker file in directory.
  */
-async function findIndexWorker(workerDir: string): Promise<string> {
-  const indexWorkerPath = path.join(workerDir, "index.worker");
+async function findMainWorker(workerDir: string): Promise<string> {
+  const mainWorkerPath = path.join(workerDir, "main.worker");
 
   try {
-    await fs.access(indexWorkerPath);
-    return indexWorkerPath;
+    await fs.access(mainWorkerPath);
+    return mainWorkerPath;
   } catch {
-    throw new Error(`No index.worker file found in ${workerDir}`);
+    throw new Error(`No main.worker file found in ${workerDir}`);
   }
 }
 
@@ -343,14 +343,14 @@ export async function runCLI(argv: string[] = process.argv): Promise<void> {
     .name("golem-forge")
     .description("Run LLM workers with tool support and approval")
     .version("0.1.0")
-    .argument("[dir]", "Worker directory containing index.worker", ".")
+    .argument("[dir]", "Worker directory containing main.worker", ".")
     .argument("[input...]", "Input text or files (images/PDFs auto-detected as attachments)")
     .option("-m, --model <model>", "Model to use (e.g., anthropic:claude-haiku-4-5)")
     .option("-a, --approval <mode>", "Approval mode: interactive, approve_all, auto_deny", parseApprovalMode, "interactive")
     .option("-i, --input <text>", "Input text (alternative to positional args)")
     .option("-f, --file <path>", "Read input from file")
     .option("-A, --attach <file>", "Attach file explicitly (can be used multiple times)", collectAttachments, [])
-    .option("-p, --project <path>", "Project root directory (auto-detected if not specified)")
+    .option("-p, --program <path>", "Program root directory (auto-detected if not specified)")
     .option("-t, --trace <level>", "Trace level: quiet, summary, full, debug", parseTraceLevel, "debug")
     .action(async (dirArg: string, inputArgs: string[], options: CLIOptions) => {
       try {
@@ -375,8 +375,8 @@ async function executeWorker(
   // Resolve worker directory to absolute path
   const workerDir = path.resolve(dirArg);
 
-  // Find index.worker in directory
-  const workerFilePath = await findIndexWorker(workerDir);
+  // Find main.worker in directory
+  const workerFilePath = await findMainWorker(workerDir);
 
   // Read and parse worker file
   const workerContent = await fs.readFile(workerFilePath, "utf-8");
@@ -387,21 +387,21 @@ async function executeWorker(
 
   const workerDefinition = parseResult.worker;
 
-  // Detect project root (from CLI option, or auto-detect from worker directory)
-  const projectStartDir = options.project ? path.resolve(options.project) : workerDir;
-  const projectInfo = await findProjectRoot(projectStartDir);
-  const projectRoot = projectInfo?.root || workerDir;
+  // Detect program root (from CLI option, or auto-detect from worker directory)
+  const programStartDir = options.program ? path.resolve(options.program) : workerDir;
+  const programInfo = await findProgramRoot(programStartDir);
+  const programRoot = programInfo?.root || workerDir;
 
-  // Get effective config (CLI options override project config, which overrides defaults)
-  const effectiveConfig = getEffectiveConfig(projectInfo?.config, {
+  // Get effective config (CLI options override program config, which overrides defaults)
+  const effectiveConfig = getEffectiveConfig(programInfo?.config, {
     model: options.model,
     approvalMode: options.approval,
   });
 
   // Debug level shows diagnostic info
   if (options.trace === 'debug') {
-    if (projectInfo) {
-      console.log(`Project root: ${projectInfo.root} (detected by ${projectInfo.detectedBy})`);
+    if (programInfo) {
+      console.log(`Program root: ${programInfo.root} (detected by ${programInfo.detectedBy})`);
     }
     console.log(`Worker directory: ${workerDir}`);
     console.log(`Worker file: ${workerFilePath}`);
@@ -426,7 +426,7 @@ async function executeWorker(
   // Read text input
   const textInput = await readInput(options, textArgs);
 
-  // Check if this worker has sandbox configured (project-level or worker-level)
+  // Check if this worker has sandbox configured (program-level or worker-level)
   const hasSandbox = !!effectiveConfig.sandbox || !!workerDefinition.sandbox || workerDefinition.toolsets?.filesystem;
 
   // Require either text input, attachments, or sandbox
@@ -453,11 +453,11 @@ async function executeWorker(
     ? createCLIApprovalCallback()
     : undefined;
 
-  // Build mount-based sandbox configuration from project config
+  // Build mount-based sandbox configuration from program config
   let mountSandboxConfig: MountSandboxConfig | undefined;
   if (effectiveConfig.sandbox) {
     // Resolve sandbox config to absolute paths
-    const resolved = resolveSandboxConfig(projectRoot, effectiveConfig.sandbox);
+    const resolved = resolveSandboxConfig(programRoot, effectiveConfig.sandbox);
 
     mountSandboxConfig = {
       root: resolved.root,
@@ -477,14 +477,14 @@ async function executeWorker(
   // Create trace formatter for full/debug levels (real-time streaming)
   const onEvent = isStreamingTrace ? createTraceFormatter() : undefined;
 
-  // Create runtime options - use detected project root
-  // Model is already resolved: CLI --model > env var > project config
+  // Create runtime options - use detected program root
+  // Model is already resolved: CLI --model > env var > program config
   const runtimeOptions: WorkerRuntimeOptions = {
     worker: workerDefinition,
     model: options.model || effectiveConfig.model,
     approvalMode: effectiveConfig.approvalMode as ApprovalMode,
     approvalCallback,
-    projectRoot,
+    programRoot,
     mountSandboxConfig,
     onEvent,
   };

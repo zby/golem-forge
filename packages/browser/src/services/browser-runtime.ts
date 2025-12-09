@@ -170,8 +170,8 @@ export interface BrowserRuntimeOptions {
   worker: WorkerDefinition;
   /** Model ID (e.g., "anthropic:claude-sonnet-4-20250514") */
   modelId?: string;
-  /** Project ID for sandbox access */
-  projectId?: string;
+  /** Program ID for sandbox access */
+  programId?: string;
   /** Approval mode */
   approvalMode?: ApprovalMode;
   /** Callback for approval requests (required for interactive mode) */
@@ -462,11 +462,11 @@ export class BrowserWorkerRuntime {
       throw new Error(sanitizeErrorMessage(error));
     }
 
-    // Create sandbox if project ID is provided
-    if (this.options.projectId) {
-      log('Creating sandbox for project:', this.options.projectId);
+    // Create sandbox if program ID is provided
+    if (this.options.programId) {
+      log('Creating sandbox for program:', this.options.programId);
       this.sandbox = await createOPFSSandbox({
-        root: `/projects/${this.options.projectId}`,
+        root: `/projects/${this.options.programId}`, // Path kept as 'projects' for backwards compatibility
       });
 
       // Apply worker sandbox restrictions
@@ -496,7 +496,7 @@ export class BrowserWorkerRuntime {
       switch (toolsetName) {
         case 'filesystem': {
           if (!this.sandbox) {
-            throw new Error('Filesystem toolset requires a project. Set projectId in options.');
+            throw new Error('Filesystem toolset requires a program. Set programId in options.');
           }
           const fsTools = createFilesystemTools(this.sandbox, this.approvalController);
           Object.assign(this.tools, fsTools);
