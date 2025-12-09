@@ -47,6 +47,13 @@ export {
   type EventCLIAdapterOptions,
 } from "./event-cli-adapter.js";
 
+// Headless adapter for CI/automated mode
+export {
+  HeadlessAdapter,
+  createHeadlessAdapter,
+  type HeadlessAdapterOptions,
+} from "./headless-adapter.js";
+
 // Interrupt handling
 export {
   createInterruptSignal,
