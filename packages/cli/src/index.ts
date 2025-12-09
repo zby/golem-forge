@@ -28,7 +28,7 @@ export type {
   DiffContent,
   InterruptSignal,
   ToolResult,
-  EventCLIAdapterOptions,
+  InkAdapterOptions,
   ParsedCommand,
   BuiltinCommand,
   CommandType,
@@ -44,8 +44,8 @@ export type {
 } from "./ui/index.js";
 
 export {
-  EventCLIAdapter,
-  createEventCLIAdapter,
+  InkAdapter,
+  createInkAdapter,
   createInterruptSignal,
   InterruptError,
   isInterruptError,

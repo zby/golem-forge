@@ -68,9 +68,9 @@ import {
   loadWorkerDefinition,
   WorkerDefinition,
 
-  // UI abstraction (event-driven)
-  EventCLIAdapter,
-  createEventCLIAdapter,
+  // UI abstraction (Ink-based terminal UI)
+  InkAdapter,
+  createInkAdapter,
 } from '@golem-forge/cli';
 
 // Use with @golem-forge/core for event bus

@@ -287,12 +287,14 @@ Golem Forge uses an **event-driven UI architecture** that cleanly separates the 
 │  └─────────────────┘  └─────────────────┘  └─────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                               ▲
-          ┌───────────────────┴───────────────────┐
-          ▼                                       ▼
-┌─────────────────────┐               ┌─────────────────────┐
-│  EventCLIAdapter    │               │  InkAdapter         │
-│  (terminal I/O)     │               │  (React/Ink)        │
-└─────────────────────┘               └─────────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      @golem-forge/cli                        │
+│  ┌─────────────────────┐               ┌─────────────────┐  │
+│  │    InkAdapter       │               │ HeadlessAdapter │  │
+│  │    (React/Ink)      │               │ (CI/automated)  │  │
+│  └─────────────────────┘               └─────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### UIEventBus
@@ -373,18 +375,18 @@ abstract class BaseUIImplementation implements UIImplementation {
 }
 ```
 
-### EventCLIAdapter
+### InkAdapter
 
-Terminal implementation using readline (`packages/cli/src/ui/event-cli-adapter.ts`):
+Rich terminal UI using React/Ink (`packages/cli/src/ui/ink/`):
 
 ```typescript
-import { createEventCLIAdapter } from '@golem-forge/cli';
+import { createInkAdapter } from '@golem-forge/cli';
 
-const adapter = createEventCLIAdapter(bus, {
-  output: process.stdout,
-  input: process.stdin,
-  enableRawMode: true,
-  traceLevel: 'normal', // 'quiet' | 'summary' | 'normal' | 'debug'
+const adapter = createInkAdapter(bus, {
+  cwd: process.cwd(),
+  branch: 'main',
+  showHeader: true,
+  showFooter: true,
 });
 
 await adapter.initialize();
@@ -392,9 +394,16 @@ await adapter.shutdown();
 ```
 
 Features:
-- Subscribes to all display events and renders to stdout
-- Handles approval dialogs via terminal prompts
-- Parses manual tool commands (`/tool name --arg value`)
+- React-based terminal UI using Ink
+- Rich message rendering with syntax highlighting
+- Approval dialogs with keyboard navigation
+- Worker tree visualization
+- Theme support (dark/light)
+
+**Components:**
+- Layout: `Header`, `Footer`, `MainContent`, `InputPrompt`
+- Messages: `UserMessage`, `AssistantMessage`, `ToolResultDisplay`
+- Dialogs: `ApprovalDialog` with risk indicators and worker chain
 
 ### HeadlessAdapter
 
@@ -519,15 +528,6 @@ function ChatUI() {
 - `usePendingApproval()`, `useApprovalStats()`, `useIsAutoApproved()`
 - `useActiveWorker()`, `useWorkerPath()`, `useWorkerStats()`
 - `useUIMode()`, `useUIFocus()`, `useUIError()`
-
-### InkAdapter
-
-React/Ink terminal implementation using ui-react contexts (`packages/cli/src/ui/ink/`):
-
-**Components:**
-- Layout: `Header`, `Footer`, `MainContent`, `InputPrompt`
-- Messages: `UserMessage`, `AssistantMessage`, `ToolResultDisplay`
-- Dialogs: `ApprovalDialog` with risk indicators and worker chain
 
 ### Slash Commands
 
@@ -870,11 +870,11 @@ State management has been moved to `@golem-forge/ui-react`:
 
 - **State modules** (`createMessageState`, `createWorkerState`, `createApprovalState`) are pure functions that can be used independently of React
 - **React contexts** subscribe to UIEventBus events and manage state automatically
-- **EventCLIAdapter** remains stateless - it renders events directly to the terminal stream
+- **InkAdapter** uses these contexts for rich terminal rendering
 
 The `@golem-forge/ui-react` package provides the foundation for:
 - **Browser extension**: React components with automatic state management
-- **Ink-based terminal UI**: React/Ink components sharing state via contexts
+- **InkAdapter (CLI)**: React/Ink components sharing state via contexts
 - **Custom UIs**: State modules can be used standalone without React
 
 ---

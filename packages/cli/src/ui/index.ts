@@ -40,13 +40,6 @@ export type {
 // Re-export Message from core
 export type { Message } from "@golem-forge/core";
 
-// Event-based CLI implementation
-export {
-  EventCLIAdapter,
-  createEventCLIAdapter,
-  type EventCLIAdapterOptions,
-} from "./event-cli-adapter.js";
-
 // Headless adapter for CI/automated mode
 export {
   HeadlessAdapter,

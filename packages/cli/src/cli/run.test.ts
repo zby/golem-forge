@@ -50,16 +50,16 @@ vi.mock("@golem-forge/core", async () => {
   };
 });
 
-// Mock EventCLIAdapter
-const mockCLIAdapter = {
+// Mock InkAdapter
+const mockInkAdapter = {
   initialize: vi.fn().mockResolvedValue(undefined),
   shutdown: vi.fn().mockResolvedValue(undefined),
 };
-vi.mock("../ui/event-cli-adapter.js", () => ({
-  createEventCLIAdapter: vi.fn(() => mockCLIAdapter),
+vi.mock("../ui/ink/index.js", () => ({
+  createInkAdapter: vi.fn(() => mockInkAdapter),
 }));
 
-// Mock HeadlessAdapter - stable mock objects like EventCLIAdapter
+// Mock HeadlessAdapter - stable mock objects like InkAdapter
 const mockHeadlessAdapter = {
   initialize: vi.fn().mockResolvedValue(undefined),
   shutdown: vi.fn().mockResolvedValue(undefined),
@@ -148,8 +148,8 @@ Test instructions
     });
 
     // Reset UI event infrastructure mocks (they get cleared by vi.clearAllMocks)
-    mockCLIAdapter.initialize.mockResolvedValue(undefined);
-    mockCLIAdapter.shutdown.mockResolvedValue(undefined);
+    mockInkAdapter.initialize.mockResolvedValue(undefined);
+    mockInkAdapter.shutdown.mockResolvedValue(undefined);
     mockRuntimeUI.requestApproval.mockResolvedValue({ approved: true });
 
     // Reset headless adapter mock
@@ -283,7 +283,7 @@ Test instructions
         cost: 0.005,
       });
 
-      // Should complete without throwing (response is shown via EventCLIAdapter)
+      // Should complete without throwing (response is shown via InkAdapter)
       await runCLI(["node", "cli", workerDir, "--trace", "quiet", "--input", "test"]);
     });
 
@@ -298,7 +298,7 @@ Test instructions
 
       await runCLI(["node", "cli", workerDir, "--trace", "summary", "--input", "test"]);
 
-      // Response is displayed by EventCLIAdapter via events, not console.log
+      // Response is displayed by InkAdapter via events, not console.log
       // Here we just verify stats are shown
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tool calls: 3"));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Tokens: 100 in / 50 out"));
@@ -313,7 +313,7 @@ Test instructions
       });
 
       // Should call process.exit(1) on failure
-      // Error display is handled by EventCLIAdapter via the event bus
+      // Error display is handled by InkAdapter via the event bus
       await expect(
         runCLI(["node", "cli", workerDir, "--trace", "quiet", "--input", "test"])
       ).rejects.toThrow("process.exit called");
@@ -854,13 +854,13 @@ Instructions
       );
     });
 
-    it("should use EventCLIAdapter when --headless is not specified", async () => {
-      const { createEventCLIAdapter } = await import("../ui/event-cli-adapter.js");
+    it("should use InkAdapter when --headless is not specified", async () => {
+      const { createInkAdapter } = await import("../ui/ink/index.js");
       const { createHeadlessAdapter } = await import("../ui/headless-adapter.js");
 
       await runCLI(["node", "cli", workerDir, "--input", "test"]);
 
-      expect(createEventCLIAdapter).toHaveBeenCalled();
+      expect(createInkAdapter).toHaveBeenCalled();
       expect(createHeadlessAdapter).not.toHaveBeenCalled();
     });
 
