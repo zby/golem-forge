@@ -137,4 +137,9 @@ export {
   hasConflictMarkers,
   computeDiffStats,
   type DiffStats,
+  // Isomorphic git backend
+  IsomorphicGitBackend,
+  createNodeGitBackend,
+  type IsomorphicGitBackendOptions,
+  type IsomorphicFs,
 } from "./git/index.js";

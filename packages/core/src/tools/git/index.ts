@@ -46,6 +46,14 @@ export {
   type GitToolOptions,
 } from './tools.js';
 
+// Isomorphic git backend (works in both Node.js and browser)
+export {
+  IsomorphicGitBackend,
+  createNodeGitBackend,
+  type IsomorphicGitBackendOptions,
+  type IsomorphicFs,
+} from './isomorphic-backend.js';
+
 /**
  * Default approval configuration for git tools.
  * Read-only operations don't need approval, write operations do.

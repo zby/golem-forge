@@ -458,10 +458,12 @@ export class BrowserWorkerRuntime {
         continue;
       }
 
-      // Git toolset requires GitBackend implementation
-      // TODO: Implement IsomorphicGitBackend for browser
+      // Git toolset requires OPFS-to-fs adapter for isomorphic-git
+      // IsomorphicGitBackend exists in core, but needs fs adapter (e.g., memfs)
+      // to bridge OPFS API to node:fs-like interface that isomorphic-git expects.
+      // See: https://github.com/streamich/memfs for OPFS adapter
       if (toolsetName === 'git') {
-        console.warn('Git toolset requires IsomorphicGitBackend implementation - skipping');
+        console.warn('Git toolset requires OPFS-to-fs adapter (memfs) - skipping for now');
         continue;
       }
 

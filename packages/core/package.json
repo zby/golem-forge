@@ -40,10 +40,11 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "ai": "^6.0.0-beta.134",
     "@ai-sdk/anthropic": "^3.0.0-beta.74",
     "@ai-sdk/google": "^3.0.0-beta.65",
     "@ai-sdk/openai": "^3.0.0-beta.84",
+    "ai": "^6.0.0-beta.134",
+    "isomorphic-git": "^1.36.0",
     "yaml": "^2.8.2",
     "zod": "^3.25.0"
   },

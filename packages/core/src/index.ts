@@ -143,6 +143,11 @@ export {
   type GitCredentialsConfig,
   type GitToolsetConfig,
   type DiffStats,
+  // Isomorphic git backend
+  IsomorphicGitBackend,
+  createNodeGitBackend,
+  type IsomorphicGitBackendOptions,
+  type IsomorphicFs,
 } from './tools/index.js';
 
 // ============================================================================
