@@ -9,25 +9,19 @@
  */
 
 import type {
+  Message,
   MessageRole,
-  DisplayMessage,
   StatusType,
   ToolResultStatus,
-  ToolResultValueEvent,
+  ToolResultValue,
 } from './ui-events.js';
+
+// Re-export Message for consumers
+export type { Message };
 
 // ============================================================================
 // Types
 // ============================================================================
-
-/**
- * A conversation message
- */
-export interface Message {
-  role: MessageRole;
-  content: string;
-  timestamp?: number;
-}
 
 /**
  * Status update for display
@@ -117,16 +111,12 @@ export function addMessage(state: MessageState, message: Message): MessageState 
 
 /**
  * Add a message from display event data.
+ * @deprecated Use addMessage directly - Message type is now unified
  */
 export function addDisplayMessage(
   state: MessageState,
-  displayMessage: DisplayMessage
+  message: Message
 ): MessageState {
-  const message: Message = {
-    role: displayMessage.role,
-    content: displayMessage.content,
-    timestamp: displayMessage.timestamp,
-  };
   return addMessage(state, message);
 }
 
@@ -153,7 +143,7 @@ export function addToolResultFromEvent(
   toolName: string,
   status: ToolResultStatus,
   durationMs: number,
-  value?: ToolResultValueEvent,
+  value?: ToolResultValue,
   error?: string
 ): MessageState {
   // Generate summary from value

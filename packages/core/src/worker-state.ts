@@ -31,7 +31,7 @@ export interface WorkerNode {
  */
 export interface TaskProgress {
   id: string;
-  description: string;
+  task: string;
   status: WorkerStatus;
   depth: number;
   parentId?: string;
@@ -88,7 +88,7 @@ export function workerFromProgress(
 ): WorkerNode {
   return {
     id: progress.id,
-    task: progress.description,
+    task: progress.task,
     status: progress.status,
     parentId: progress.parentId,
     children: existingChildren,
@@ -230,7 +230,7 @@ export function updateFromProgress(
     const newWorkers = new Map(state.workers);
     newWorkers.set(progress.id, {
       ...existing,
-      task: progress.description,
+      task: progress.task,
       status: progress.status,
     });
 

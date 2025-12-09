@@ -41,7 +41,7 @@ describe('Worker State', () => {
     it('should create worker node from progress', () => {
       const progress: TaskProgress = {
         id: 'worker-1',
-        description: 'Test task',
+        task: 'Test task',
         status: 'running',
         depth: 0,
         parentId: undefined,
@@ -60,7 +60,7 @@ describe('Worker State', () => {
     it('should preserve existing children', () => {
       const progress: TaskProgress = {
         id: 'parent',
-        description: 'Parent task',
+        task: 'Parent task',
         status: 'running',
         depth: 0,
       };
@@ -308,7 +308,7 @@ describe('Worker State', () => {
     it('should create new worker from progress', () => {
       const progress: TaskProgress = {
         id: 'w1',
-        description: 'New task',
+        task: 'New task',
         status: 'running',
         depth: 0,
       };
@@ -331,7 +331,7 @@ describe('Worker State', () => {
 
       state = updateFromProgress(state, {
         id: 'w1',
-        description: 'Updated task',
+        task: 'Updated task',
         status: 'running',
         depth: 0,
       });
@@ -344,7 +344,7 @@ describe('Worker State', () => {
     it('should set active on running status', () => {
       state = updateFromProgress(state, {
         id: 'w1',
-        description: 'Task',
+        task: 'Task',
         status: 'running',
         depth: 0,
       });

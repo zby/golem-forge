@@ -24,7 +24,7 @@ import {
   type InputPromptEvent,
   type SessionEndEvent,
   type Unsubscribe,
-  type ToolResultValueEvent,
+  type ToolResultValue,
 } from "@golem-forge/core";
 import { renderDiff, getDiffSummary } from "./diff-renderer.js";
 
@@ -103,6 +103,7 @@ export class EventCLIAdapter extends BaseUIImplementation {
   private options: Required<EventCLIAdapterOptions>;
   private initialized = false;
   private subscriptions: Unsubscribe[] = [];
+  private sigintHandler?: () => void;
 
   // State for streaming
   private streamingContent: Map<string, string> = new Map();
@@ -169,6 +170,12 @@ export class EventCLIAdapter extends BaseUIImplementation {
     }
     this.subscriptions = [];
 
+    // Remove SIGINT handler to prevent memory leak
+    if (this.sigintHandler) {
+      process.off("SIGINT", this.sigintHandler);
+      this.sigintHandler = undefined;
+    }
+
     // Close readline
     if (this.rl) {
       this.rl.close();
@@ -206,9 +213,10 @@ export class EventCLIAdapter extends BaseUIImplementation {
       });
 
       // Also handle SIGINT (Ctrl+C)
-      process.on("SIGINT", () => {
+      this.sigintHandler = () => {
         this.sendInterrupt("User interrupted");
-      });
+      };
+      process.on("SIGINT", this.sigintHandler);
     }
   }
 
@@ -343,7 +351,7 @@ export class EventCLIAdapter extends BaseUIImplementation {
 
   private displayToolResultValue(
     toolName: string,
-    value: ToolResultValueEvent,
+    value: ToolResultValue,
     durationMs: number
   ): void {
     const output = this.options.output as NodeJS.WriteStream;
@@ -403,7 +411,7 @@ export class EventCLIAdapter extends BaseUIImplementation {
 
   private displayDiffResult(
     toolName: string,
-    value: Extract<ToolResultValueEvent, { kind: "diff" }>,
+    value: Extract<ToolResultValue, { kind: "diff" }>,
     durationMs: number
   ): void {
     const output = this.options.output as NodeJS.WriteStream;

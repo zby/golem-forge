@@ -19,7 +19,7 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 /**
  * A message in the conversation
  */
-export interface DisplayMessage {
+export interface Message {
   role: MessageRole;
   content: string;
   timestamp?: number;
@@ -67,7 +67,7 @@ export type ToolResultStatus = 'success' | 'error' | 'interrupted';
  * Message to display in conversation
  */
 export interface MessageEvent {
-  message: DisplayMessage;
+  message: Message;
 }
 
 /**
@@ -101,6 +101,84 @@ export interface ToolStartedEvent {
   workerId?: string;
 }
 
+// ============================================================================
+// Structured Tool Result Values
+// ============================================================================
+
+/**
+ * Plain text result.
+ */
+export interface TextResultValue {
+  kind: 'text';
+  /** The text content */
+  content: string;
+}
+
+/**
+ * File diff result showing changes to a file.
+ */
+export interface DiffResultValue {
+  kind: 'diff';
+  /** File path */
+  path: string;
+  /** Original content */
+  original?: string;
+  /** Modified content */
+  modified: string;
+  /** Whether this is a new file */
+  isNew: boolean;
+  /** Number of bytes written */
+  bytesWritten: number;
+}
+
+/**
+ * File content result (from read operations).
+ */
+export interface FileContentResultValue {
+  kind: 'file_content';
+  /** File path */
+  path: string;
+  /** File content */
+  content: string;
+  /** File size in bytes */
+  size: number;
+}
+
+/**
+ * File list result.
+ */
+export interface FileListResultValue {
+  kind: 'file_list';
+  /** Directory path that was listed */
+  path: string;
+  /** List of file/directory names */
+  files: string[];
+  /** Number of entries */
+  count: number;
+}
+
+/**
+ * JSON/structured data result.
+ */
+export interface JsonResultValue {
+  kind: 'json';
+  /** The structured data */
+  data: unknown;
+  /** Optional summary for display */
+  summary?: string;
+}
+
+/**
+ * Discriminated union of all tool result value types.
+ * Tools can return these typed values for proper UI rendering.
+ */
+export type ToolResultValue =
+  | TextResultValue
+  | DiffResultValue
+  | FileContentResultValue
+  | FileListResultValue
+  | JsonResultValue;
+
 /**
  * Tool execution completed
  */
@@ -109,21 +187,11 @@ export interface ToolResultEvent {
   toolName: string;
   status: ToolResultStatus;
   /** Structured result value */
-  value?: ToolResultValueEvent;
+  value?: ToolResultValue;
   /** Error message if status is error */
   error?: string;
   durationMs: number;
 }
-
-/**
- * Structured tool result values
- */
-export type ToolResultValueEvent =
-  | { kind: 'text'; content: string }
-  | { kind: 'diff'; path: string; original?: string; modified: string; isNew: boolean; bytesWritten: number }
-  | { kind: 'file_content'; path: string; content: string; size: number }
-  | { kind: 'file_list'; path: string; files: string[]; count: number }
-  | { kind: 'json'; data: unknown; summary?: string };
 
 /**
  * Worker tree update

@@ -64,7 +64,7 @@ export type {
 export type {
   // Base types
   MessageRole,
-  DisplayMessage,
+  Message,
   ApprovalRisk,
   ApprovalType,
   WorkerStatus,
@@ -77,7 +77,12 @@ export type {
   StatusEvent,
   ToolStartedEvent,
   ToolResultEvent,
-  ToolResultValueEvent,
+  ToolResultValue,
+  TextResultValue,
+  DiffResultValue,
+  FileContentResultValue,
+  FileListResultValue,
+  JsonResultValue,
   WorkerUpdateEvent,
   ApprovalRequiredEvent,
   ManualToolsAvailableEvent,
@@ -176,7 +181,6 @@ export {
 
 // Message state
 export type {
-  Message,
   StatusUpdate,
   ToolResultData,
   UIMessage,

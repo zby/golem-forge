@@ -14,7 +14,6 @@ export type {
   ManualToolInfo,
   ManualToolResult,
   ManualToolHandler,
-  Message,
   WorkerInfo,
   UIApprovalRequest,
   UIApprovalResult,
@@ -33,6 +32,9 @@ export type {
   ToolResultValue,
   TypedToolResult,
 } from "./types.js";
+
+// Re-export Message from core
+export type { Message } from "@golem-forge/core";
 
 // Event-based CLI implementation
 export {

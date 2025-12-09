@@ -9,13 +9,13 @@
 
 import type { UIEventBus } from './ui-event-bus.js';
 import type {
-  DisplayMessage,
+  Message,
   StatusType,
   ApprovalType,
   ApprovalRisk,
   WorkerInfo,
   WorkerStatus,
-  ToolResultValueEvent,
+  ToolResultValue,
   ManualToolInfoEvent,
   DiffFileSummary,
   ApprovalResponseEvent,
@@ -68,7 +68,7 @@ export interface RuntimeUI {
   // -------------------------------------------------------------------------
 
   /** Show a message in the conversation */
-  showMessage(message: DisplayMessage): void;
+  showMessage(message: Message): void;
 
   /** Show a status notification */
   showStatus(type: StatusType, message: string): void;
@@ -96,7 +96,7 @@ export interface RuntimeUI {
     toolName: string,
     status: 'success' | 'error' | 'interrupted',
     durationMs: number,
-    value?: ToolResultValueEvent,
+    value?: ToolResultValue,
     error?: string
   ): void;
 
@@ -221,7 +221,7 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
     // Display Methods
     // -------------------------------------------------------------------------
 
-    showMessage(message: DisplayMessage): void {
+    showMessage(message: Message): void {
       bus.emit('message', { message });
     },
 
@@ -255,7 +255,7 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
       toolName: string,
       status: 'success' | 'error' | 'interrupted',
       durationMs: number,
-      value?: ToolResultValueEvent,
+      value?: ToolResultValue,
       error?: string
     ): void {
       bus.emit('toolResult', { toolCallId, toolName, status, durationMs, value, error });

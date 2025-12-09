@@ -75,25 +75,6 @@ export type ManualToolHandler = (
 ) => Promise<ManualToolResult>;
 
 // ============================================================================
-// Messages
-// ============================================================================
-
-/**
- * A message in the conversation.
- */
-export interface Message {
-  /** Message role */
-  role: "user" | "assistant" | "system";
-  /** Message content */
-  content: string;
-  /** Optional metadata */
-  metadata?: {
-    toolCalls?: ToolCall[];
-    timestamp: number;
-  };
-}
-
-// ============================================================================
 // Approval
 // ============================================================================
 
@@ -135,29 +116,11 @@ export type UIApprovalResult =
   | { approved: "session" };
 
 // ============================================================================
-// Progress
+// Progress (re-exported from core)
 // ============================================================================
 
-/**
- * Progress status for a task.
- */
-export type TaskStatus = "pending" | "running" | "complete" | "error";
-
-/**
- * Progress information for display.
- */
-export interface TaskProgress {
-  /** Task ID */
-  id: string;
-  /** Task description */
-  description: string;
-  /** Current status */
-  status: TaskStatus;
-  /** Depth in worker tree */
-  depth: number;
-  /** Parent task ID (if nested) */
-  parentId?: string;
-}
+// Re-export progress types from core
+export type { WorkerStatus as TaskStatus, TaskProgress } from "@golem-forge/core";
 
 /**
  * Status update for display.
@@ -235,75 +198,27 @@ export type ToolResult<T = unknown> =
   | { type: "interrupted"; partial?: Partial<T> };
 
 // ============================================================================
-// Structured Tool Results
+// Structured Tool Results (re-exported from core)
 // ============================================================================
 
-/**
- * Plain text result.
- */
-export interface TextResultValue {
-  kind: "text";
-  /** The text content */
-  content: string;
-}
+// Import and re-export tool result value types from core
+import type {
+  TextResultValue,
+  DiffResultValue,
+  FileContentResultValue,
+  FileListResultValue,
+  JsonResultValue,
+  ToolResultValue,
+} from "@golem-forge/core";
 
-/**
- * File diff result showing changes to a file.
- * Extends DiffContent with additional metadata for tool results.
- */
-export interface DiffResultValue extends DiffContent {
-  kind: "diff";
-  /** Number of bytes written */
-  bytesWritten: number;
-}
-
-/**
- * File content result (from read operations).
- */
-export interface FileContentResultValue {
-  kind: "file_content";
-  /** File path */
-  path: string;
-  /** File content */
-  content: string;
-  /** File size in bytes */
-  size: number;
-}
-
-/**
- * File list result.
- */
-export interface FileListResultValue {
-  kind: "file_list";
-  /** Directory path that was listed */
-  path: string;
-  /** List of file/directory names */
-  files: string[];
-  /** Number of entries */
-  count: number;
-}
-
-/**
- * JSON/structured data result.
- */
-export interface JsonResultValue {
-  kind: "json";
-  /** The structured data */
-  data: unknown;
-  /** Optional summary for display */
-  summary?: string;
-}
-
-/**
- * Discriminated union of all tool result value types.
- * Tools can return these typed values for proper UI rendering.
- */
-export type ToolResultValue =
-  | TextResultValue
-  | DiffResultValue
-  | FileContentResultValue
-  | FileListResultValue
-  | JsonResultValue;
+export type {
+  TextResultValue,
+  DiffResultValue,
+  FileContentResultValue,
+  FileListResultValue,
+  JsonResultValue,
+  ToolResultValue,
+};
 
 /**
  * Typed tool result with status information.
