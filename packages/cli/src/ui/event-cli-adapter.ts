@@ -448,56 +448,269 @@ export class EventCLIAdapter extends BaseUIImplementation {
   ): void {
     const output = this.options.output as NodeJS.WriteStream;
 
+    // Use type assertions in switch cases due to TypeScript limitations with
+    // discriminated unions when one variant has `kind: string`
     switch (value.kind) {
-      case "diff":
-        this.displayDiffResult(toolName, value, durationMs);
+      case "diff": {
+        const diff = value as import("@golem-forge/core").DiffResultValue;
+        this.displayDiffResult(toolName, diff, durationMs);
         break;
+      }
 
+      case "text": {
+        const text = value as import("@golem-forge/core").TextResultValue;
+        this.displayTextResult(toolName, text.content, durationMs);
+        break;
+      }
+
+      case "file_content": {
+        const fc = value as import("@golem-forge/core").FileContentResultValue;
+        output.write(
+          `${pc.green("✓")} ${pc.bold(toolName)} → ${pc.cyan(fc.path)} ${pc.dim(`(${fc.size} bytes, ${durationMs}ms)`)}\n`
+        );
+        if (fc.content.length > MAX_CONTENT_DISPLAY_CHARS) {
+          output.write(
+            fc.content.slice(0, MAX_CONTENT_DISPLAY_CHARS) +
+              pc.dim(`\n... (${fc.content.length - MAX_CONTENT_DISPLAY_CHARS} more chars)\n`)
+          );
+        } else {
+          output.write(fc.content + "\n");
+        }
+        break;
+      }
+
+      case "file_list": {
+        const fl = value as import("@golem-forge/core").FileListResultValue;
+        output.write(
+          `${pc.green("✓")} ${pc.bold(toolName)} → ${pc.cyan(fl.path)} ${pc.dim(`(${fl.count} entries, ${durationMs}ms)`)}\n`
+        );
+        for (let i = 0; i < Math.min(fl.files.length, MAX_FILE_LIST_DISPLAY); i++) {
+          output.write(`  ${fl.files[i]}\n`);
+        }
+        if (fl.files.length > MAX_FILE_LIST_DISPLAY) {
+          output.write(pc.dim(`  ... and ${fl.files.length - MAX_FILE_LIST_DISPLAY} more\n`));
+        }
+        break;
+      }
+
+      case "json": {
+        const json = value as import("@golem-forge/core").JsonResultValue;
+        this.displayJsonResult(toolName, json, durationMs);
+        break;
+      }
+
+      default:
+        // Custom/unknown result type - use display hints
+        this.displayCustomResult(toolName, value, durationMs);
+        break;
+    }
+  }
+
+  private displayJsonResult(
+    toolName: string,
+    value: Extract<ToolResultValue, { kind: "json" }>,
+    durationMs: number
+  ): void {
+    const output = this.options.output as NodeJS.WriteStream;
+    const summaryText = value.summary ? ` - ${value.summary}` : "";
+    output.write(
+      `${pc.green("✓")} ${pc.bold(toolName)}${summaryText} ${pc.dim(`(${durationMs}ms)`)}\n`
+    );
+    const json = JSON.stringify(value.data, null, 2);
+    if (json.length > MAX_CONTENT_DISPLAY_CHARS) {
+      output.write(
+        json.slice(0, MAX_CONTENT_DISPLAY_CHARS) +
+          pc.dim(`\n... (${json.length - MAX_CONTENT_DISPLAY_CHARS} more chars)\n`)
+      );
+    } else {
+      output.write(json + "\n");
+    }
+  }
+
+  private displayCustomResult(
+    toolName: string,
+    value: ToolResultValue,
+    durationMs: number
+  ): void {
+    const output = this.options.output as NodeJS.WriteStream;
+
+    // Get summary text
+    const summaryText = "summary" in value && value.summary
+      ? ` - ${value.summary}`
+      : ` (${value.kind})`;
+
+    // Check display hints for preferred rendering
+    const display = "display" in value ? value.display : undefined;
+    const preferredView = display?.preferredView;
+
+    // Handle hidden results
+    if (preferredView === "hidden") {
+      return;
+    }
+
+    output.write(
+      `${pc.green("✓")} ${pc.bold(toolName)}${summaryText} ${pc.dim(`(${durationMs}ms)`)}\n`
+    );
+
+    // Get data to display
+    const data = "data" in value ? value.data : value;
+
+    // Render based on preferred view or infer from data
+    switch (preferredView) {
       case "text":
-        this.displayTextResult(toolName, value.content, durationMs);
-        break;
-
-      case "file_content":
-        output.write(
-          `${pc.green("✓")} ${pc.bold(toolName)} → ${pc.cyan(value.path)} ${pc.dim(`(${value.size} bytes, ${durationMs}ms)`)}\n`
-        );
-        if (value.content.length > MAX_CONTENT_DISPLAY_CHARS) {
-          output.write(
-            value.content.slice(0, MAX_CONTENT_DISPLAY_CHARS) +
-              pc.dim(`\n... (${value.content.length - MAX_CONTENT_DISPLAY_CHARS} more chars)\n`)
-          );
+      case "markdown":
+        if (typeof data === "string") {
+          if (data.length > MAX_CONTENT_DISPLAY_CHARS) {
+            output.write(
+              data.slice(0, MAX_CONTENT_DISPLAY_CHARS) +
+                pc.dim(`... (${data.length - MAX_CONTENT_DISPLAY_CHARS} more chars)\n`)
+            );
+          } else {
+            output.write(data + "\n");
+          }
         } else {
-          output.write(value.content + "\n");
+          this.displayAsTree(output, data);
         }
         break;
 
-      case "file_list":
-        output.write(
-          `${pc.green("✓")} ${pc.bold(toolName)} → ${pc.cyan(value.path)} ${pc.dim(`(${value.count} entries, ${durationMs}ms)`)}\n`
-        );
-        for (let i = 0; i < Math.min(value.files.length, MAX_FILE_LIST_DISPLAY); i++) {
-          output.write(`  ${value.files[i]}\n`);
-        }
-        if (value.files.length > MAX_FILE_LIST_DISPLAY) {
-          output.write(pc.dim(`  ... and ${value.files.length - MAX_FILE_LIST_DISPLAY} more\n`));
-        }
-        break;
-
-      case "json":
-        const summaryText = value.summary ? ` - ${value.summary}` : "";
-        output.write(
-          `${pc.green("✓")} ${pc.bold(toolName)}${summaryText} ${pc.dim(`(${durationMs}ms)`)}\n`
-        );
-        const json = JSON.stringify(value.data, null, 2);
-        if (json.length > MAX_CONTENT_DISPLAY_CHARS) {
-          output.write(
-            json.slice(0, MAX_CONTENT_DISPLAY_CHARS) +
-              pc.dim(`\n... (${json.length - MAX_CONTENT_DISPLAY_CHARS} more chars)\n`)
-          );
+      case "code":
+        const lang = display?.language || "";
+        if (typeof data === "string") {
+          output.write(pc.dim(`\`\`\`${lang}\n`));
+          if (data.length > MAX_CONTENT_DISPLAY_CHARS) {
+            output.write(data.slice(0, MAX_CONTENT_DISPLAY_CHARS) + pc.dim("..."));
+          } else {
+            output.write(data);
+          }
+          output.write(pc.dim("\n```\n"));
         } else {
-          output.write(json + "\n");
+          this.displayAsTree(output, data);
         }
         break;
+
+      case "table":
+        this.displayAsTable(output, data);
+        break;
+
+      case "tree":
+        this.displayAsTree(output, data);
+        break;
+
+      case "raw":
+      default:
+        // Default: display as JSON tree
+        this.displayAsTree(output, data);
+        break;
+    }
+  }
+
+  private displayAsTree(output: NodeJS.WriteStream, data: unknown, indent = ""): void {
+    if (data === null || data === undefined) {
+      output.write(pc.dim("null") + "\n");
+      return;
+    }
+
+    if (typeof data !== "object") {
+      output.write(String(data) + "\n");
+      return;
+    }
+
+    if (Array.isArray(data)) {
+      if (data.length === 0) {
+        output.write(pc.dim("[]") + "\n");
+        return;
+      }
+      for (let i = 0; i < Math.min(data.length, 20); i++) {
+        output.write(`${indent}${pc.dim(`[${i}]`)} `);
+        const item = data[i];
+        if (typeof item === "object" && item !== null) {
+          output.write("\n");
+          this.displayAsTree(output, item, indent + "  ");
+        } else {
+          output.write(String(item) + "\n");
+        }
+      }
+      if (data.length > 20) {
+        output.write(`${indent}${pc.dim(`... and ${data.length - 20} more items`)}\n`);
+      }
+      return;
+    }
+
+    const entries = Object.entries(data as Record<string, unknown>);
+    if (entries.length === 0) {
+      output.write(pc.dim("{}") + "\n");
+      return;
+    }
+    for (const [key, val] of entries.slice(0, 30)) {
+      output.write(`${indent}${pc.cyan(key)}: `);
+      if (typeof val === "object" && val !== null) {
+        output.write("\n");
+        this.displayAsTree(output, val, indent + "  ");
+      } else {
+        const valStr = String(val);
+        if (valStr.length > 60) {
+          output.write(valStr.slice(0, 57) + pc.dim("...") + "\n");
+        } else {
+          output.write(valStr + "\n");
+        }
+      }
+    }
+    if (entries.length > 30) {
+      output.write(`${indent}${pc.dim(`... and ${entries.length - 30} more keys`)}\n`);
+    }
+  }
+
+  private displayAsTable(output: NodeJS.WriteStream, data: unknown): void {
+    // Check if data is an array of objects (tabular)
+    if (!Array.isArray(data) || data.length === 0) {
+      this.displayAsTree(output, data);
+      return;
+    }
+
+    const firstItem = data[0];
+    if (typeof firstItem !== "object" || firstItem === null) {
+      this.displayAsTree(output, data);
+      return;
+    }
+
+    // Get column headers from first item
+    const columns = Object.keys(firstItem as Record<string, unknown>);
+    if (columns.length === 0) {
+      this.displayAsTree(output, data);
+      return;
+    }
+
+    // Calculate column widths
+    const widths: Record<string, number> = {};
+    for (const col of columns) {
+      widths[col] = col.length;
+    }
+    for (const row of data.slice(0, 20)) {
+      if (typeof row !== "object" || row === null) continue;
+      for (const col of columns) {
+        const val = String((row as Record<string, unknown>)[col] ?? "");
+        widths[col] = Math.max(widths[col], Math.min(val.length, 30));
+      }
+    }
+
+    // Print header
+    const header = columns.map(c => c.padEnd(widths[c])).join(" | ");
+    output.write(`  ${pc.bold(header)}\n`);
+    output.write(`  ${columns.map(c => "─".repeat(widths[c])).join("─┼─")}\n`);
+
+    // Print rows
+    for (let i = 0; i < Math.min(data.length, 20); i++) {
+      const row = data[i];
+      if (typeof row !== "object" || row === null) continue;
+      const rowStr = columns.map(c => {
+        const val = String((row as Record<string, unknown>)[c] ?? "");
+        return val.slice(0, widths[c]).padEnd(widths[c]);
+      }).join(" | ");
+      output.write(`  ${rowStr}\n`);
+    }
+
+    if (data.length > 20) {
+      output.write(pc.dim(`  ... and ${data.length - 20} more rows\n`));
     }
   }
 

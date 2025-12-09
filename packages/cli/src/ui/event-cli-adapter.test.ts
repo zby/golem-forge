@@ -282,6 +282,111 @@ describe("EventCLIAdapter", () => {
       expect(output).toContain("API response");
       expect(output).toContain('"key"');
     });
+
+    it("should display custom result type with summary", () => {
+      bus.emit("toolResult", {
+        toolCallId: "t1",
+        toolName: "git_status",
+        status: "success",
+        value: {
+          kind: "git.status",
+          data: { branch: "main", ahead: 2 },
+          summary: "On branch main, 2 ahead",
+        } as import("@golem-forge/core").ToolResultValue,
+        durationMs: 25,
+      });
+
+      const output = streams.getOutput();
+      expect(output).toContain("git_status");
+      expect(output).toContain("On branch main, 2 ahead");
+      expect(output).toContain("branch");
+      expect(output).toContain("main");
+    });
+
+    it("should display custom result type without summary", () => {
+      bus.emit("toolResult", {
+        toolCallId: "t1",
+        toolName: "custom_tool",
+        status: "success",
+        value: {
+          kind: "my_custom_type",
+          data: { foo: "bar" },
+        } as import("@golem-forge/core").ToolResultValue,
+        durationMs: 10,
+      });
+
+      const output = streams.getOutput();
+      expect(output).toContain("custom_tool");
+      expect(output).toContain("my_custom_type");
+      expect(output).toContain("foo");
+      expect(output).toContain("bar");
+    });
+
+    it("should not display hidden custom result type", () => {
+      bus.emit("toolResult", {
+        toolCallId: "t1",
+        toolName: "internal_tool",
+        status: "success",
+        value: {
+          kind: "internal.result",
+          data: { secret: "hidden" },
+          display: { preferredView: "hidden" },
+        } as import("@golem-forge/core").ToolResultValue,
+        durationMs: 5,
+      });
+
+      const output = streams.getOutput();
+      // Should still show the header line but not the data
+      expect(output).not.toContain("secret");
+      expect(output).not.toContain("hidden");
+    });
+
+    it("should display custom result as table when preferredView is table", () => {
+      bus.emit("toolResult", {
+        toolCallId: "t1",
+        toolName: "query_tool",
+        status: "success",
+        value: {
+          kind: "db.query_result",
+          data: [
+            { id: 1, name: "Alice" },
+            { id: 2, name: "Bob" },
+          ],
+          summary: "2 rows",
+          display: { preferredView: "table" },
+        } as import("@golem-forge/core").ToolResultValue,
+        durationMs: 50,
+      });
+
+      const output = streams.getOutput();
+      expect(output).toContain("query_tool");
+      expect(output).toContain("2 rows");
+      expect(output).toContain("id");
+      expect(output).toContain("name");
+      expect(output).toContain("Alice");
+      expect(output).toContain("Bob");
+    });
+
+    it("should display custom result as code when preferredView is code", () => {
+      bus.emit("toolResult", {
+        toolCallId: "t1",
+        toolName: "generate_code",
+        status: "success",
+        value: {
+          kind: "code.snippet",
+          data: "const x = 1;",
+          summary: "Generated code",
+          display: { preferredView: "code", language: "typescript" },
+        } as import("@golem-forge/core").ToolResultValue,
+        durationMs: 30,
+      });
+
+      const output = streams.getOutput();
+      expect(output).toContain("generate_code");
+      expect(output).toContain("Generated code");
+      expect(output).toContain("const x = 1;");
+      expect(output).toContain("```typescript");
+    });
   });
 
   describe("worker events", () => {

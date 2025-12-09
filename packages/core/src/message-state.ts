@@ -135,6 +135,61 @@ export function addToolResult(
 }
 
 /**
+ * Well-known result kinds for type checking.
+ */
+const WELL_KNOWN_KINDS = ['text', 'diff', 'file_content', 'file_list', 'json'] as const;
+
+/**
+ * Check if a kind is a well-known kind.
+ */
+function isWellKnownKind(kind: string): kind is typeof WELL_KNOWN_KINDS[number] {
+  return (WELL_KNOWN_KINDS as readonly string[]).includes(kind);
+}
+
+/**
+ * Generate summary from a ToolResultValue.
+ * Uses value.summary if available, otherwise generates based on kind.
+ */
+function generateSummary(value: ToolResultValue): string | undefined {
+  // Check if value has a summary field first
+  if ('summary' in value && typeof value.summary === 'string') {
+    return value.summary;
+  }
+
+  // Fall back to generated summary based on kind
+  if (!isWellKnownKind(value.kind)) {
+    // Custom result type
+    return `Custom result (${value.kind})`;
+  }
+
+  // Handle well-known kinds with type-safe access
+  switch (value.kind) {
+    case 'text': {
+      const text = value as { kind: 'text'; content: string };
+      return text.content.length > 100
+        ? text.content.substring(0, 100) + '...'
+        : text.content;
+    }
+    case 'diff': {
+      const diff = value as { kind: 'diff'; path: string };
+      return `Modified ${diff.path}`;
+    }
+    case 'file_content': {
+      const fc = value as { kind: 'file_content'; path: string; size: number };
+      return `Read ${fc.path} (${fc.size} bytes)`;
+    }
+    case 'file_list': {
+      const fl = value as { kind: 'file_list'; path: string; count: number };
+      return `Listed ${fl.count} entries in ${fl.path}`;
+    }
+    case 'json':
+      return 'Structured data';
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Add a tool result from event data.
  */
 export function addToolResultFromEvent(
@@ -146,29 +201,7 @@ export function addToolResultFromEvent(
   value?: ToolResultValue,
   error?: string
 ): MessageState {
-  // Generate summary from value
-  let summary: string | undefined;
-  if (value) {
-    switch (value.kind) {
-      case 'text':
-        summary = value.content.length > 100
-          ? value.content.substring(0, 100) + '...'
-          : value.content;
-        break;
-      case 'diff':
-        summary = `Modified ${value.path}`;
-        break;
-      case 'file_content':
-        summary = `Read ${value.path} (${value.size} bytes)`;
-        break;
-      case 'file_list':
-        summary = `Listed ${value.count} entries in ${value.path}`;
-        break;
-      case 'json':
-        summary = value.summary || 'Structured data';
-        break;
-    }
-  }
+  const summary = value ? generateSummary(value) : undefined;
 
   const result: ToolResultData = {
     toolCallId,

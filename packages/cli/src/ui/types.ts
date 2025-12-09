@@ -203,20 +203,28 @@ export type ToolResult<T = unknown> =
 
 // Import and re-export tool result value types from core
 import type {
+  DisplayHints,
+  WellKnownKind,
   TextResultValue,
   DiffResultValue,
   FileContentResultValue,
   FileListResultValue,
   JsonResultValue,
+  CustomResultValue,
+  WellKnownResultValue,
   ToolResultValue,
 } from "@golem-forge/core";
 
 export type {
+  DisplayHints,
+  WellKnownKind,
   TextResultValue,
   DiffResultValue,
   FileContentResultValue,
   FileListResultValue,
   JsonResultValue,
+  CustomResultValue,
+  WellKnownResultValue,
   ToolResultValue,
 };
 

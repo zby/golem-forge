@@ -106,12 +106,58 @@ export interface ToolStartedEvent {
 // ============================================================================
 
 /**
+ * Display hints for UI rendering.
+ * UIs use these hints for unknown result types or to customize display.
+ */
+export interface DisplayHints {
+  /**
+   * Suggested view mode for the data.
+   */
+  preferredView?:
+    | 'text'       // Plain text, preserve whitespace
+    | 'markdown'   // Render as markdown
+    | 'code'       // Syntax-highlighted code block
+    | 'diff'       // Side-by-side or unified diff view
+    | 'table'      // Tabular data
+    | 'tree'       // Hierarchical/nested structure
+    | 'image'      // Image display
+    | 'raw'        // Raw JSON/data dump
+    | 'hidden';    // Don't display (internal result)
+
+  /**
+   * Language hint for code highlighting.
+   */
+  language?: string;
+
+  /**
+   * Whether the result should be collapsed by default.
+   */
+  collapsed?: boolean;
+
+  /**
+   * Maximum height before scrolling (in lines or pixels depending on UI).
+   */
+  maxHeight?: number;
+
+  /**
+   * Priority for display ordering (higher = more prominent).
+   */
+  priority?: number;
+}
+
+/**
  * Plain text result.
  */
 export interface TextResultValue {
   kind: 'text';
   /** The text content */
   content: string;
+  /** Human-readable summary for compact display */
+  summary?: string;
+  /** MIME type hint (e.g., 'text/plain', 'text/markdown') */
+  mimeType?: string;
+  /** Display hints for UI rendering */
+  display?: DisplayHints;
 }
 
 /**
@@ -129,6 +175,10 @@ export interface DiffResultValue {
   isNew: boolean;
   /** Number of bytes written */
   bytesWritten: number;
+  /** Human-readable summary (e.g., "+15 -3 lines") */
+  summary?: string;
+  /** Display hints for UI rendering */
+  display?: DisplayHints;
 }
 
 /**
@@ -142,6 +192,12 @@ export interface FileContentResultValue {
   content: string;
   /** File size in bytes */
   size: number;
+  /** Human-readable summary (e.g., "Read /path/file.txt (1234 bytes)") */
+  summary?: string;
+  /** MIME type hint (detected from file extension) */
+  mimeType?: string;
+  /** Display hints for UI rendering */
+  display?: DisplayHints;
 }
 
 /**
@@ -155,6 +211,10 @@ export interface FileListResultValue {
   files: string[];
   /** Number of entries */
   count: number;
+  /** Human-readable summary (e.g., "42 files") */
+  summary?: string;
+  /** Display hints for UI rendering */
+  display?: DisplayHints;
 }
 
 /**
@@ -164,20 +224,59 @@ export interface JsonResultValue {
   kind: 'json';
   /** The structured data */
   data: unknown;
-  /** Optional summary for display */
+  /** Human-readable summary for display */
   summary?: string;
+  /** MIME type hint (typically 'application/json') */
+  mimeType?: string;
+  /** Display hints for UI rendering */
+  display?: DisplayHints;
 }
 
 /**
- * Discriminated union of all tool result value types.
- * Tools can return these typed values for proper UI rendering.
+ * Well-known kind string literals.
  */
-export type ToolResultValue =
+export type WellKnownKind = 'text' | 'diff' | 'file_content' | 'file_list' | 'json';
+
+/**
+ * Custom/unknown result type.
+ * Used for tool-defined result types not in the well-known set.
+ * UIs should use display hints to render these gracefully.
+ */
+export interface CustomResultValue {
+  /**
+   * Custom type identifier.
+   * Must not be a well-known kind.
+   * Convention: lowercase with dots for namespacing (e.g., 'git.status', 'mycompany.report')
+   */
+  kind: Exclude<string, WellKnownKind>;
+  /** The result data - structure depends on kind */
+  data: unknown;
+  /** Human-readable summary for compact display */
+  summary?: string;
+  /** MIME type hint for data interpretation */
+  mimeType?: string;
+  /** Display hints for UI rendering */
+  display?: DisplayHints;
+}
+
+/**
+ * Well-known tool result value types.
+ * These have standardized structures that UIs can optimize for.
+ */
+export type WellKnownResultValue =
   | TextResultValue
   | DiffResultValue
   | FileContentResultValue
   | FileListResultValue
   | JsonResultValue;
+
+/**
+ * Discriminated union of all tool result value types.
+ * Includes well-known types and custom types for extensibility.
+ * UIs should render well-known types with specialized components,
+ * and use display hints for custom types.
+ */
+export type ToolResultValue = WellKnownResultValue | CustomResultValue;
 
 /**
  * Tool execution completed

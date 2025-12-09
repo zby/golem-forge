@@ -170,13 +170,15 @@ export function createReadFileTool(sandbox: FilesystemSandbox, options?: ToolOpt
           };
         }
 
+        const size = Buffer.byteLength(content, "utf8");
         // Return structured file_content result for UI rendering
         return {
           kind: "file_content" as const,
           success: true,
           path,
           content,
-          size: Buffer.byteLength(content, "utf8"),
+          size,
+          summary: `Read ${path} (${size} bytes)`,
         };
       } catch (error) {
         return handleError(error, path);
@@ -224,6 +226,8 @@ export function createWriteFileTool(sandbox: FilesystemSandbox, options?: ToolOp
 
         await sandbox.write(path, content);
 
+        const bytesWritten = Buffer.byteLength(content, "utf8");
+        const operation = isNew ? "Created" : "Modified";
         // Return structured diff result for UI rendering
         // Maintains backward compatibility with success/path/bytesWritten fields
         return {
@@ -233,7 +237,8 @@ export function createWriteFileTool(sandbox: FilesystemSandbox, options?: ToolOp
           original,
           modified: content,
           isNew,
-          bytesWritten: Buffer.byteLength(content, "utf8"),
+          bytesWritten,
+          summary: `${operation} ${path} (${bytesWritten} bytes)`,
         };
       } catch (error) {
         return handleError(error, path);
@@ -261,13 +266,15 @@ export function createListFilesTool(sandbox: FilesystemSandbox, options?: ToolOp
     execute: async ({ path }: ListFilesInput, _options: ToolExecutionOptions) => {
       try {
         const files = await sandbox.list(path);
+        const count = files.length;
         // Return structured file_list result for UI rendering
         return {
           kind: "file_list" as const,
           success: true,
           path,
           files,
-          count: files.length,
+          count,
+          summary: `${count} ${count === 1 ? "entry" : "entries"} in ${path}`,
         };
       } catch (error) {
         return handleError(error, path);

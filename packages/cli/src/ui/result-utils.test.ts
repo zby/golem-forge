@@ -7,7 +7,95 @@ import {
   isToolResultValue,
   toTypedToolResult,
   isSuccessResult,
+  isValidKind,
+  isWellKnownKind,
+  WELL_KNOWN_KINDS,
 } from "./result-utils.js";
+
+describe("WELL_KNOWN_KINDS", () => {
+  it("contains all well-known kinds", () => {
+    expect(WELL_KNOWN_KINDS).toContain("text");
+    expect(WELL_KNOWN_KINDS).toContain("diff");
+    expect(WELL_KNOWN_KINDS).toContain("file_content");
+    expect(WELL_KNOWN_KINDS).toContain("file_list");
+    expect(WELL_KNOWN_KINDS).toContain("json");
+    expect(WELL_KNOWN_KINDS).toHaveLength(5);
+  });
+});
+
+describe("isValidKind", () => {
+  it("returns true for well-known kinds", () => {
+    expect(isValidKind("text")).toBe(true);
+    expect(isValidKind("diff")).toBe(true);
+    expect(isValidKind("file_content")).toBe(true);
+    expect(isValidKind("file_list")).toBe(true);
+    expect(isValidKind("json")).toBe(true);
+  });
+
+  it("returns true for valid custom kinds with underscores", () => {
+    expect(isValidKind("git_status")).toBe(true);
+    expect(isValidKind("my_custom_type")).toBe(true);
+  });
+
+  it("returns true for valid custom kinds with dots (namespaced)", () => {
+    expect(isValidKind("git.status")).toBe(true);
+    expect(isValidKind("mycompany.report")).toBe(true);
+    expect(isValidKind("a.b.c.d")).toBe(true);
+  });
+
+  it("returns true for valid custom kinds with numbers", () => {
+    expect(isValidKind("test123")).toBe(true);
+    expect(isValidKind("v2_result")).toBe(true);
+  });
+
+  it("returns false for kinds starting with uppercase", () => {
+    expect(isValidKind("Text")).toBe(false);
+    expect(isValidKind("GitStatus")).toBe(false);
+  });
+
+  it("returns false for kinds starting with numbers", () => {
+    expect(isValidKind("123test")).toBe(false);
+    expect(isValidKind("2fast")).toBe(false);
+  });
+
+  it("returns false for kinds with invalid characters", () => {
+    expect(isValidKind("test-kind")).toBe(false);
+    expect(isValidKind("test kind")).toBe(false);
+    expect(isValidKind("test@kind")).toBe(false);
+  });
+
+  it("returns false for empty strings", () => {
+    expect(isValidKind("")).toBe(false);
+  });
+
+  it("returns false for kinds with consecutive dots", () => {
+    expect(isValidKind("a..b")).toBe(false);
+  });
+
+  it("returns false for kinds ending with dots", () => {
+    expect(isValidKind("test.")).toBe(false);
+  });
+
+  it("returns false for kinds starting with dots", () => {
+    expect(isValidKind(".test")).toBe(false);
+  });
+});
+
+describe("isWellKnownKind", () => {
+  it("returns true for well-known kinds", () => {
+    expect(isWellKnownKind("text")).toBe(true);
+    expect(isWellKnownKind("diff")).toBe(true);
+    expect(isWellKnownKind("file_content")).toBe(true);
+    expect(isWellKnownKind("file_list")).toBe(true);
+    expect(isWellKnownKind("json")).toBe(true);
+  });
+
+  it("returns false for custom kinds", () => {
+    expect(isWellKnownKind("git_status")).toBe(false);
+    expect(isWellKnownKind("git.status")).toBe(false);
+    expect(isWellKnownKind("custom")).toBe(false);
+  });
+});
 
 describe("isToolResultValue", () => {
   it("returns false for null", () => {
@@ -30,8 +118,10 @@ describe("isToolResultValue", () => {
   });
 
   it("returns false for invalid kind values", () => {
-    expect(isToolResultValue({ kind: "invalid" })).toBe(false);
+    // Invalid kind format
+    expect(isToolResultValue({ kind: "Invalid" })).toBe(false);
     expect(isToolResultValue({ kind: 123 })).toBe(false);
+    expect(isToolResultValue({ kind: "test-kind" })).toBe(false);
   });
 
   it("returns true for text kind", () => {
@@ -68,6 +158,16 @@ describe("isToolResultValue", () => {
 
   it("returns true for json kind", () => {
     expect(isToolResultValue({ kind: "json", data: { foo: "bar" } })).toBe(true);
+  });
+
+  it("returns true for valid custom kinds", () => {
+    expect(isToolResultValue({ kind: "git_status", data: { branch: "main" } })).toBe(true);
+    expect(isToolResultValue({ kind: "git.status", data: { branch: "main" } })).toBe(true);
+    expect(isToolResultValue({
+      kind: "mycompany.custom_report",
+      data: { foo: "bar" },
+      summary: "Custom report",
+    })).toBe(true);
   });
 });
 

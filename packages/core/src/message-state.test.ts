@@ -205,6 +205,90 @@ describe('Message State', () => {
       }
     });
 
+    it('should prefer value.summary over generated summary for diff', () => {
+      state = addToolResultFromEvent(
+        state,
+        'call-1',
+        'write_file',
+        'success',
+        100,
+        {
+          kind: 'diff',
+          path: '/test.ts',
+          modified: 'new content',
+          isNew: true,
+          bytesWritten: 11,
+          summary: 'Created /test.ts (11 bytes)',
+        }
+      );
+
+      const msg = state.messages[0];
+      if (msg.type === 'tool_result') {
+        expect(msg.result.summary).toBe('Created /test.ts (11 bytes)');
+      }
+    });
+
+    it('should prefer value.summary over generated summary for file_content', () => {
+      state = addToolResultFromEvent(
+        state,
+        'call-1',
+        'read_file',
+        'success',
+        50,
+        {
+          kind: 'file_content',
+          path: '/data.json',
+          content: '{}',
+          size: 256,
+          summary: 'Custom summary from tool',
+        }
+      );
+
+      const msg = state.messages[0];
+      if (msg.type === 'tool_result') {
+        expect(msg.result.summary).toBe('Custom summary from tool');
+      }
+    });
+
+    it('should handle custom result types', () => {
+      state = addToolResultFromEvent(
+        state,
+        'call-1',
+        'git_status',
+        'success',
+        75,
+        {
+          kind: 'git.status' as 'json', // Cast to satisfy TS since it's a custom kind
+          data: { branch: 'main', ahead: 2 },
+          summary: 'On branch main, 2 commits ahead',
+        } as import('./ui-events.js').ToolResultValue
+      );
+
+      const msg = state.messages[0];
+      if (msg.type === 'tool_result') {
+        expect(msg.result.summary).toBe('On branch main, 2 commits ahead');
+      }
+    });
+
+    it('should generate summary for custom result types without summary field', () => {
+      state = addToolResultFromEvent(
+        state,
+        'call-1',
+        'custom_tool',
+        'success',
+        75,
+        {
+          kind: 'custom.result' as 'json', // Cast to satisfy TS since it's a custom kind
+          data: { foo: 'bar' },
+        } as import('./ui-events.js').ToolResultValue
+      );
+
+      const msg = state.messages[0];
+      if (msg.type === 'tool_result') {
+        expect(msg.result.summary).toBe('Custom result (custom.result)');
+      }
+    });
+
     it('should include error for error status', () => {
       state = addToolResultFromEvent(
         state,

@@ -24,11 +24,15 @@ export type {
   InterruptSignal,
   ToolResult,
   // Structured tool result types
+  DisplayHints,
+  WellKnownKind,
   TextResultValue,
   DiffResultValue,
   FileContentResultValue,
   FileListResultValue,
   JsonResultValue,
+  CustomResultValue,
+  WellKnownResultValue,
   ToolResultValue,
   TypedToolResult,
 } from "./types.js";
@@ -91,4 +95,8 @@ export {
   isToolResultValue,
   toTypedToolResult,
   isSuccessResult,
+  isValidKind,
+  isWellKnownKind,
+  WELL_KNOWN_KINDS,
+  type WellKnownKind as WellKnownKindType,
 } from "./result-utils.js";
