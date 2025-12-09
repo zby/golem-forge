@@ -3,6 +3,21 @@
 **Status:** Planning
 **Date:** 2025-12-09
 
+## Naming Convention
+
+> **"Browser" vs "Chrome" naming:**
+>
+> - **"Browser"** = Generic browser APIs (OPFS, Web APIs) that could work in any browser
+>   - `browser-runtime.ts`, `BrowserWorkerRuntime`, `createBrowserRuntime()`
+>   - These use standard Web APIs and could be shared with a future Firefox extension
+>
+> - **"Chrome"** = Chrome-specific extension code (manifest v3, chrome.* APIs)
+>   - `@golem-forge/chrome` package, `ChromeAdapter`, `ChromeUIStateContext`
+>   - Uses Chrome extension APIs that differ between browsers
+>
+> If we later create `@golem-forge/firefox`, it could reuse `browser-runtime.ts`
+> but would need its own `FirefoxAdapter` for Firefox-specific extension APIs.
+
 ## Overview
 
 Update the `@golem-forge/chrome` package to use the event-driven architecture established in the CLI's InkAdapter. This aligns the Chrome extension with `@golem-forge/ui-react` contexts and the `UIEventBus` pattern from `@golem-forge/core`.
