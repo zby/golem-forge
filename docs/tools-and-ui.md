@@ -267,31 +267,28 @@ const manualTools = getManualTools(allTools);
 
 Golem Forge uses an **event-driven UI architecture** that cleanly separates the runtime from UI rendering. This design allows the same runtime to work with different UI implementations (CLI, browser, etc.).
 
-### Event-Driven Architecture
-
-The architecture has three layers:
+### Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Runtime                                  │
-│  Uses RuntimeUI to emit display events and await responses      │
-└───────────────────────────────┬─────────────────────────────────┘
-                                │
-                        ┌───────▼───────┐
-                        │  UIEventBus   │
-                        │  (core)       │
-                        └───────┬───────┘
-                                │
-┌───────────────────────────────▼─────────────────────────────────┐
-│                     UI Implementation                            │
-│  Subscribes to display events, emits action events              │
-│  (EventCLIAdapter for terminal, React app for browser)          │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                     @golem-forge/core                       │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
+│  │  DisplayEvents  │  │   UIEventBus    │  │  RuntimeUI  │ │
+│  │  ActionEvents   │  │  (pub/sub)      │  │  (wrapper)  │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              ▲
+          ┌───────────────────┴───────────────────┐
+          ▼                                       ▼
+┌─────────────────────┐               ┌─────────────────────┐
+│  EventCLIAdapter    │               │  InkAdapter         │
+│  (terminal I/O)     │               │  (React/Ink)        │
+└─────────────────────┘               └─────────────────────┘
 ```
 
 ### UIEventBus
 
-The core event bus that both runtime and UI subscribe to:
+Type-safe event emitter for runtime-UI communication (`packages/core/src/ui-event-bus.ts`):
 
 ```typescript
 import { createUIEventBus, type UIEventBus } from '@golem-forge/core';
@@ -312,9 +309,21 @@ bus.emit('interrupt', { reason: 'User cancelled' });
 bus.emit('manualToolInvoke', { toolName: 'deploy', args: {} });
 ```
 
+**DisplayEvents** (runtime → UI):
+- `message`, `streaming`, `status` - conversation content
+- `toolStarted`, `toolResult` - tool execution lifecycle
+- `workerUpdate` - worker tree changes
+- `approvalRequired`, `inputPrompt` - blocking requests
+- `diffSummary`, `diffContent` - file change display
+- `sessionEnd` - session completion
+
+**ActionEvents** (UI → runtime):
+- `userInput`, `approvalResponse` - responses to prompts
+- `interrupt`, `manualToolInvoke`, `getDiff` - user-initiated actions
+
 ### RuntimeUI
 
-High-level convenience wrapper for runtime code:
+High-level convenience wrapper for runtime code (`packages/core/src/runtime-ui.ts`):
 
 ```typescript
 import { createRuntimeUI, type RuntimeUI } from '@golem-forge/core';
@@ -336,9 +345,28 @@ const approved = await ui.requestApproval({
 const input = await ui.getUserInput('Enter your message:');
 ```
 
+Blocking methods use correlation IDs to match requests with responses.
+
+### UIImplementation
+
+Base interface for UI implementations (`packages/core/src/ui-implementation.ts`):
+
+```typescript
+abstract class BaseUIImplementation implements UIImplementation {
+  readonly bus: UIEventBus;
+
+  sendApprovalResponse(requestId: string, approved: boolean | 'always' | 'session'): void;
+  sendUserInput(requestId: string, content: string): void;
+  sendInterrupt(reason?: string): void;
+
+  abstract initialize(): Promise<void>;
+  abstract shutdown(): Promise<void>;
+}
+```
+
 ### EventCLIAdapter
 
-Terminal implementation using the event bus:
+Terminal implementation using readline (`packages/cli/src/ui/event-cli-adapter.ts`):
 
 ```typescript
 import { createEventCLIAdapter } from '@golem-forge/cli';
@@ -351,11 +379,29 @@ const adapter = createEventCLIAdapter(bus, {
 });
 
 await adapter.initialize();
-// Adapter now listens to bus events and renders to terminal
-// User input is captured and emitted as action events
-
 await adapter.shutdown();
 ```
+
+Features:
+- Subscribes to all display events and renders to stdout
+- Handles approval dialogs via terminal prompts
+- Parses manual tool commands (`/tool name --arg value`)
+
+### InkAdapter
+
+React/Ink implementation with context-based state (`packages/cli/src/ui/ink/`):
+
+**Contexts:**
+- `ThemeContext` - semantic color theming
+- `UIStateContext` - mode management (idle, input, approval, etc.)
+- `MessagesContext` - conversation history and streaming
+- `WorkerContext` - worker tree state
+- `ApprovalContext` - approval request/response flow
+
+**Components:**
+- Layout: `Header`, `Footer`, `MainContent`, `InputPrompt`
+- Messages: `UserMessage`, `AssistantMessage`, `ToolResultDisplay`
+- Dialogs: `ApprovalDialog` with risk indicators and worker chain
 
 ### Slash Commands
 
@@ -604,6 +650,43 @@ isValidKind('my_custom_type'); // true
 isValidKind('Invalid');        // false (uppercase)
 isWellKnownKind('text');       // true
 isWellKnownKind('git.status'); // false
+```
+
+### UI Rendering Strategy
+
+UIs render results using a fallback chain:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    UI Receives ToolResultValue              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │ Is kind known?  │
+                    └─────────────────┘
+                      │           │
+                     Yes          No
+                      │           │
+                      ▼           ▼
+            ┌─────────────┐  ┌─────────────────────┐
+            │ Use custom  │  │ Check display.      │
+            │ renderer    │  │ preferredView       │
+            └─────────────┘  └─────────────────────┘
+                                      │
+                              ┌───────┴───────┐
+                              ▼               ▼
+                    ┌─────────────┐   ┌─────────────┐
+                    │ Has hint?   │   │ No hint     │
+                    │ Use generic │   │ Infer from  │
+                    │ view mode   │   │ mimeType    │
+                    └─────────────┘   └─────────────┘
+                                              │
+                                              ▼
+                                    ┌─────────────┐
+                                    │ Fall back   │
+                                    │ to JSON     │
+                                    └─────────────┘
 ```
 
 ---
