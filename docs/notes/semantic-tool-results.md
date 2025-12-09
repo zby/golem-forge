@@ -1,5 +1,7 @@
 # Semantic Types for Tool Results
 
+> **Status**: Implemented in Phase 1 and Phase 2. See implementation details below.
+
 ## Problem Statement
 
 The current tool result system has 5 hardcoded types (`text`, `diff`, `file_content`, `file_list`, `json`). This creates friction for tool plugins:
@@ -486,19 +488,19 @@ The browser UI can:
 
 ## Implementation Checklist
 
-### Phase 1
-- [ ] Add `DisplayHints` interface to `core/src/ui-events.ts`
-- [ ] Add `summary?`, `mimeType?`, `display?` to existing result types
-- [ ] Change `VALID_KINDS` whitelist to pattern validation in `result-utils.ts`
-- [ ] Add `summary` field to filesystem tool results
-- [ ] Update `message-state.ts` to use `value.summary` when available
-- [ ] Add tests for unknown kinds and new hints
+### Phase 1 ✅ Complete
+- [x] Add `DisplayHints` interface to `core/src/ui-events.ts`
+- [x] Add `summary?`, `mimeType?`, `display?` to existing result types
+- [x] Change `VALID_KINDS` whitelist to pattern validation in `result-utils.ts`
+- [x] Add `summary` field to filesystem tool results
+- [x] Update `message-state.ts` to use `value.summary` when available
+- [x] Add tests for unknown kinds and new hints
 
-### Phase 2
-- [ ] Add default case in `event-cli-adapter.ts` for unknown kinds
-- [ ] Implement generic renderers (tree, table, code) based on `preferredView`
-- [ ] Use `mimeType` hint for content type detection
-- [ ] Add tests for hint-based rendering
+### Phase 2 ✅ Complete
+- [x] Add default case in `event-cli-adapter.ts` for unknown kinds
+- [x] Implement generic renderers (tree, table, code) based on `preferredView`
+- [x] Use `mimeType` hint for content type detection
+- [x] Add tests for hint-based rendering
 
 ### Phase 3 (future)
 - [ ] Normalize data into `data` field for all result types

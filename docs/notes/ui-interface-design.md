@@ -1,5 +1,7 @@
 # UI Interface Design Exploration
 
+> **Status**: The recommended design (Pattern 2 + Pattern 3 hybrid) has been **implemented**. See `@golem-forge/core` for `UIEventBus` and `RuntimeUI`, and `@golem-forge/cli` for `EventCLIAdapter`.
+
 ## Problem Statement
 
 We need a common UI interface that works across platforms (CLI, browser extension, potential future UIs). The current architecture has:
@@ -402,42 +404,38 @@ function createRuntimeUI(bus: UIEventBus): RuntimeUI {
 }
 ```
 
-## Open Questions
+## Open Questions (Resolved)
 
 1. **Should the event bus be shared or should runtime and UI have separate instances?**
-   - Shared: simpler, direct communication
-   - Separate: cleaner boundaries, could add middleware/logging
+   - **Decision**: Shared. Single `UIEventBus` instance passed to both `RuntimeUI` and UI implementation.
 
 2. **How to handle UI reconnection (browser refresh)?**
-   - Need to replay pending approval requests
-   - Or cancel them and let runtime retry
+   - Deferred to browser implementation phase.
 
 3. **Should streaming be a special event type or just frequent message events?**
-   - Special type allows UI to optimize rendering
-   - Frequent events are simpler but noisier
+   - **Decision**: Special `streaming` event type with `requestId`, `delta`, and `done` fields.
 
 4. **Where does manual tool execution fit?**
-   - User invokes tool → UI emits `manualToolInvoke`
-   - Runtime executes → emits `toolResult`
-   - Straightforward event flow
+   - **Decision**: UI emits `manualToolInvoke`, runtime executes and emits `toolResult`. Implemented.
 
 5. **How to version the event protocol for future changes?**
-   - Add version field to events?
-   - Separate event schemas?
+   - Deferred. Current events are simple enough that versioning isn't needed yet.
 
-## Next Steps
+## Implementation Status
 
-1. Get feedback on this design
-2. Prototype the event bus and RuntimeUI wrapper
-3. Adapt InkAdapter to implement UIImplementation
-4. Create BrowserUIImplementation for the extension
-5. Migrate runtime to use RuntimeUI instead of direct UIAdapter calls
+- ✅ `UIEventBus` implemented in `@golem-forge/core`
+- ✅ `RuntimeUI` wrapper implemented in `@golem-forge/core`
+- ✅ `EventCLIAdapter` implemented in `@golem-forge/cli`
+- ✅ State management modules (`approval-state`, `worker-state`, `message-state`) implemented in `@golem-forge/core`
+- ⏳ Browser implementation pending
 
 ---
 
 ## Appendix: Exploration Findings (from ink-adoption-wip branch)
 
-The following patterns and structures emerged from an experimental Ink UI implementation. They are documented here as **exploration findings**, not as a specification. The final architecture may differ significantly.
+The following patterns and structures emerged from an experimental Ink UI implementation. Many of these patterns were **adopted** in the final implementation, particularly the state management modules.
+
+> **Note**: The Ink-based React UI was not implemented. Instead, `EventCLIAdapter` provides a simpler terminal UI using direct stream output with picocolors for formatting.
 
 ### A. State Management Patterns Explored
 
@@ -914,18 +912,21 @@ App (prototype)
 
 ---
 
-### F. Open Questions from Exploration
+### F. Open Questions from Exploration (Resolved)
 
 1. **State module granularity**: Are three separate modules (approval, worker, message) the right split, or should they be combined/split differently?
+   - **Decision**: Three separate modules implemented in `@golem-forge/core`. Works well.
 
 2. **Event bus vs contexts**: With an event-driven architecture, do we still need React contexts, or can components subscribe directly to the event bus?
+   - **Decision**: CLI uses event bus directly without React. Browser can use contexts that subscribe to event bus.
 
 3. **Streaming complexity**: The streaming buffer approach worked but added state complexity. Is there a simpler model?
+   - **Decision**: Streaming implemented via `streaming` events. `message-state` handles buffering.
 
-### G. Decisions Made
+### G. Decisions Made (Validated)
 
-1. **Theme sharing**: Themes do not need to be shared between platforms. Each UI (terminal, browser) can have its own theme system appropriate to the platform.
+1. **Theme sharing**: ✅ Confirmed. CLI uses picocolors directly. Browser will have its own theme system.
 
-2. **Concurrent approvals**: For simplicity, approvals will be serialized - the runtime blocks until the user resolves the current approval before another can be requested. This avoids UI complexity of managing multiple pending dialogs.
+2. **Concurrent approvals**: ✅ Implemented with correlation IDs. Runtime can have multiple pending approvals, each with unique `requestId`.
 
-3. **Testing**: Integration tests will be needed to properly test UI implementations. Unit tests can cover the event bus and state management, but end-to-end behavior requires integration testing.
+3. **Testing**: ✅ Extensive unit tests for state management and event bus. Integration tests for `EventCLIAdapter`.

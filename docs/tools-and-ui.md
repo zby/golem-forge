@@ -265,51 +265,95 @@ const manualTools = getManualTools(allTools);
 
 ## User Interface
 
-### UIAdapter Interface
+Golem Forge uses an **event-driven UI architecture** that cleanly separates the runtime from UI rendering. This design allows the same runtime to work with different UI implementations (CLI, browser, etc.).
 
-Platform-independent UI abstraction:
+### Event-Driven Architecture
 
-```typescript
-interface UIAdapter {
-  // Conversation
-  displayMessage(msg: Message): Promise<void>;
-  getUserInput(prompt?: string): Promise<string>;
+The architecture has three layers:
 
-  // Approval
-  requestApproval(request: UIApprovalRequest): Promise<UIApprovalResult>;
-
-  // Manual Tools
-  displayManualTools(tools: ManualToolInfo[]): void;
-  onManualToolRequest(handler: ManualToolHandler): void;
-
-  // Interruption
-  onInterrupt(handler: () => void): void;
-
-  // Progress
-  showProgress(task: TaskProgress): void;
-  updateStatus(status: StatusUpdate): void;
-
-  // Lifecycle
-  initialize(): Promise<void>;
-  shutdown(): Promise<void>;
-}
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         Runtime                                  │
+│  Uses RuntimeUI to emit display events and await responses      │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │
+                        ┌───────▼───────┐
+                        │  UIEventBus   │
+                        │  (core)       │
+                        └───────┬───────┘
+                                │
+┌───────────────────────────────▼─────────────────────────────────┐
+│                     UI Implementation                            │
+│  Subscribes to display events, emits action events              │
+│  (EventCLIAdapter for terminal, React app for browser)          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### CLIAdapter
+### UIEventBus
 
-Terminal implementation:
+The core event bus that both runtime and UI subscribe to:
 
 ```typescript
-import { createCLIAdapter } from '@anthropic/golem-forge';
+import { createUIEventBus, type UIEventBus } from '@golem-forge/core';
 
-const adapter = createCLIAdapter({
-  promptPrefix: '> ',
+const bus = createUIEventBus();
+
+// Display events (runtime → UI)
+bus.emit('message', { message: { role: 'assistant', content: 'Hello!' } });
+bus.emit('toolStarted', { toolCallId: 't1', toolName: 'read_file', args: { path: '/src' } });
+bus.emit('toolResult', { toolCallId: 't1', toolName: 'read_file', status: 'success', ... });
+bus.emit('streaming', { requestId: 'r1', delta: 'token', done: false });
+bus.emit('approvalRequired', { requestId: 'a1', type: 'tool_call', ... });
+
+// Action events (UI → runtime)
+bus.emit('userInput', { requestId: 'i1', content: 'user message' });
+bus.emit('approvalResponse', { requestId: 'a1', approved: true });
+bus.emit('interrupt', { reason: 'User cancelled' });
+bus.emit('manualToolInvoke', { toolName: 'deploy', args: {} });
+```
+
+### RuntimeUI
+
+High-level convenience wrapper for runtime code:
+
+```typescript
+import { createRuntimeUI, type RuntimeUI } from '@golem-forge/core';
+
+const ui = createRuntimeUI(bus);
+
+// Fire-and-forget display methods
+ui.showMessage({ role: 'assistant', content: 'Hello!' });
+ui.showStatus({ type: 'info', message: 'Processing...' });
+ui.showToolStarted('t1', 'read_file', { path: '/src' });
+
+// Blocking methods (emit event, await response)
+const approved = await ui.requestApproval({
+  type: 'tool_call',
+  description: 'Write file /output/result.txt',
+  risk: 'medium',
+});
+
+const input = await ui.getUserInput('Enter your message:');
+```
+
+### EventCLIAdapter
+
+Terminal implementation using the event bus:
+
+```typescript
+import { createEventCLIAdapter } from '@golem-forge/cli';
+
+const adapter = createEventCLIAdapter(bus, {
+  output: process.stdout,
+  input: process.stdin,
   enableRawMode: true,
+  traceLevel: 'normal', // 'quiet' | 'summary' | 'normal' | 'debug'
 });
 
 await adapter.initialize();
-await adapter.displayMessage({ role: 'assistant', content: 'Hello!' });
-const input = await adapter.getUserInput();
+// Adapter now listens to bus events and renders to terminal
+// User input is captured and emitted as action events
+
 await adapter.shutdown();
 ```
 
@@ -473,6 +517,97 @@ const result = await runtime.run('Process the files');
 
 ---
 
+## Semantic Tool Results
+
+Tool results use a **semantic type system** that allows both well-known types and custom types. UIs render well-known types with specialized components and use display hints for custom types.
+
+### Result Types
+
+```typescript
+// Well-known types
+type WellKnownResultValue =
+  | TextResultValue      // { kind: 'text', content: string }
+  | DiffResultValue      // { kind: 'diff', path, original, modified, isNew, bytesWritten }
+  | FileContentResultValue  // { kind: 'file_content', path, content, size }
+  | FileListResultValue  // { kind: 'file_list', path, files, count }
+  | JsonResultValue;     // { kind: 'json', data }
+
+// Custom types for tool plugins
+interface CustomResultValue {
+  kind: string;          // e.g., 'git.status', 'db.query_result'
+  data: unknown;         // Structured data
+  summary?: string;      // Human-readable summary
+  mimeType?: string;     // Content type hint
+  display?: DisplayHints; // UI rendering hints
+}
+```
+
+### Display Hints
+
+All result types support display hints for UI customization:
+
+```typescript
+interface DisplayHints {
+  preferredView?:
+    | 'text'      // Plain text
+    | 'markdown'  // Render as markdown
+    | 'code'      // Syntax-highlighted code
+    | 'table'     // Tabular data
+    | 'tree'      // Hierarchical structure
+    | 'hidden';   // Don't display
+
+  language?: string;     // Language for code highlighting
+  collapsed?: boolean;   // Start collapsed
+  maxHeight?: number;    // Max display height
+}
+```
+
+### Custom Result Example
+
+A git tool returning structured status:
+
+```typescript
+const gitStatusTool = {
+  name: 'git_status',
+  execute: async () => {
+    const status = await git.status();
+
+    return {
+      kind: 'git.status',  // Custom type
+      data: {
+        branch: status.current,
+        staged: status.staged,
+        modified: status.modified,
+      },
+      summary: `${status.staged.length} staged, ${status.modified.length} modified`,
+      display: {
+        preferredView: 'tree',
+        collapsed: status.isClean,
+      },
+    };
+  },
+};
+```
+
+### Kind Validation
+
+Custom kinds must follow the naming pattern:
+- Lowercase letters, numbers, underscores
+- Dots for namespacing (e.g., `git.status`, `mycompany.report`)
+- Must start with a lowercase letter
+
+```typescript
+import { isValidKind, isWellKnownKind } from '@golem-forge/cli';
+
+isValidKind('git.status');     // true
+isValidKind('my_custom_type'); // true
+isValidKind('Invalid');        // false (uppercase)
+isWellKnownKind('text');       // true
+isWellKnownKind('git.status'); // false
+```
+
+---
+
 ## Design Decisions
 
 ### Why Native needsApproval?
@@ -498,6 +633,27 @@ Zone approval is separate from zone `mode` (ro/rw):
 - `approval` is about **consent** - what the user must approve
 
 A zone can be `rw` (writes possible) but still require approval for each write.
+
+### Why Event-Driven UI?
+
+We use an event-driven architecture instead of direct method calls:
+
+1. **Decoupling**: Runtime doesn't know about UI implementation details
+2. **Platform Agnostic**: Same events work for CLI (terminal) and browser (React)
+3. **Testable**: Events can be recorded, replayed, and asserted on
+4. **Concurrent**: Multiple pending operations handled naturally with correlation IDs
+5. **Extensible**: New event types can be added without changing interfaces
+
+The `RuntimeUI` wrapper provides convenience methods that translate to events internally, giving the best of both worlds.
+
+### Why Semantic Tool Results?
+
+We use a semantic type system for tool results instead of always returning strings:
+
+1. **Rich Rendering**: UIs can display diffs, file trees, tables appropriately
+2. **Extensible**: Custom types without changing core packages
+3. **Graceful Degradation**: Unknown types fall back to tree/JSON view
+4. **Summaries**: Tools provide human-readable summaries for compact display
 
 ---
 
