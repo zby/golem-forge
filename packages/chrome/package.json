@@ -1,7 +1,7 @@
 {
-  "name": "@golem-forge/browser",
+  "name": "@golem-forge/chrome",
   "version": "0.1.0",
-  "description": "Golem Forge browser extension - AI-powered workflow automation",
+  "description": "Golem Forge Chrome extension - AI-powered workflow automation",
   "type": "module",
   "scripts": {
     "dev": "vite build --watch",

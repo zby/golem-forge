@@ -2,7 +2,7 @@
 
 **Status:** Phase 1 Complete, Phase 2-3 Next
 **Based on:** [Browser Extension Architecture](../browser-extension-architecture.md), [Sandbox Design](../sandbox-design.md)
-**Implementation:** `packages/browser/`
+**Implementation:** `packages/chrome/`
 
 This plan outlines the steps to build the Golem Forge browser extension, focusing on the "Project" based workflow and GitHub integration.
 
@@ -222,5 +222,5 @@ These are fundamentally different operations that happen to have the same *outpu
 - [Sandbox Design](../sandbox-design.md) - Zone model and clearance protocol
 - [AI SDK Browser Lessons](./archive/ai-sdk-browser-lessons.md) - Lessons learned from validation (archived)
 - [Container Isolation Options](./container-isolation-options.md) - WASM and other isolation strategies
-- [Browser Package README](../../packages/browser/README.md) - Development setup
-- [Browser Package Review Notes](../../packages/browser/REVIEW-NOTES.md) - Recent fixes
+- [Chrome Package README](../../packages/chrome/README.md) - Development setup
+- [Chrome Package Review Notes](../../packages/chrome/REVIEW-NOTES.md) - Recent fixes

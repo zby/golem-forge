@@ -12,7 +12,7 @@ This is an npm workspaces monorepo with three packages:
 |---------|------|---------|
 | `@golem-forge/core` | `packages/core/` | Shared types and utilities (sandbox types, errors) |
 | `@golem-forge/cli` | `packages/cli/` | CLI tool and Node.js runtime |
-| `@golem-forge/browser` | `packages/browser/` | Chrome browser extension |
+| `@golem-forge/chrome` | `packages/chrome/` | Chrome extension |
 
 ---
 
@@ -55,9 +55,9 @@ npm run test:browser
 npm run build -w @golem-forge/core   # Build dependency first
 npm run test -w @golem-forge/cli
 
-# Work on browser extension
+# Work on Chrome extension
 npm run build -w @golem-forge/core   # Build dependency first
-npm run dev -w @golem-forge/browser  # Watch mode
+npm run dev -w @golem-forge/chrome   # Watch mode
 ```
 
 ### Guidelines

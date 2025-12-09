@@ -256,7 +256,7 @@ golem-forge is organized as a monorepo with three packages:
 |---------|-------------|
 | [`@golem-forge/core`](packages/core/) | Shared types and utilities (sandbox types, error classes) |
 | [`@golem-forge/cli`](packages/cli/) | CLI tool and Node.js runtime (worker execution, filesystem sandbox) |
-| [`@golem-forge/browser`](packages/browser/) | Chrome browser extension (OPFS storage, web UI) |
+| [`@golem-forge/chrome`](packages/chrome/) | Chrome extension (OPFS storage, web UI) |
 
 ### Development
 
@@ -275,7 +275,7 @@ npm test
 
 # Run tests for specific package
 npm run test:cli
-npm run test:extension
+npm run test:chrome
 ```
 
 ## Status
