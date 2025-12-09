@@ -56,6 +56,13 @@ export type {
   ParseWorkerResult,
 } from './worker-schema.js';
 
+// Frontmatter parser
+export { parseFrontmatter } from './frontmatter.js';
+export type { FrontmatterResult } from './frontmatter.js';
+
+// Worker parser
+export { parseWorkerString } from './worker-parser.js';
+
 // ============================================================================
 // UI Interface (Event-Driven Architecture)
 // ============================================================================
