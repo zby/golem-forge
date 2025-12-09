@@ -4,24 +4,28 @@ Plan for adopting [Ink](https://github.com/vadimdemedes/ink) as the terminal UI 
 
 ## Monorepo Structure
 
-> **Updated**: The project now uses npm workspaces with three packages:
+> **Updated**: The project now uses npm workspaces with four packages:
 
 | Package | Description |
 |---------|-------------|
-| `@golem-forge/core` | Platform-agnostic types, sandbox errors, worker schema |
-| `@golem-forge/cli` | CLI implementation (Node.js) - includes UIAdapter, CLIAdapter |
+| `@golem-forge/core` | Platform-agnostic types, sandbox errors, worker schema, UIEventBus |
+| `@golem-forge/ui-react` | Shared React state management, contexts, hooks (used by Ink and browser) |
+| `@golem-forge/cli` | CLI implementation (Node.js) - includes EventCLIAdapter, HeadlessAdapter |
 | `@golem-forge/browser` | Browser extension (React/Vite) - OPFS sandbox, React components |
 
 ## Current Implementation Status
 
-> **Important for implementers**: This section documents what already exists. The `UIAdapter` interface is frozen during Ink integration. The `CLIAdapter` is the reference implementation but will be superseded by `InkAdapter`.
+> **Important for implementers**: This section documents what already exists. The event-driven UI architecture is now the standard. `EventCLIAdapter` and `HeadlessAdapter` are the current implementations; `InkAdapter` will be added.
 
-### Interfaces (Frozen for Ink Integration)
+### Core UI Infrastructure (Stable)
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| `packages/cli/src/ui/adapter.ts` | 🔒 Frozen | `UIAdapter` interface - frozen during Ink integration |
-| `packages/cli/src/ui/types.ts` | 🔒 Frozen | Types used by UIAdapter |
+| `packages/core/src/ui-event-bus.ts` | ✅ Stable | `UIEventBus` - type-safe pub/sub |
+| `packages/core/src/runtime-ui.ts` | ✅ Stable | `RuntimeUI` - convenience wrapper |
+| `packages/ui-react/src/state/` | ✅ Stable | Pure state functions |
+| `packages/ui-react/src/contexts/` | ✅ Stable | React contexts with event bus integration |
+| `packages/cli/src/ui/types.ts` | ✅ Stable | Types used by UI implementations |
 | `packages/cli/src/tools/filesystem.ts` | ✅ Stable | `ExecutionMode`, `ManualExecutionConfig` |
 
 ### Implemented Logic (Reuse)
@@ -34,23 +38,20 @@ Plan for adopting [Ink](https://github.com/vadimdemedes/ink) as the terminal UI 
 | `packages/cli/src/ui/result-utils.ts` | `toTypedToolResult()` - converts tool results | ✅ Yes - pure logic |
 | `packages/cli/src/ui/command-parser.ts` | `/command` parsing with completion | ✅ Yes - pure logic |
 
-### CLIAdapter Methods → Ink Components
+### Event Bus Events → Ink Components
 
-The `CLIAdapter` (`packages/cli/src/ui/cli-adapter.ts`) implements `UIAdapter` imperatively. Here's how each method should map to Ink:
+The `InkAdapter` will subscribe to events via `UIProvider` from `@golem-forge/ui-react`. Here's how events map to components:
 
-| UIAdapter Method | CLIAdapter Impl | Ink Equivalent |
-|------------------|-----------------|----------------|
-| `displayMessage()` | `console.log` with formatting | `<Message>` component in MessagesContext |
-| `getUserInput()` | `readline.question()` | `<TextInput>` + InputContext |
-| `requestApproval()` | Multi-select with readline | `<ApprovalDialog>` + ApprovalContext |
-| `displayManualTools()` | Table output | `<ManualToolList>` component |
-| `onManualToolRequest()` | Handler registration | ManualToolContext action |
-| `onInterrupt()` | `SIGINT` handler | `useKeypress('escape')` |
-| `showProgress()` | Status line updates | `<Footer>` with WorkerContext |
-| `updateStatus()` | Colored output | `<StatusMessage>` component |
-| `displayDiff()` | `renderDiff()` output | `<DiffView>` component |
-| `displayDiffSummary()` | `renderDiffSummary()` output | `<DiffSummary>` component |
-| `displayToolResult()` | Type-specific rendering | `<ToolResult>` component |
+| Event | Hook | Ink Component |
+|-------|------|---------------|
+| `message` | `useMessages()` | `<Message>` component |
+| `streaming` | `useStreaming()` | `<StreamingMessage>` component |
+| `approvalRequired` | `usePendingApproval()` | `<ApprovalDialog>` component |
+| `workerUpdate` | `useActiveWorker()` | `<Footer>` with worker status |
+| `toolResult` | `useToolResults()` | `<ToolResult>` component |
+| `status` | `useMessages()` | `<StatusMessage>` component |
+| `manualToolsAvailable` | custom | `<ManualToolList>` component |
+| `inputPrompt` | `useUIMode()` | `<TextInput>` component |
 
 ### Manual Tool System (Fully Implemented)
 
@@ -77,33 +78,36 @@ packages/cli/src/ui/cli-adapter.ts      → displayManualTools(), executeManualT
 
 ## Architecture Context
 
-The project uses a monorepo structure where `@golem-forge/core` provides shared types, and each platform has its own package:
+The project uses a monorepo structure with event-driven UI architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     @golem-forge/core                           │
-│   (sandbox types, worker schema, shared errors)                 │
+│   (sandbox types, worker schema, UIEventBus, RuntimeUI)         │
 └─────────────────────────────────────────────────────────────────┘
                               │
-        ┌─────────────────────┴─────────────────────┐
-        ▼                                           ▼
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                   @golem-forge/ui-react                         │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
+│  │  State Modules  │  │  React Contexts │  │   UIProvider    │  │
+│  │  (pure funcs)   │  │  (event bus)    │  │   (combined)    │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+          ┌───────────────────┴───────────────────┐
+          ▼                                       ▼
 ┌───────────────────────────────┐    ┌───────────────────────────────┐
 │       @golem-forge/cli        │    │      @golem-forge/browser     │
 │  ┌─────────────────────────┐  │    │  ┌─────────────────────────┐  │
-│  │    UIAdapter Interface  │  │    │  │    React Components     │  │
-│  └───────────┬─────────────┘  │    │  │    OPFS Sandbox         │  │
-│              │                │    │  │    Worker Manager        │  │
-│  ┌───────────┴─────────────┐  │    │  └─────────────────────────┘  │
-│  │  CLIAdapter (readline)  │  │    └───────────────────────────────┘
-│  │     - or -              │  │
-│  │  InkAdapter (React/Ink) │  │
-│  └─────────────────────────┘  │
-└───────────────────────────────┘
+│  │  EventCLIAdapter        │  │    │  │    React Components     │  │
+│  │  HeadlessAdapter        │  │    │  │    OPFS Sandbox         │  │
+│  │  InkAdapter (planned)   │  │    │  │    (uses UIProvider)    │  │
+│  └─────────────────────────┘  │    │  └─────────────────────────┘  │
+└───────────────────────────────┘    └───────────────────────────────┘
 ```
 
-The `UIAdapter` interface (`packages/cli/src/ui/adapter.ts`) provides the CLI UI contract:
-
-**Key insight**: The `UIAdapter` interface is the contract for CLI implementations. `@golem-forge/browser` uses React components directly. Shared *logic* (not components) can be extracted to `@golem-forge/core` for reuse.
+**Key insight**: The UI system is now event-driven via `UIEventBus`. Both Ink (terminal) and browser UIs can share state management from `@golem-forge/ui-react`.
 
 ## Experiment Results
 
@@ -153,97 +157,140 @@ ThemeProvider              # Semantic colors
 | Worker path in approvals | `ApprovalDialog` shows full delegation chain |
 | Worker status in footer | Shows active/total workers, current task |
 
-## Shared Logic Layer (Proposed)
+## Shared Logic Layer (Implemented)
 
-Extract platform-agnostic logic from contexts for reuse between CLI and browser. The monorepo structure enables clean separation:
+> **Status**: ✅ Complete. State modules and React contexts now live in `@golem-forge/ui-react`.
+
+The shared UI state infrastructure has been extracted into `@golem-forge/ui-react`:
 
 ```
 packages/
-├── core/src/                 # @golem-forge/core - Shared (no React, no Ink)
-│   ├── sandbox-types.ts      # ✅ Already exists
-│   ├── sandbox-errors.ts     # ✅ Already exists
-│   ├── worker-schema.ts      # ✅ Already exists
-│   ├── approval-state.ts     # NEW: Pattern matching, auto-approve, history
-│   ├── worker-state.ts       # NEW: Tree operations, path computation
-│   └── message-state.ts      # NEW: History, streaming buffer
+├── core/src/                 # @golem-forge/core - Events & Types
+│   ├── sandbox-types.ts      # ✅ Sandbox types
+│   ├── sandbox-errors.ts     # ✅ Error types
+│   ├── worker-schema.ts      # ✅ Worker schema
+│   ├── ui-event-bus.ts       # ✅ UIEventBus (pub/sub)
+│   └── runtime-ui.ts         # ✅ RuntimeUI (convenience wrapper)
+│
+├── ui-react/src/             # @golem-forge/ui-react - React State Management
+│   ├── state/                # Pure state functions (no React)
+│   │   ├── approval-state.ts # ✅ Pattern matching, auto-approve
+│   │   ├── worker-state.ts   # ✅ Tree operations, path computation
+│   │   └── message-state.ts  # ✅ History, streaming buffer
+│   ├── contexts/             # React contexts with event bus integration
+│   │   ├── EventBusContext.tsx
+│   │   ├── MessagesContext.tsx
+│   │   ├── ApprovalContext.tsx
+│   │   ├── WorkerContext.tsx
+│   │   └── UIStateContext.tsx
+│   ├── hooks/                # Convenience hooks
+│   │   ├── useMessages.ts
+│   │   ├── useApproval.ts
+│   │   ├── useWorkers.ts
+│   │   └── useUIState.ts
+│   └── providers/
+│       └── UIProvider.tsx    # Combined provider
 │
 ├── cli/src/ui/               # @golem-forge/cli - CLI-specific
-│   ├── ink/                  # Ink implementation
-│   │   ├── contexts/         # React bindings for shared logic
-│   │   ├── components/       # Ink components
-│   │   └── InkAdapter.tsx
-│   └── cli-adapter.ts        # Fallback readline implementation
+│   ├── event-cli-adapter.ts  # ✅ Terminal adapter (readline)
+│   ├── headless-adapter.ts   # ✅ CI/automated adapter
+│   └── ink/                  # Ink implementation (planned)
+│       ├── InkAdapter.tsx    # Uses UIProvider from ui-react
+│       └── components/       # Ink-specific components
 │
 └── browser/src/              # @golem-forge/browser - Browser-specific
-    ├── components/           # React DOM components
-    └── services/             # ✅ Already has WorkerManager, etc.
+    ├── components/           # React DOM components (uses UIProvider)
+    └── services/             # ✅ WorkerManager, BrowserRuntime
 ```
 
-### Example: Shared Approval Logic
+### State Module Usage
+
+State modules are pure functions that can be used with or without React:
 
 ```typescript
-// packages/core/src/approval-state.ts - Platform agnostic
-export interface ApprovalState {
-  sessionApprovals: ApprovalPattern[];
-  alwaysApprovals: ApprovalPattern[];
-  history: ApprovalHistoryEntry[];
-}
+// packages/ui-react/src/state/approval-state.ts
+import { createApprovalState, isAutoApproved, addApproval } from "@golem-forge/ui-react";
 
-export function createApprovalState(): ApprovalState;
-export function isAutoApproved(state: ApprovalState, request: UIApprovalRequest): boolean;
-export function addApproval(state: ApprovalState, request: UIApprovalRequest, result: UIApprovalResult): ApprovalState;
+const state = createApprovalState();
+const approved = isAutoApproved(state, request);
+const newState = addApproval(state, request, result);
 ```
 
-```typescript
-// packages/cli/src/ui/ink/contexts/ApprovalContext.tsx - CLI binding
-import { createApprovalState, isAutoApproved, addApproval } from "@golem-forge/core";
+### React Context Usage
 
-export function ApprovalProvider({ children }) {
+Contexts subscribe to UIEventBus and manage state automatically:
+
+```typescript
+// packages/ui-react/src/contexts/ApprovalContext.tsx
+import { createApprovalState, isAutoApproved, addApproval } from "../state/approval-state.js";
+
+export function ApprovalProvider({ children, bus }) {
   const [state, setState] = useState(createApprovalState);
-  // Uses shared logic, provides React context
+
+  useEffect(() => {
+    const unsub = bus.on('approvalRequired', (event) => {
+      // Handle approval request
+    });
+    return unsub;
+  }, [bus]);
+  // ...
 }
 ```
 
 ### What Gets Shared
 
-| Module | @golem-forge/core (Shared) | @golem-forge/cli (Ink) | @golem-forge/browser |
-|--------|---------------------------|------------------------|---------------------|
-| Approval | Pattern matching, history, auto-approve rules | React Context | React hooks |
-| Workers | Tree ops, path computation, status tracking | React Context | WorkerManager service |
-| Messages | History management, streaming buffer | React Context | Component state |
-| Themes | Token definitions, semantic mappings | Ink colors | CSS variables |
+| Module | @golem-forge/ui-react | @golem-forge/cli (Ink) | @golem-forge/browser |
+|--------|----------------------|------------------------|---------------------|
+| State | Pure functions | Via UIProvider | Via UIProvider |
+| Contexts | All contexts | Imports from ui-react | Imports from ui-react |
+| Hooks | All hooks | Imports from ui-react | Imports from ui-react |
+| Events | Types from core | Subscribes via bus | Subscribes via bus |
 
-## Updated Directory Structure
+## Current Directory Structure
 
 ```
 packages/
 ├── core/                     # @golem-forge/core
 │   └── src/
 │       ├── index.ts          # Package exports
-│       ├── sandbox-types.ts  # ✅ Exists
-│       ├── sandbox-errors.ts # ✅ Exists
-│       ├── worker-schema.ts  # ✅ Exists
-│       ├── approval-state.ts # NEW: Pattern matching, auto-approve
-│       ├── worker-state.ts   # NEW: Tree operations, path computation
-│       └── message-state.ts  # NEW: History, streaming buffer
+│       ├── sandbox-types.ts  # ✅ Sandbox types
+│       ├── sandbox-errors.ts # ✅ Error types
+│       ├── worker-schema.ts  # ✅ Worker schema
+│       ├── ui-event-bus.ts   # ✅ UIEventBus (pub/sub)
+│       └── runtime-ui.ts     # ✅ RuntimeUI wrapper
+│
+├── ui-react/                 # @golem-forge/ui-react (NEW)
+│   └── src/
+│       ├── index.ts          # Package exports
+│       ├── state/            # Pure state functions
+│       │   ├── approval-state.ts
+│       │   ├── worker-state.ts
+│       │   └── message-state.ts
+│       ├── contexts/         # React contexts
+│       │   ├── EventBusContext.tsx
+│       │   ├── MessagesContext.tsx
+│       │   ├── ApprovalContext.tsx
+│       │   ├── WorkerContext.tsx
+│       │   └── UIStateContext.tsx
+│       ├── hooks/            # Convenience hooks
+│       │   ├── useMessages.ts
+│       │   ├── useApproval.ts
+│       │   ├── useWorkers.ts
+│       │   └── useUIState.ts
+│       └── providers/
+│           └── UIProvider.tsx
 │
 ├── cli/                      # @golem-forge/cli
 │   └── src/
 │       ├── ui/
-│       │   ├── adapter.ts        # UIAdapter interface (unchanged)
-│       │   ├── types.ts          # CLI-specific UI types (unchanged)
-│       │   ├── cli-adapter.ts    # Legacy CLI adapter (fallback)
+│       │   ├── types.ts          # CLI-specific UI types
+│       │   ├── event-cli-adapter.ts  # ✅ Terminal adapter
+│       │   ├── headless-adapter.ts   # ✅ CI/automated adapter
 │       │   ├── index.ts          # UI exports
 │       │   │
-│       │   └── ink/              # NEW: Ink implementation
+│       │   └── ink/              # Ink implementation (planned)
 │       │       ├── index.ts
-│       │       ├── InkAdapter.tsx
-│       │       ├── contexts/
-│       │       │   ├── ThemeContext.tsx
-│       │       │   ├── WorkerContext.tsx
-│       │       │   ├── ApprovalContext.tsx
-│       │       │   ├── MessagesContext.tsx
-│       │       │   └── UIStateContext.tsx
+│       │       ├── InkAdapter.tsx    # Uses UIProvider from ui-react
 │       │       ├── hooks/
 │       │       │   ├── useTerminalSize.ts
 │       │       │   └── useKeyHandler.ts
@@ -260,27 +307,30 @@ packages/
 └── browser/                  # @golem-forge/browser
     └── src/
         ├── background.ts     # Service worker entry
-        ├── services/         # ✅ Exists: WorkerManager, BrowserRuntime, etc.
-        ├── storage/          # ✅ Exists: ProjectManager, SettingsManager
-        └── components/       # NEW: React DOM components (when UI is added)
+        ├── services/         # ✅ WorkerManager, BrowserRuntime, etc.
+        ├── storage/          # ✅ ProjectManager, SettingsManager
+        └── components/       # React DOM components (uses UIProvider)
 ```
 
 ## Adoption Strategy (Revised)
 
-### Phase 1: Extract Shared Logic to @golem-forge/core
-1. Add platform-agnostic state management to `packages/core/src/`:
-   - `approval-state.ts` - pattern matching, auto-approve rules
-   - `worker-state.ts` - tree operations, path computation
-   - `message-state.ts` - history management, streaming buffer
-2. Export from `packages/core/src/index.ts`
-3. Unit test shared logic independently
-4. No UI changes yet
+### Phase 1: Extract Shared Logic to @golem-forge/ui-react ✅ COMPLETE
+1. ~~Add platform-agnostic state management~~ → Created `@golem-forge/ui-react`
+   - `approval-state.ts` - pattern matching, auto-approve rules ✅
+   - `worker-state.ts` - tree operations, path computation ✅
+   - `message-state.ts` - history management, streaming buffer ✅
+2. ~~Export from package~~ → All exports in `packages/ui-react/src/index.ts` ✅
+3. ~~Unit test shared logic~~ → 198 tests passing ✅
+4. React contexts subscribe to UIEventBus ✅
 
 ### Phase 2: Integrate Ink into @golem-forge/cli
 1. Add Ink dependencies to `packages/cli/package.json`
-2. Copy prototype to `packages/cli/src/ui/ink/`
-3. Refactor contexts to import shared logic from `@golem-forge/core`
-4. Wire up `InkAdapter` to implement `UIAdapter`
+2. Create `packages/cli/src/ui/ink/` directory
+3. Create `InkAdapter` that:
+   - Wraps app in `UIProvider` from `@golem-forge/ui-react`
+   - Uses contexts/hooks for all state management
+   - Only needs Ink-specific components (terminal rendering)
+4. Wire up `InkAdapter` to implement event-driven UI pattern
 5. Add feature flag for adapter selection in CLI
 
 ### Phase 3: Enhanced Features
@@ -291,23 +341,30 @@ packages/
 
 ### Phase 4: Default & Cleanup
 1. Make Ink the default adapter in `@golem-forge/cli`
-2. Simplify `CLIAdapter` to output-only fallback
+2. EventCLIAdapter becomes fallback for non-TTY environments
 3. Update documentation
 
-## UIAdapter Interface
+## Event-Driven UI Pattern
 
-**Frozen during Ink integration.** The interface defines the contract and will remain stable while we implement `InkAdapter` and `HeadlessAdapter`.
+> **Note**: The project has moved to an event-driven UI architecture. The UIEventBus replaces direct method calls.
 
-Current interface methods map cleanly to context actions:
+Runtime emits events via `UIEventBus`, UI implementations subscribe and react:
 
-| Interface Method | Ink Implementation |
-|-----------------|-------------------|
-| `displayMessage` | `messages.addMessage()` |
-| `getUserInput` | `ui.requestInput()` |
-| `requestApproval` | `approval.requestApproval()` |
-| `showProgress` | `workers.updateFromProgress()` |
-| `updateStatus` | `messages.addStatus()` |
-| `displayToolResult` | `messages.addToolResult()` |
+| Event | Context Handler | Hook |
+|-------|-----------------|------|
+| `message` | `MessagesContext` subscribes | `useMessages()` |
+| `streaming` | `MessagesContext` subscribes | `useStreaming()` |
+| `approvalRequired` | `ApprovalContext` subscribes | `usePendingApproval()` |
+| `workerUpdate` | `WorkerContext` subscribes | `useActiveWorker()` |
+| `toolResult` | `MessagesContext` subscribes | `useToolResults()` |
+| `status` | `MessagesContext` subscribes | `useMessages()` |
+
+### InkAdapter Strategy
+
+The `InkAdapter` will:
+1. Wrap the Ink app in `UIProvider` from `@golem-forge/ui-react`
+2. Use hooks to access state (no custom state management needed)
+3. Focus only on Ink-specific rendering components
 
 ## Dependencies
 
@@ -346,7 +403,7 @@ Dev dependencies:
 2. **Terminal capability issues**: Very old terminals or minimal environments (e.g., some Docker containers) may lack required ANSI escape sequence support.
 3. **Memory constraints**: Extremely limited environments might fail to load React.
 
-**Fallback strategy**: Out of scope. A `HeadlessAdapter` for non-TTY/CI environments will be addressed in a separate plan.
+**Fallback strategy**: ✅ Implemented. `HeadlessAdapter` handles non-TTY/CI environments with auto-approve and auto-manual tool options.
 
 ## Open Questions
 
@@ -370,10 +427,15 @@ Dev dependencies:
 
 | Component | Location |
 |-----------|----------|
-| UIAdapter interface | `packages/cli/src/ui/adapter.ts` |
-| CLIAdapter | `packages/cli/src/ui/cli-adapter.ts` |
+| UIEventBus | `packages/core/src/ui-event-bus.ts` |
+| RuntimeUI | `packages/core/src/runtime-ui.ts` |
+| State modules | `packages/ui-react/src/state/` |
+| React contexts | `packages/ui-react/src/contexts/` |
+| Convenience hooks | `packages/ui-react/src/hooks/` |
+| UIProvider | `packages/ui-react/src/providers/UIProvider.tsx` |
+| EventCLIAdapter | `packages/cli/src/ui/event-cli-adapter.ts` |
+| HeadlessAdapter | `packages/cli/src/ui/headless-adapter.ts` |
 | UI types | `packages/cli/src/ui/types.ts` |
-| Core package | `packages/core/src/` |
 | Browser extension | `packages/browser/src/` |
 
 ### External
