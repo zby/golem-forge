@@ -8,12 +8,14 @@
  * @module @golem-forge/ui-react/state/message-state
  */
 
-import type {
-  Message,
-  MessageRole,
-  StatusType,
-  ToolResultStatus,
-  ToolResultValue,
+import {
+  type Message,
+  type MessageRole,
+  type StatusType,
+  type ToolResultStatus,
+  type ToolResultValue,
+  // Import validation utilities from core
+  isWellKnownKind,
 } from '@golem-forge/core';
 
 // Re-export Message for consumers
@@ -135,18 +137,6 @@ export function addToolResult(
     ...state,
     messages: [...state.messages, uiMessage],
   };
-}
-
-/**
- * Well-known result kinds for type checking.
- */
-const WELL_KNOWN_KINDS = ['text', 'diff', 'file_content', 'file_list', 'json'] as const;
-
-/**
- * Check if a kind is a well-known kind.
- */
-function isWellKnownKind(kind: string): kind is typeof WELL_KNOWN_KINDS[number] {
-  return (WELL_KNOWN_KINDS as readonly string[]).includes(kind);
 }
 
 /**

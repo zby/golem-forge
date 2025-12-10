@@ -32,6 +32,12 @@ export {
 
 export {
   ToolsetRegistry,
+  // Tool filtering utilities
+  getLLMTools,
+  getManualTools,
+  isLLMTool,
+  isManualTool,
+  // Filesystem toolset
   FilesystemToolset,
   createFilesystemTools,
   createReadFileTool,
@@ -277,6 +283,14 @@ export { parseWorkerString } from './worker-parser.js';
 // ============================================================================
 
 // UI Events - types for event-driven communication
+export {
+  // Tool result validation utilities
+  WELL_KNOWN_KINDS,
+  isValidKind,
+  isWellKnownKind,
+  isToolResultValue,
+} from './ui-events.js';
+
 export type {
   // Base types
   MessageRole,

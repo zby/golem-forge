@@ -238,6 +238,66 @@ export interface JsonResultValue {
 export type WellKnownKind = 'text' | 'diff' | 'file_content' | 'file_list' | 'json';
 
 /**
+ * Array of well-known kinds for runtime validation.
+ */
+export const WELL_KNOWN_KINDS: readonly WellKnownKind[] = ['text', 'diff', 'file_content', 'file_list', 'json'];
+
+/**
+ * Pattern for valid custom kind identifiers.
+ * Allows: lowercase letters, numbers, underscores, and dots for namespacing.
+ * Must start with a lowercase letter.
+ * Examples: 'git_status', 'git.status', 'mycompany.custom_type'
+ */
+const KIND_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
+
+/**
+ * Check if a kind string is valid.
+ * Valid kinds are either well-known or match the custom kind pattern.
+ *
+ * @param kind - Kind string to validate
+ * @returns True if the kind is valid
+ */
+export function isValidKind(kind: string): boolean {
+  // Well-known kinds are always valid
+  if ((WELL_KNOWN_KINDS as readonly string[]).includes(kind)) {
+    return true;
+  }
+  // Custom kinds must match the pattern
+  return KIND_PATTERN.test(kind);
+}
+
+/**
+ * Check if a kind is a well-known kind.
+ *
+ * @param kind - Kind string to check
+ * @returns True if the kind is well-known
+ */
+export function isWellKnownKind(kind: string): kind is WellKnownKind {
+  return (WELL_KNOWN_KINDS as readonly string[]).includes(kind);
+}
+
+/**
+ * Check if a value is a structured ToolResultValue.
+ * Accepts both well-known kinds and valid custom kinds.
+ *
+ * @param value - Value to check
+ * @returns True if value has a valid `kind` discriminator
+ */
+export function isToolResultValue(value: unknown): value is ToolResultValue {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const obj = value as Record<string, unknown>;
+
+  if (typeof obj.kind !== 'string') {
+    return false;
+  }
+
+  return isValidKind(obj.kind);
+}
+
+/**
  * Custom/unknown result type.
  * Used for tool-defined result types not in the well-known set.
  * UIs should use display hints to render these gracefully.

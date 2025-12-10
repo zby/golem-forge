@@ -3,11 +3,25 @@
  *
  * Extracts ManualToolInfo from NamedTool definitions.
  * Used to build the manual tool list for UI display.
+ *
+ * Note: Core tool filtering functions (getLLMTools, getManualTools, isLLMTool, isManualTool)
+ * are re-exported from @golem-forge/core. This file focuses on CLI-specific UI concerns
+ * like extractManualToolInfo which converts tools to ManualToolInfo for UI display.
  */
 
-import type { NamedTool } from "@golem-forge/core";
+import {
+  type NamedTool,
+  // Re-export core tool filtering functions
+  getLLMTools as coreLLMTools,
+  isLLMTool,
+  isManualTool,
+} from "@golem-forge/core";
 import type { ManualToolInfo, ManualToolField } from "./types.js";
 import { deriveFieldsFromSchema, isZodObjectSchema } from "./schema-to-fields.js";
+
+// Re-export core filtering functions for backwards compatibility
+export { isLLMTool, isManualTool };
+export const getLLMTools = coreLLMTools;
 
 /**
  * Extract ManualToolInfo from a NamedTool.
@@ -39,10 +53,11 @@ export function extractManualToolInfo(tool: NamedTool): ManualToolInfo | null {
 }
 
 /**
- * Filter tools to get only manual-invokable ones.
+ * Get ManualToolInfo for all manually-invokable tools.
+ * This is the CLI-specific version that returns ManualToolInfo[] for UI display.
  *
  * @param tools - Record of tool name to NamedTool
- * @returns Array of ManualToolInfo
+ * @returns Array of ManualToolInfo for UI rendering
  */
 export function getManualTools(tools: Record<string, NamedTool>): ManualToolInfo[] {
   const manualTools: ManualToolInfo[] = [];
@@ -55,50 +70,4 @@ export function getManualTools(tools: Record<string, NamedTool>): ManualToolInfo
   }
 
   return manualTools;
-}
-
-/**
- * Filter tools to get only LLM-invokable ones.
- * These are tools with mode='llm' or mode='both'.
- *
- * @param tools - Record of tool name to NamedTool
- * @returns Record of LLM-invokable tools
- */
-export function getLLMTools(tools: Record<string, NamedTool>): Record<string, NamedTool> {
-  const llmTools: Record<string, NamedTool> = {};
-
-  for (const [name, tool] of Object.entries(tools)) {
-    const mode = tool.manualExecution?.mode;
-
-    // Include tool if:
-    // - No manual execution config (default is LLM)
-    // - Mode is 'llm' or 'both'
-    if (!mode || mode === "llm" || mode === "both") {
-      llmTools[name] = tool;
-    }
-  }
-
-  return llmTools;
-}
-
-/**
- * Check if a tool can be manually invoked.
- *
- * @param tool - The tool to check
- * @returns true if tool has mode='manual' or mode='both'
- */
-export function isManualTool(tool: NamedTool): boolean {
-  const mode = tool.manualExecution?.mode;
-  return mode === "manual" || mode === "both";
-}
-
-/**
- * Check if a tool can be LLM-invoked.
- *
- * @param tool - The tool to check
- * @returns true if tool has mode='llm' or mode='both' or no config (default)
- */
-export function isLLMTool(tool: NamedTool): boolean {
-  const mode = tool.manualExecution?.mode;
-  return !mode || mode === "llm" || mode === "both";
 }
