@@ -10,7 +10,6 @@ import type { Tool } from "@golem-forge/core";
 import type { WorkerDefinition } from "../worker/schema.js";
 import { ApprovalController } from "../approval/index.js";
 import {
-  FilesystemToolset,
   createCustomToolset,
   CustomToolsetConfigSchema,
   ToolsetRegistry,
@@ -167,18 +166,6 @@ async function createTools(
 
   for (const [toolsetName, toolsetConfig] of Object.entries(toolsetsConfig)) {
     switch (toolsetName) {
-      case "filesystem": {
-        if (!sandbox) {
-          throw new Error("Filesystem toolset requires a sandbox. Set programRoot or mountSandboxConfig.");
-        }
-
-        const fsToolset = new FilesystemToolset({ sandbox });
-        for (const tool of fsToolset.getTools()) {
-          tools[tool.name] = tool;
-        }
-        break;
-      }
-
       case "workers": {
         // Worker delegation toolset - requires allowed_workers list
         const workersConfig = toolsetConfig as { allowed_workers?: string[] } | undefined;
