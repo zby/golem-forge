@@ -18,11 +18,11 @@ The CLI now uses Core's `WorkerRuntime` (packages/core/src/runtime/worker.ts) vi
 - All callers (CLI, worker delegation) go through this path
 - Policy is enforced regardless of entry point
 
-### 2. Custom tool module resolution ⚠️ PARTIALLY FIXED
+### 2. Custom tool module resolution ✅ FIXED
 
 - Resolution logic in `cli/runtime/factory.ts:239-251` checks `workerFilePath` then falls back to `programRoot`
 - CLI `run.ts` passes `workerFilePath` when calling the factory
-- **Still to verify:** Does `WorkerCallToolset` pass `workerFilePath` for delegated workers?
+- `WorkerCallToolset` (worker-call.ts:263,311) extracts child worker's `filePath` from registry lookup and passes to child runtime
 
 ### 3. Manual-only tools ✅ FIXED
 
@@ -39,7 +39,6 @@ The CLI now uses Core's `WorkerRuntime` (packages/core/src/runtime/worker.ts) vi
 ## Open Questions
 
 1. Should we add integration tests verifying attachment policy enforcement in delegated workers?
-2. Should `workerFilePath` propagation be verified for deeply nested worker delegation?
 
 ## Code Duplication Note
 
