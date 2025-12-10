@@ -260,6 +260,7 @@ async function executeWorkerDelegation(
     }
 
     const childWorker = lookupResult.worker.definition;
+    const childWorkerFilePath = lookupResult.worker.filePath;
 
     // Model compatibility is validated by WorkerRuntime during construction
 
@@ -306,6 +307,8 @@ async function executeWorkerDelegation(
       approvalMode: approvalMode,
       approvalCallback: approvalCallback,
       programRoot: programRoot,
+      // Pass child worker's file path for custom toolset module resolution
+      workerFilePath: childWorkerFilePath,
       sharedApprovalController: approvalController,
       // Pass the restricted sandbox (or undefined for pure functions)
       sharedSandbox: childSandbox,

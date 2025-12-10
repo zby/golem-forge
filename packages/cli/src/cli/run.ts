@@ -479,6 +479,7 @@ async function executeWorker(
     approvalMode: effectiveConfig.approvalMode as ApprovalMode,
     approvalCallback,
     programRoot,
+    workerFilePath,
     mountSandboxConfig,
     runtimeUI,
   };
