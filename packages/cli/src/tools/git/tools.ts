@@ -368,7 +368,8 @@ export function createGitPullTool(options: GitToolOptions): NamedTool {
         for (const file of files) {
           // Write to sandbox path directly (mount-based sandbox has no zones)
           const destPath = destPrefix ? `${destPrefix}/${file.path}` : `/${file.path}`;
-          const newContent = file.content.toString('utf8');
+          // Convert BinaryData to string - use Buffer.from for Node.js compatibility
+          const newContent = Buffer.from(file.content).toString('utf8');
 
           // Check if file exists in sandbox
           let existingContent: string | undefined;

@@ -74,8 +74,9 @@ function generateCommitId(): string {
 
 /**
  * Calculate SHA-256 hash of content.
+ * Accepts BinaryData (Uint8Array) or Buffer.
  */
-function hashContent(content: Buffer): string {
+function hashContent(content: Uint8Array): string {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 
@@ -150,14 +151,16 @@ export class CLIGitBackend implements GitBackend {
     const contents = new Map<string, Buffer>();
 
     for (const file of input.files) {
-      const contentHash = hashContent(file.content);
+      // Convert BinaryData to Buffer for CLI-specific operations
+      const buffer = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content);
+      const contentHash = hashContent(buffer);
       files.push({
         sandboxPath: file.sandboxPath,
         operation: 'create', // TODO: Detect update/delete based on target state
         contentHash,
-        size: file.content.length,
+        size: buffer.length,
       });
-      contents.set(file.sandboxPath, file.content);
+      contents.set(file.sandboxPath, buffer);
     }
 
     const staged: StagedCommitData = {
