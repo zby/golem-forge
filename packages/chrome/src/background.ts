@@ -39,7 +39,7 @@ chrome.runtime.onInstalled.addListener((details) => {
       }
     });
 
-    // Create default program (storage key kept as 'projects' for backwards compatibility)
+    // Create default program (storage key kept as 'projects' for BACKCOMPAT)
     chrome.storage.local.get('projects', (result) => {
       if (!result.projects || result.projects.length === 0) {
         chrome.storage.local.set({
@@ -67,7 +67,7 @@ chrome.runtime.onInstalled.addListener((details) => {
 // Handle messages from popup/sidepanel
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'getState') {
-    // Return current extension state (storage key kept as 'projects' for backwards compatibility)
+    // Return current extension state (storage key kept as 'projects' for BACKCOMPAT)
     chrome.storage.local.get(['projects', 'settings', 'apiKeys'], (result) => {
       sendResponse({
         programs: result.projects || [], // Renamed from projects to programs

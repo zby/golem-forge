@@ -80,7 +80,7 @@ Golem Forge uses a **mount-based sandbox** with Docker-style bind mount semantic
 
 ## Mount-Based Sandbox (Recommended)
 
-The mount-based sandbox uses [Docker bind mount](https://docs.docker.com/engine/storage/bind-mounts/) semantics. This is the recommended approach for new projects.
+The mount-based sandbox uses [Docker bind mount](https://docs.docker.com/engine/storage/bind-mounts/) semantics. This is the recommended approach for new programs.
 
 ### How Mounts Work
 

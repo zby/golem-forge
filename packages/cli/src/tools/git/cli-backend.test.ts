@@ -146,13 +146,13 @@ describe('createCLIGitBackend', () => {
   });
 
   it('accepts program root option', () => {
-    const backend = createCLIGitBackend({ programRoot: '/test/project' });
+    const backend = createCLIGitBackend({ programRoot: '/test/program' });
     expect(backend).toBeInstanceOf(CLIGitBackend);
   });
 
   it('accepts env option for credential inheritance', () => {
     const backend = createCLIGitBackend({
-      programRoot: '/test/project',
+      programRoot: '/test/program',
       env: {
         GIT_AUTHOR_NAME: 'Test Author',
         GIT_AUTHOR_EMAIL: 'test@example.com',

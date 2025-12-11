@@ -7,7 +7,7 @@
  * This allows IsomorphicGitBackend to work with browser OPFS storage.
  *
  * Path handling:
- * - rootPath is the base directory in OPFS (e.g., "projects/my-program")
+ * - rootPath is the base directory in OPFS (e.g., "projects/my-program") // BACKCOMPAT: dir name remains "projects"
  * - All paths passed to fs methods are relative to this root
  * - isomorphic-git passes paths like ".git/config" or "src/file.ts"
  */
@@ -26,7 +26,7 @@ interface StatResult {
 /**
  * Create an IsomorphicFs adapter from OPFS.
  *
- * @param rootPath - The OPFS root path for git operations (e.g., "projects/my-program")
+ * @param rootPath - The OPFS root path for git operations (e.g., "projects/my-program") // BACKCOMPAT: dir name remains "projects"
  * @returns An IsomorphicFs-compatible object
  */
 export async function createOPFSGitAdapter(rootPath: string): Promise<IsomorphicFs> {
@@ -316,7 +316,7 @@ export async function createOPFSGitAdapter(rootPath: string): Promise<Isomorphic
 /**
  * Create an IsomorphicFs adapter for a sandbox's resolved root.
  *
- * @param sandboxRoot - The sandbox's root path (e.g., "/projects/my-program")
+ * @param sandboxRoot - The sandbox's root path (e.g., "/projects/my-program") // BACKCOMPAT: dir name remains "projects"
  * @returns An IsomorphicFs-compatible object
  */
 export async function createSandboxGitAdapter(sandboxRoot: string): Promise<IsomorphicFs> {

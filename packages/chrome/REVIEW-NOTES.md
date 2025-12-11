@@ -35,7 +35,7 @@ Date: 2025-12-08
 ## Not Applicable (Code Refactored)
 
 8. **Worker filtering feedback** - Was about workers being filtered silently
-   - N/A: Code now uses bundled projects, no filtering needed
+   - N/A: Code now uses bundled programs, no filtering needed
    - Status: SKIPPED
 
 ## Low Priority / Not Fixed

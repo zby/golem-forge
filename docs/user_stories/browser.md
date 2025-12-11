@@ -283,7 +283,7 @@ The browser extension is the end-user deployment target, providing:
 
 ### Story B5.1: Multiple Workspaces
 **As** Sam
-**I want to** maintain separate workspaces for different projects
+**I want to** maintain separate workspaces for different programs
 **So that** work stays organized and isolated
 
 **Acceptance Criteria:**

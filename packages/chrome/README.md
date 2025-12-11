@@ -115,7 +115,7 @@ API keys are configured in the extension's settings panel:
 
 ## See Also
 
-- [Main README](../../README.md) - Project overview and concepts
+- [Main README](../../README.md) - Program overview and concepts
 - [Browser Extension Architecture](../../docs/browser-extension-architecture.md) - Detailed architecture
 - [@golem-forge/core](../core/) - Shared types and utilities
 - [@golem-forge/cli](../cli/) - CLI tool

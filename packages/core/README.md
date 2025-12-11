@@ -145,7 +145,7 @@ packages/core/
 
 ## See Also
 
-- [Main README](../../README.md) - Project overview and concepts
+- [Main README](../../README.md) - Program overview and concepts
 - [Architecture Boundary](../../docs/notes/core-vs-platform.md) - Core vs platform rules
 - [@golem-forge/cli](../cli/) - CLI tool and Node.js adapters
 - [@golem-forge/chrome](../chrome/) - Chrome extension and browser adapters

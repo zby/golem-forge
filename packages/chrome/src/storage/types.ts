@@ -173,12 +173,12 @@ export type ExtensionSettings = z.infer<typeof ExtensionSettingsSchema>;
 /**
  * Keys used in chrome.storage.local
  *
- * Note: The underlying storage keys remain 'projects' for backwards compatibility
+ * Note: The underlying storage keys remain 'projects' for BACKCOMPAT
  * with existing chrome.storage data, but the constant is named PROGRAMS to match
  * the Program terminology.
  */
 export const STORAGE_KEYS = {
-  PROGRAMS: 'projects', // Storage key kept as 'projects' for backwards compatibility
+  PROGRAMS: 'projects', // BACKCOMPAT: persisted key remains 'projects'
   WORKER_SOURCES: 'workerSources',
   API_KEYS: 'apiKeys',
   SETTINGS: 'settings',

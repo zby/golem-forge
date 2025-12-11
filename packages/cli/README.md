@@ -117,6 +117,6 @@ npm run test:live
 
 ## See Also
 
-- [Main README](../../README.md) - Project overview and concepts
+- [Main README](../../README.md) - Program overview and concepts
 - [@golem-forge/core](../core/) - Shared types and utilities
 - [@golem-forge/chrome](../chrome/) - Chrome extension

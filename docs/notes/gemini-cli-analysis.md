@@ -94,7 +94,7 @@ The MessageBus consults policies before confirmations:
 - Session caching with `ApprovalMemory`
 - No file-based policy loading
 
-**Opportunity**: We could adopt their TOML-based policy system for project-specific approval rules (`.golem-forge/policies/`).
+**Opportunity**: We could adopt their TOML-based policy system for program-specific approval rules (`.golem-forge/policies/`).
 
 ---
 

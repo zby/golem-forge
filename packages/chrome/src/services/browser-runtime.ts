@@ -468,7 +468,7 @@ export class BrowserWorkerRuntime {
     if (!this.sandbox && this.options.programId) {
       log('Creating sandbox for program:', this.options.programId);
       this.sandbox = await createOPFSSandbox({
-        root: `/projects/${this.options.programId}`, // Path kept as 'projects' for backwards compatibility
+        root: `/projects/${this.options.programId}`, // BACKCOMPAT: OPFS dir name remains '/projects'
       });
 
       // Apply worker sandbox restrictions

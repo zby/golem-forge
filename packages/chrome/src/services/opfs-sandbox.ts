@@ -467,13 +467,13 @@ export class OPFSSandbox implements MountSandbox {
  * @example
  * // Program sandbox
  * const sandbox = await createOPFSSandbox({
- *   root: '/projects/my-program'
+ *   root: '/projects/my-program' // BACKCOMPAT: OPFS dir name remains '/projects'
  * });
  *
  * @example
  * // Read-only access
  * const sandbox = await createOPFSSandbox({
- *   root: '/projects/my-program',
+ *   root: '/projects/my-program', // BACKCOMPAT: OPFS dir name remains '/projects'
  *   readonly: true
  * });
  */
@@ -532,7 +532,7 @@ export async function createProgramSandbox(
   readonly = false
 ): Promise<OPFSSandbox> {
   return createOPFSSandbox({
-    root: `/projects/${programId}`, // Path kept as 'projects' for backwards compatibility
+    root: `/projects/${programId}`, // BACKCOMPAT: OPFS dir name remains '/projects'
     readonly,
   });
 }
@@ -575,7 +575,7 @@ export async function cleanupProgramSandbox(programId: string): Promise<void> {
   const root = await navigator.storage.getDirectory();
 
   try {
-    // Path kept as 'projects' for backwards compatibility
+    // BACKCOMPAT: OPFS dir name remains '/projects'
     const programs = await root.getDirectoryHandle('projects');
     await programs.removeEntry(programId, { recursive: true });
   } catch {

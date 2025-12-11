@@ -274,7 +274,7 @@ interface WorkerSource {
 
 ```
 Extension Storage (chrome.storage.local):
-├── projects/
+├── programs/
 │   ├── {program-id}/
 │   │   └── config.json
 │   └── ...
@@ -324,7 +324,7 @@ OPFS (file content):
 
 1. **Worker marketplace**: Browse and install community workers
 2. **Program templates**: Pre-configured program + worker combinations
-3. **Team sharing**: Share projects via GitHub organization
+3. **Team sharing**: Share programs via GitHub organization
 4. **Worker versioning**: Pin to specific worker versions
 5. **Sync indicators**: Show when workers need updating
 6. **Import/export**: Backup program configurations
