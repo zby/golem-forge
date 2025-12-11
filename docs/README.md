@@ -75,7 +75,7 @@ The CLI is the **proving ground** - we validate the core abstractions (sandbox, 
 
 ### Use Cases
 - **[Pitch Deck Analyzer](./use-cases/pitchdeck-analyzer.md)** - First practical tool: process pitch decks from Hey email
-- **[Browser Project Management](./use-cases/browser-project-management.md)** - Projects, workers, and GitHub integration in the browser extension
+- **[Browser Program Management](./use-cases/browser-project-management.md)** - Programs, workers, and GitHub integration in the browser extension
 
 ### Architecture
 - **[Sandbox Design](./sandbox-design.md)** - Unified sandbox for CLI and browser. Core security model.

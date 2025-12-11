@@ -5,7 +5,7 @@ Example workers demonstrating golem-forge features.
 ## Quick Start
 
 ```bash
-# Build the project and link CLI
+# Build the repo and link CLI
 npm run build
 npm link
 
@@ -72,14 +72,14 @@ Analyze codebases using filesystem tools to explore and read files.
 
 ```bash
 # Put code in codebase/, then:
-golem-forge code_analyzer "Analyze the project structure"
+golem-forge code_analyzer "Analyze the codebase structure"
 ```
 
 [View code_analyzer README](./code_analyzer/README.md)
 
 ### 6. Whiteboard Planner (Image Analysis + Delegation)
 
-Convert whiteboard photos into structured project plans using worker delegation.
+Convert whiteboard photos into structured plans using worker delegation.
 
 ```bash
 # Put whiteboard images in input/, then:

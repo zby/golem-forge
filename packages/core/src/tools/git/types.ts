@@ -37,7 +37,7 @@ export interface GitHubTarget {
  */
 export interface LocalTarget {
   type: 'local';
-  /** Path to the git repository (can be relative to project root or absolute) */
+  /** Path to the git repository (can be relative to program root or absolute) */
   path: string;
   /** Branch name. Defaults to current branch. */
   branch?: string;

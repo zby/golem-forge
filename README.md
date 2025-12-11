@@ -50,7 +50,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."  # or OPENAI_API_KEY
 # Set default model (optional - can also use --model flag)
 export GOLEM_FORGE_MODEL="anthropic:claude-haiku-4-5"
 
-# Run a project
+# Run a program
 npx golem-forge ./examples/greeter "Tell me a joke"
 
 # Or specify model explicitly
@@ -166,7 +166,7 @@ Models are configured with a simple priority system:
 export GOLEM_FORGE_MODEL="anthropic:claude-haiku-4-5"
 
 # Override per-run
-npx golem-forge ./project "input" --model openai:gpt-4o
+npx golem-forge ./my-program "input" --model openai:gpt-4o
 ```
 
 Workers can constrain which models they support using `compatible_models`:
@@ -197,7 +197,7 @@ Create a `golem-forge.config.yaml` in your program directory:
 ```yaml
 # golem-forge.config.yaml
 
-# Default model for this project (overridden by GOLEM_FORGE_MODEL or --model)
+# Default model for this program (overridden by GOLEM_FORGE_MODEL or --model)
 model: anthropic:claude-haiku-4-5
 
 # Sandbox configuration (Docker-style mount at /)

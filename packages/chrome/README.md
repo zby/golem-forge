@@ -12,7 +12,7 @@ The browser extension brings golem-forge workflows to web browsers. It uses OPFS
 - OPFS-based file sandbox (no server required)
 - Side panel UI for interaction
 - Site triggers for automatic worker activation
-- Project management with GitHub sync (planned)
+- Program management with GitHub sync (planned)
 
 ## Development
 
@@ -61,7 +61,7 @@ packages/chrome/
 │   │   ├── ai-service.ts       # LLM API integration
 │   │   ├── browser-runtime.ts  # Worker execution
 │   │   ├── opfs-sandbox.ts     # OPFS file operations
-│   │   ├── project-manager.ts  # Project management
+│   │   ├── program-manager.ts  # Program management
 │   │   └── worker-manager.ts   # Worker loading
 │   ├── storage/           # Chrome storage utilities
 │   ├── ui/                # UI utilities
@@ -86,7 +86,7 @@ packages/chrome/
 │              ┌────────┴────────┐                        │
 │              │   Core Engine   │                        │
 │              │                 │                        │
-│              │ ProjectManager  │                        │
+│              │ ProgramManager  │                        │
 │              │ WorkerManager   │                        │
 │              │ BrowserRuntime  │                        │
 │              │ OPFSSandbox     │                        │

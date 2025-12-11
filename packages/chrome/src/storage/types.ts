@@ -61,7 +61,7 @@ export const WorkerRefSchema = z.object({
   sourceId: z.string(),
   /** Worker name (filename without .worker extension) */
   name: z.string(),
-  /** Whether this worker is enabled for the project */
+  /** Whether this worker is enabled for the program */
   enabled: z.boolean().default(true),
 });
 

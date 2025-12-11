@@ -105,13 +105,13 @@ golem run analyzer --deny-all report.pdf
 
 ---
 
-### Story CLI1.4: Project Configuration
+### Story CLI1.4: Program Configuration
 **As** Sam
-**I want to** configure Golem Forge per project
+**I want to** configure Golem Forge per program
 **So that** settings are consistent and version-controlled
 
 **Acceptance Criteria:**
-- [ ] `.golem/config.yaml` for project settings
+- [ ] `.golem/config.yaml` for program settings
 - [ ] Default worker search paths
 - [ ] Default approval mode
 - [ ] Git target configuration
@@ -167,7 +167,7 @@ Result:
 ### Story CLI2.2: Push to Different Local Repo
 **As** Sam
 **I want to** push to a different local repository
-**So that** output goes to a separate project
+**So that** output goes to a separate program
 
 **Acceptance Criteria:**
 - [ ] Can specify absolute or relative path
@@ -228,7 +228,7 @@ git_push({
 ### Story CLI2.4: Pull from Local Git
 **As** Sam
 **I want to** pull files from a local repo into sandbox
-**So that** workers can process existing project files
+**So that** workers can process existing codebase files
 
 **Acceptance Criteria:**
 - [ ] `git_pull` copies files to sandbox workspace
@@ -356,7 +356,7 @@ golem run analyzer --sandbox=memory report.pdf
 ### Story CLI4.3: Direct Mode (Dangerous)
 **As** Sam
 **I want to** give workers direct filesystem access
-**So that** I can work with existing project structure
+**So that** I can work with existing codebase structure
 
 **Acceptance Criteria:**
 - [ ] `--sandbox=direct:./path` maps to real directory
@@ -447,7 +447,7 @@ golem run analyzer --dry-run
 - [ ] GitHub push works with `gh` auth
 - [ ] Diff review shows correct changes
 - [ ] In-memory sandbox prevents filesystem access
-- [ ] Project configuration loads correctly
+- [ ] Program configuration loads correctly
 
 ### Integration Validation
 - [ ] Can run worker, stage, review diff, push - full flow

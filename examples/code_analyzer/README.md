@@ -9,7 +9,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export GOLEM_FORGE_MODEL="anthropic:claude-haiku-4-5"
 
 # Put code to analyze in the codebase/ directory, then:
-golem-forge code_analyzer "Analyze the project structure"
+golem-forge code_analyzer "Analyze the codebase structure"
 ```
 
 ## More Examples
@@ -21,7 +21,7 @@ golem-forge code_analyzer "Find configuration files and explain their settings"
 
 ## Features
 
-- Explore project structure with glob patterns
+- Explore codebase structure with glob patterns
 - Read and analyze source files
 - Generate detailed analysis reports
 - Count files, find patterns, identify entry points

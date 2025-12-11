@@ -1,3 +1,3 @@
-# Project config for code_analyzer example
+# Program config for code_analyzer example
 sandbox:
   root: "."

@@ -1,4 +1,4 @@
-# Use Case: Browser Extension Project & Worker Management
+# Use Case: Browser Extension Program & Worker Management
 
 **Priority**: High (core extension functionality)
 **Status**: Design
@@ -6,11 +6,11 @@
 ## Conceptual Model
 
 ```
-Program (Project)          = One GitHub repository for output
+Program                   = One GitHub repository for output
 Function (Worker)          = One task definition (analyze deck, summarize doc, etc.)
 
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         Project = Program                           │
+│                         Program                                     │
 │                                                                     │
 │  GitHub Repo: github.com/user/pitchdecks                            │
 │                                                                     │
@@ -24,21 +24,21 @@ Function (Worker)          = One task definition (analyze deck, summarize doc, e
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key constraint**: One project = one output repository. Workers within a project all write to the same repo.
+**Key constraint**: One program = one output repository. Workers within a program all write to the same repo.
 
 ## User Stories
 
-### US-PM-1: Create Project with GitHub Connection
+### US-PM-1: Create Program with GitHub Connection
 
 **As** a browser extension user
-**I want to** create a new project linked to a GitHub repository
+**I want to** create a new program linked to a GitHub repository
 **So that** all my work is automatically saved and versioned
 
 **Acceptance Criteria**:
 - [ ] Can authenticate with GitHub (OAuth flow)
 - [ ] Can select existing repository or create new one
 - [ ] Can specify branch (default: main)
-- [ ] Project configuration stored in extension settings
+- [ ] Program configuration stored in extension settings
 - [ ] Token stored securely (extension secure storage, not localStorage)
 
 ### US-PM-2: Use Bundled Workers
@@ -49,7 +49,7 @@ Function (Worker)          = One task definition (analyze deck, summarize doc, e
 
 **Acceptance Criteria**:
 - [ ] Extension ships with curated set of useful workers
-- [ ] Bundled workers available in all projects
+- [ ] Bundled workers available in all programs
 - [ ] No GitHub connection required for bundled workers
 - [ ] Bundled workers cannot be modified (read-only)
 
@@ -85,17 +85,17 @@ my-golem-workers/           # User's worker repo
     └── reviewer.worker
 ```
 
-### US-PM-4: Assign Workers to Project
+### US-PM-4: Assign Workers to Program
 
-**As** a user setting up a project
-**I want to** choose which workers are available in this project
+**As** a user setting up a program
+**I want to** choose which workers are available in this program
 **So that** I see only relevant options when working
 
 **Acceptance Criteria**:
-- [ ] Project configuration includes list of enabled workers
+- [ ] Program configuration includes list of enabled workers
 - [ ] Can select from bundled + imported workers
-- [ ] UI shows only enabled workers when project is active
-- [ ] Can modify worker selection after project creation
+- [ ] UI shows only enabled workers when program is active
+- [ ] Can modify worker selection after program creation
 
 ### US-PM-5: Configure Site Triggers
 
@@ -105,9 +105,9 @@ my-golem-workers/           # User's worker repo
 
 **Acceptance Criteria**:
 - [ ] Can define URL patterns (glob-style: `https://hey.com/*`)
-- [ ] Pattern activates specific project/worker combination
+- [ ] Pattern activates specific program/worker combination
 - [ ] Content script injects UI elements on matching pages
-- [ ] Multiple triggers per project allowed
+- [ ] Multiple triggers per program allowed
 - [ ] Can enable/disable triggers without deleting
 
 **Example triggers**:
@@ -134,7 +134,7 @@ triggers:
 │                                                                     │
 │  1. [Connect GitHub]     ← OAuth authentication                     │
 │                                                                     │
-│  2. [Create Project]     ← Link to output repository                │
+│  2. [Create Program]     ← Link to output repository                │
 │                                                                     │
 │  3. [Choose Workers]     ← Select from bundled + your repos         │
 │                                                                     │
@@ -146,7 +146,7 @@ triggers:
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-### Project Creation Flow
+### Program Creation Flow
 
 ```
 Step 1: GitHub Repository
@@ -207,15 +207,15 @@ Step 2: Select Workers
 
 ## Data Model
 
-### Project Configuration
+### Program Configuration
 
 ```typescript
-interface Project {
+interface Program {
   id: string;
   name: string;
   createdAt: Date;
 
-  // Output destination (one repo per project)
+  // Output destination (one repo per program)
   github: {
     owner: string;
     repo: string;
@@ -275,7 +275,7 @@ interface WorkerSource {
 ```
 Extension Storage (chrome.storage.local):
 ├── projects/
-│   ├── {project-id}/
+│   ├── {program-id}/
 │   │   └── config.json
 │   └── ...
 ├── worker-sources/
@@ -288,7 +288,7 @@ Extension Secure Storage (for tokens):
 └── github-token
 
 OPFS (file content):
-/workspace/{project-id}/
+/workspace/{program-id}/
 ├── cache/           # Downloaded attachments
 └── output/          # Staged files before push
 
@@ -306,7 +306,7 @@ OPFS (file content):
 - **GitHub tokens**: Stored in extension secure storage, never in localStorage
 - **Worker sources**: Only fetch from authenticated GitHub repos
 - **Bundled workers**: Signed/verified, cannot be modified
-- **Project isolation**: Each project's OPFS workspace is isolated
+- **Program isolation**: Each program's OPFS workspace is isolated
 - **Trust levels**: User-initiated actions get `session` trust, auto-triggers need explicit approval
 
 ## Implementation Dependencies
@@ -323,15 +323,15 @@ OPFS (file content):
 ## Future Enhancements
 
 1. **Worker marketplace**: Browse and install community workers
-2. **Project templates**: Pre-configured project + worker combinations
+2. **Program templates**: Pre-configured program + worker combinations
 3. **Team sharing**: Share projects via GitHub organization
 4. **Worker versioning**: Pin to specific worker versions
 5. **Sync indicators**: Show when workers need updating
-6. **Import/export**: Backup project configurations
+6. **Import/export**: Backup program configurations
 
 ## Open Questions
 
-1. Should projects be able to use multiple output repos? (Current: No, one repo per project)
+1. Should programs be able to use multiple output repos? (Current: No, one repo per program)
 2. How to handle worker name conflicts between sources?
 3. Should we support worker dependencies (one worker calling another)?
 4. Offline mode: What works without GitHub connection?

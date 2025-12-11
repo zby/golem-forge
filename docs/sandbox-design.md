@@ -87,14 +87,14 @@ The mount-based sandbox uses [Docker bind mount](https://docs.docker.com/engine/
 Workers see a virtual filesystem rooted at `/` that maps to a real directory:
 
 ```typescript
-// Mount the project at root
+// Mount the program at root
 const sandbox = createMountSandbox({
-  root: "/home/user/project"
+  root: "/home/user/program"
 });
 
 // Worker paths map directly
-// /src/app.ts → /home/user/project/src/app.ts
-// /README.md → /home/user/project/README.md
+// /src/app.ts → /home/user/program/src/app.ts
+// /README.md → /home/user/program/README.md
 ```
 
 The LLM uses simple paths without zone prefixes:
@@ -138,12 +138,12 @@ interface Mount {
 
 ### Examples
 
-**Simple project access:**
+**Simple program access:**
 ```typescript
 const runtime = await createWorkerRuntime({
   worker,
   mountSandboxConfig: {
-    root: "/home/user/my-project"
+    root: "/home/user/my-program"
   }
 });
 ```
@@ -153,18 +153,18 @@ const runtime = await createWorkerRuntime({
 const runtime = await createWorkerRuntime({
   worker,
   mountSandboxConfig: {
-    root: "/home/user/my-project",
+    root: "/home/user/my-program",
     readonly: true
   }
 });
 ```
 
-**Project with shared cache:**
+**Program with shared cache:**
 ```typescript
 const runtime = await createWorkerRuntime({
   worker,
   mountSandboxConfig: {
-    root: "/home/user/my-project",
+    root: "/home/user/my-program",
     mounts: [
       { source: "/home/user/.npm", target: "/cache", readonly: true }
     ]
@@ -177,8 +177,8 @@ const runtime = await createWorkerRuntime({
 When spawning sub-workers, access can only be restricted—never expanded:
 
 ```typescript
-// Main worker has full access to /home/user/project
-mainWorker.sandbox.root = "/home/user/project";
+// Main worker has full access to /home/user/program
+mainWorker.sandbox.root = "/home/user/program";
 
 // Sub-worker restricted to /src subtree, read-only
 callWorker({
@@ -489,14 +489,14 @@ toolsets:
 ```typescript
 import { createMountSandbox } from './sandbox/mount-sandbox.js';
 
-// Simple project access
+// Simple program access
 const sandbox = createMountSandbox({
-  root: '/home/user/project'
+  root: '/home/user/program'
 });
 
 // With additional mounts
 const sandbox = createMountSandbox({
-  root: '/home/user/project',
+  root: '/home/user/program',
   readonly: false,
   mounts: [
     { source: '/home/user/.cache', target: '/cache', readonly: true }

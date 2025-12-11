@@ -9,7 +9,7 @@
 - [x] Git toolset works in CLI with GitHub targets
 
 ## Goal
-Enable GitHub synchronization for browser extension - OAuth auth, clone/pull/push repos, and staging UI. User can link a project to a GitHub repo and sync changes.
+Enable GitHub synchronization for browser extension - OAuth auth, clone/pull/push repos, and staging UI. User can link a program to a GitHub repo and sync changes.
 
 ## Tasks
 
@@ -31,14 +31,14 @@ Enable GitHub synchronization for browser extension - OAuth auth, clone/pull/pus
 - [ ] Initialize git repo in OPFS on first clone
 - [ ] Handle auth errors gracefully (prompt re-auth)
 
-### 3. Project-Repository Linking
+### 3. Program-Repository Linking
 - [ ] Extend `Program` type with `githubRepo?: { owner: string, repo: string, branch: string }`
 - [ ] UI for linking: enter `owner/repo` or paste GitHub URL
 - [ ] Validate repo exists and user has access (via Octokit or isomorphic-git)
 - [ ] Store link in `chrome.storage.local`
 
 ### 4. Clone/Pull Flow
-- [ ] "Clone" button in project settings (for new link)
+- [ ] "Clone" button in program settings (for new link)
 - [ ] "Pull" button/command to fetch latest
 - [ ] Show progress indicator during operations
 - [ ] Handle conflicts: show conflict markers, let user resolve
@@ -53,7 +53,7 @@ Enable GitHub synchronization for browser extension - OAuth auth, clone/pull/pus
 
 ### 6. UI Components
 - [ ] GitHub connection panel in Settings tab
-- [ ] Repository link panel in Project view
+- [ ] Repository link panel in Program view
 - [ ] Staged commits list with diff viewer
 - [ ] Push/Discard buttons
 - [ ] Sync status indicator (in sync / ahead / behind / conflict)
@@ -110,7 +110,7 @@ These test the full extension in a real browser but use a **test GitHub account*
 - Load extension
 - Navigate to settings
 - GitHub OAuth flow (with test account or mocked)
-- Link project to test repo
+- Link program to test repo
 - Clone repo
 - Make changes
 - Stage and push
@@ -154,9 +154,9 @@ These test the full extension in a real browser but use a **test GitHub account*
 
 ---
 
-### TEST-2: Link Project to Repository
+### TEST-2: Link Program to Repository
 
-**Purpose:** Verify project-repo linking and validation.
+**Purpose:** Verify program-repo linking and validation.
 
 **Prerequisites:**
 - TEST-1 passed (authenticated)
@@ -164,8 +164,8 @@ These test the full extension in a real browser but use a **test GitHub account*
 
 **Steps:**
 1. Open side panel
-2. Select or create a project
-3. Go to project settings
+2. Select or create a program
+3. Go to program settings
 4. Find "GitHub Repository" section
 5. Enter: `<username>/golem-forge-test`
 6. Click "Link"
@@ -191,7 +191,7 @@ These test the full extension in a real browser but use a **test GitHub account*
 - Test repo has some files (README.md, src/index.ts)
 
 **Steps:**
-1. From project view, click "Clone"
+1. From program view, click "Clone"
 2. Wait for progress indicator
 3. Check file browser / sandbox contents
 
@@ -262,7 +262,7 @@ These test the full extension in a real browser but use a **test GitHub account*
 - Make a change directly on GitHub (edit a file via web UI)
 
 **Steps:**
-1. From project view, click "Pull"
+1. From program view, click "Pull"
 2. Wait for completion
 3. Check file contents
 

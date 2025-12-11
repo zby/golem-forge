@@ -393,17 +393,17 @@ Deliverable: src/cli/index.ts
 Tests: CLI integration tests
 ```
 
-### 3.3 Project Detection
+### 3.3 Program Detection
 **Stories**: 3.4 | **Est. Complexity**: Low
 
 ```
 Scope:
-- Find project root (.llm-do, package.json, etc.)
-- Load project config
+- Find program root (.llm-do, package.json, etc.)
+- Load program config
 - Merge with worker config
 
-Deliverable: src/cli/project.ts
-Tests: Various project structures
+Deliverable: src/cli/program.ts
+Tests: Various program structures
 ```
 
 ---
@@ -699,7 +699,7 @@ Adds:
 
 ### Immediate (Phase 1)
 
-1. **Set up project structure**
+1. **Set up repo structure**
    - TypeScript config
    - Test framework (Vitest)
    - Linting/formatting

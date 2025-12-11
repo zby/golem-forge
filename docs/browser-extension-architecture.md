@@ -6,13 +6,13 @@
 
 ## Overview
 
-This document specifies the architecture for **Golem Forge**, a browser-based LLM worker system. It uses OPFS (Origin Private File System) for local storage and GitHub as the synchronization layer, enabling a "Project" based workflow where each project maps to a GitHub repository.
+This document specifies the architecture for **Golem Forge**, a browser-based LLM worker system. It uses OPFS (Origin Private File System) for local storage and GitHub as the synchronization layer, enabling a "Program" based workflow where each program maps to a GitHub repository.
 
 ## Related Documents
 
 - **[User Stories](./user-stories.md)** - Requirements and acceptance criteria
 - **[Sandbox Design](./sandbox-design.md)** - Unified sandbox system
-- **[Project Management](./use-cases/browser-project-management.md)** - Project & Worker management
+- **[Program Management](./use-cases/browser-project-management.md)** - Program & Worker management
 - **[Container Options](./notes/container-isolation-options.md)** - Isolation strategies (WASM for browser)
 
 ## System Architecture
@@ -33,7 +33,7 @@ This document specifies the architecture for **Golem Forge**, a browser-based LL
 │                    │         Core Engine         │                          │
 │                    │                             │                          │
 │                    │  ┌───────────────────────┐  │                          │
-│                    │  │    ProjectManager     │  │                          │
+│                    │  │    ProgramManager     │  │                          │
 │                    │  │    - config & state   │  │                          │
 │                    │  └───────────────────────┘  │                          │
 │                    │                             │                          │
@@ -86,9 +86,9 @@ We use a combination of `chrome.storage.local` for metadata/configuration and OP
 
 ```
 chrome.storage.local:
-├── projects/
-│   ├── {project-id}/
-│   │   └── config.json        # Project configuration (repo, workers, triggers)
+├── programs/
+│   ├── {program-id}/
+│   │   └── config.json        # Program configuration (repo, workers, triggers)
 │   └── ...
 ├── worker-sources/
 │   ├── bundled.json           # List of bundled workers
@@ -102,12 +102,12 @@ chrome.storage.local:
 
 ```
 /opfs-root/
-├── projects/
-│   └── {project-id}/
+├── programs/
+│   └── {program-id}/
 │       ├── .meta/
 │       │   ├── permissions.json   # Security permissions
 │       │   ├── audit.log          # Action audit trail
-│       │   └── config.json        # Synced project config
+│       │   └── config.json        # Synced program config
 │       ├── cache/
 │       │   ├── pdfs/              # Downloaded PDFs
 │       │   ├── web/               # Fetched web content
@@ -131,12 +131,12 @@ chrome.storage.local:
 
 ## Core Concepts
 
-### Projects
+### Programs
 
-A **Project** is the primary unit of work, mapping 1:1 to a GitHub repository.
+A **Program** is the primary unit of work, mapping 1:1 to a GitHub repository.
 
 ```typescript
-interface Project {
+interface Program {
   id: string;
   name: string;
   createdAt: Date;
@@ -204,7 +204,7 @@ interface SiteTrigger {
 |-------|-------------|--------------|
 | **Untrusted** | Web content, auto-triggers | Write to `working/` only. No repo read access. |
 | **Session** | User-initiated (e.g., clicked button) | Read `cache/`, `working/`. Stage files. No direct push. |
-| **Project** | Trusted workspace | Read repo files. Stage files. |
+| **Program** | Trusted workspace | Read repo files. Stage files. |
 | **Full** | Admin/Config | Manage settings, tokens. |
 
 ### Isolation & Sandboxing
@@ -252,7 +252,7 @@ The bridge between OPFS and GitHub.
 ## Implementation Phases
 
 ### Phase 1: Core Foundation
-- Project & Worker Management (Storage/Config)
+- Program & Worker Management (Storage/Config)
 - OPFS-backed FileSandbox
 - Basic Worker Runtime (Logical Isolation)
 
@@ -262,7 +262,7 @@ The bridge between OPFS and GitHub.
 - GitSync Logic (Staging area)
 
 ### Phase 3: UI & Triggers
-- Extension Popup (Project creation, Worker selection)
+- Extension Popup (Program creation, Worker selection)
 - Content Script Triggers (URL matching, Injection)
 - Approval UI
 
@@ -272,12 +272,12 @@ The bridge between OPFS and GitHub.
 
 ## API Summary
 
-### ProjectManager
+### ProgramManager
 ```typescript
-interface ProjectManager {
-  createProject(config: ProjectConfig): Promise<Project>;
-  getProject(id: string): Promise<Project>;
-  listProjects(): Promise<Project[]>;
+interface ProgramManager {
+  createProgram(config: ProgramConfig): Promise<Program>;
+  getProgram(id: string): Promise<Program>;
+  listPrograms(): Promise<Program[]>;
   syncWorkerSource(sourceId: string): Promise<void>;
 }
 ```

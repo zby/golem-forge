@@ -16,8 +16,8 @@ Date: 2025-12-08
    - Fixed: Added `modifiedKeys` Set to track user edits instead of checking for `...`
    - Status: DONE
 
-4. **Project deletion OPFS cleanup** - `project-manager.ts:103-115`
-   - Fixed: Added `cleanupProjectSandbox()` function and called it on delete
+4. **Program deletion OPFS cleanup** - `program-manager.ts:103-115`
+   - Fixed: Added `cleanupProgramSandbox()` function and called it on delete
    - Status: DONE
 
 5. **Message ID collisions** - `sidepanel.tsx`
@@ -28,8 +28,8 @@ Date: 2025-12-08
    - Fixed: Opens sidepanel with settings tab via storage-based messaging
    - Status: DONE
 
-7. **openProject message handler** - `background.ts:100-105`
-   - Fixed: Added handler to store pending project ID
+7. **openProgram message handler** - `background.ts:100-105`
+   - Fixed: Added handler to store pending program ID
    - Status: DONE
 
 ## Not Applicable (Code Refactored)
