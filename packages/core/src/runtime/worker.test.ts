@@ -13,6 +13,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { z } from "zod";
 import type { WorkerDefinition } from "../worker-schema.js";
 
+// Provide dummy API keys so model factory doesn't fail during tests.
+process.env.ANTHROPIC_API_KEY ||= "test-api-key";
+process.env.OPENAI_API_KEY ||= "test-api-key";
+process.env.GOOGLE_GENERATIVE_AI_API_KEY ||= "test-api-key";
+
 // Mock generateText from AI SDK
 const mockGenerateText = vi.fn();
 
@@ -102,6 +107,42 @@ describe("WorkerRuntime", () => {
   });
 
   describe("run", () => {
+    it("fails early on empty input by default", async () => {
+      const runtime = new WorkerRuntime({
+        worker: simpleWorker,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+      });
+      await runtime.initialize();
+
+      const result = await runtime.run("");
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("No input provided");
+      expect(mockGenerateText).not.toHaveBeenCalled();
+    });
+
+    it("allows empty input when allow_empty_input is true", async () => {
+      mockGenerateText.mockResolvedValueOnce({
+        text: "Ok",
+        toolCalls: [],
+        finishReason: "stop",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      });
+
+      const runtime = new WorkerRuntime({
+        worker: { ...simpleWorker, allow_empty_input: true },
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+      });
+      await runtime.initialize();
+
+      const result = await runtime.run("");
+
+      expect(result.success).toBe(true);
+      expect(mockGenerateText).toHaveBeenCalled();
+    });
+
     it("returns success with response when LLM completes without tool calls", async () => {
       mockGenerateText.mockResolvedValueOnce({
         text: "Hello! How can I help you?",
@@ -531,12 +572,15 @@ describe("RuntimeUI event emission", () => {
     expect(result.success).toBe(true);
 
     // Should emit workerUpdate with 'running' status at start
-    expect(mockRuntimeUI.updateWorker).toHaveBeenCalledWith(
+    expect(mockRuntimeUI.updateWorker).toHaveBeenNthCalledWith(
+      1,
       expect.any(String), // workerId
       "test-worker",
       "running",
       undefined,
-      0
+      0,
+      TEST_MODEL,
+      []
     );
 
     // Should emit showMessage with assistant response
@@ -546,7 +590,8 @@ describe("RuntimeUI event emission", () => {
     });
 
     // Should emit workerUpdate with 'complete' status
-    expect(mockRuntimeUI.updateWorker).toHaveBeenCalledWith(
+    expect(mockRuntimeUI.updateWorker).toHaveBeenNthCalledWith(
+      2,
       expect.any(String), // workerId
       "test-worker",
       "complete",

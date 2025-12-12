@@ -443,6 +443,17 @@ export class WorkerRuntime implements WorkerRunner {
       );
     }
 
+    // Fail early on empty input unless explicitly allowed.
+    if (!this.worker.allow_empty_input && this.isEmptyRunInput(input)) {
+      return {
+        success: false,
+        error:
+          `No input provided for worker "${this.worker.name}". ` +
+          `Provide a task prompt or attachments, or set allow_empty_input: true in front matter.`,
+        toolCallCount: 0,
+      };
+    }
+
     const maxIterations = this.options.maxIterations || 10;
     const isChatMode = this.worker.mode === 'chat';
     const maxContextTokens = this.worker.max_context_tokens;
@@ -839,6 +850,19 @@ export class WorkerRuntime implements WorkerRunner {
 
       messages.push({ role: "user", content: userContent });
     }
+  }
+
+  /**
+   * Check whether a RunInput carries no meaningful text or attachments.
+   */
+  private isEmptyRunInput(input: RunInput): boolean {
+    if (typeof input === "string") {
+      return input.trim().length === 0;
+    }
+
+    const hasText = input.content.trim().length > 0;
+    const hasAttachments = (input.attachments?.length ?? 0) > 0;
+    return !hasText && !hasAttachments;
   }
 
   /**
