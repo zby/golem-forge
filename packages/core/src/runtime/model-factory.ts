@@ -79,16 +79,27 @@ export interface APIKeyProvider {
 /**
  * Parse a model identifier like "anthropic:claude-sonnet-4-20250514"
  * into provider and model parts.
+ *
+ * Note: Only splits on the first colon, so model names can contain colons
+ * (e.g., "openrouter:openai/gpt-4o:free" → provider: "openrouter", model: "openai/gpt-4o:free")
  */
 export function parseModelId(modelId: string): ParsedModelId {
-  const parts = modelId.split(":");
-  if (parts.length !== 2) {
+  const colonIndex = modelId.indexOf(":");
+  if (colonIndex === -1) {
     throw new Error(
       `Invalid model ID format: ${modelId}. Expected format: provider:model`
     );
   }
 
-  const provider = parts[0] as AIProvider;
+  const provider = modelId.slice(0, colonIndex) as AIProvider;
+  const model = modelId.slice(colonIndex + 1);
+
+  if (!model) {
+    throw new Error(
+      `Invalid model ID format: ${modelId}. Expected format: provider:model`
+    );
+  }
+
   const validProviders: AIProvider[] = ["anthropic", "openai", "google", "openrouter"];
   if (!validProviders.includes(provider)) {
     throw new Error(
@@ -96,7 +107,7 @@ export function parseModelId(modelId: string): ParsedModelId {
     );
   }
 
-  return { provider, model: parts[1] };
+  return { provider, model };
 }
 
 // ============================================================================

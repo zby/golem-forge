@@ -18,7 +18,35 @@ vi.mock("@ai-sdk/google", () => ({
   createGoogleGenerativeAI: createGoogleMock,
 }));
 
-import { createModelWithOptions } from "./model-factory.js";
+import { createModelWithOptions, parseModelId } from "./model-factory.js";
+
+describe("parseModelId", () => {
+  it("parses simple model IDs", () => {
+    expect(parseModelId("anthropic:claude-3")).toEqual({
+      provider: "anthropic",
+      model: "claude-3",
+    });
+  });
+
+  it("parses model IDs with colons in the model name", () => {
+    expect(parseModelId("openrouter:openai/gpt-4o:free")).toEqual({
+      provider: "openrouter",
+      model: "openai/gpt-4o:free",
+    });
+  });
+
+  it("throws for invalid format (no colon)", () => {
+    expect(() => parseModelId("invalid")).toThrow("Invalid model ID format");
+  });
+
+  it("throws for invalid format (empty model)", () => {
+    expect(() => parseModelId("anthropic:")).toThrow("Invalid model ID format");
+  });
+
+  it("throws for unsupported provider", () => {
+    expect(() => parseModelId("unknown:model")).toThrow("Unsupported provider");
+  });
+});
 
 describe("createModelWithOptions", () => {
   beforeEach(() => {
