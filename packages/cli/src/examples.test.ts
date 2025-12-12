@@ -67,7 +67,7 @@ const EXAMPLES: ExampleConfig[] = [
     name: "calculator",
     dir: "calculator",
     mainWorker: "main.worker",
-    needsSandbox: true,
+    needsSandbox: false,
   },
   {
     name: "code_analyzer",
@@ -153,11 +153,15 @@ describe("Example Workers Smoke Tests", () => {
           return;
         }
 
+        // Custom toolsets need workerFilePath to resolve module paths
+        const hasCustomToolset = result.worker.toolsets?.custom !== undefined;
+
         const runtime = await createCLIWorkerRuntime({
           worker: result.worker,
           model: TEST_MODEL,
           approvalMode: "approve_all",
           useTestSandbox: example.needsSandbox,
+          ...(hasCustomToolset && { workerFilePath: workerPath }),
         });
 
         expect(runtime).toBeDefined();
@@ -185,11 +189,15 @@ describe("Example Workers Smoke Tests", () => {
         const hasWorkersDelegation = parseResult.worker.toolsets?.workers !== undefined;
         if (hasWorkersDelegation) return;
 
+        // Custom toolsets need workerFilePath to resolve module paths
+        const hasCustomToolset = parseResult.worker.toolsets?.custom !== undefined;
+
         const runtime = await createCLIWorkerRuntime({
           worker: parseResult.worker,
           model: TEST_MODEL,
           approvalMode: "approve_all",
           useTestSandbox: example.needsSandbox,
+          ...(hasCustomToolset && { workerFilePath: workerPath }),
         });
 
         const result = await runtime.run("Hello, please help me.");
@@ -245,7 +253,7 @@ describe("Example Workers Smoke Tests", () => {
       expect(mockGenerateText).toHaveBeenCalledTimes(2);
     });
 
-    it("calculator can use sandbox for scratch work", async () => {
+    it("calculator can use custom calculation tools", async () => {
       const workerPath = path.join(EXAMPLES_DIR, "calculator", "main.worker");
       const content = await fs.readFile(workerPath, "utf-8");
       const parseResult = parseWorkerString(content, workerPath);
@@ -253,25 +261,22 @@ describe("Example Workers Smoke Tests", () => {
       expect(parseResult.success).toBe(true);
       if (!parseResult.success) return;
 
-      // Mock LLM to write a calculation to scratch, then complete
+      // Mock LLM to call calculateFibonacci tool, then complete
       mockGenerateText
         .mockResolvedValueOnce({
           text: "",
           toolCalls: [
             {
               toolCallId: "call_1",
-              toolName: "write_file",
-              args: {
-                path: "/scratch/calculation.txt",
-                content: "Fibonacci(10) = 55",
-              },
+              toolName: "calculateFibonacci",
+              args: { n: 10 },
             },
           ],
           finishReason: "tool-calls",
           usage: { inputTokens: 10, outputTokens: 15 },
         })
         .mockResolvedValueOnce({
-          text: "The 10th Fibonacci number is 55. I saved the result to scratch.",
+          text: "The 10th Fibonacci number is 55.",
           toolCalls: [],
           finishReason: "stop",
           usage: { inputTokens: 25, outputTokens: 20 },
@@ -281,7 +286,7 @@ describe("Example Workers Smoke Tests", () => {
         worker: parseResult.worker,
         model: TEST_MODEL,
         approvalMode: "approve_all",
-        useTestSandbox: true,
+        workerFilePath: workerPath,
       });
 
       const result = await runtime.run("What is the 10th Fibonacci number?");
