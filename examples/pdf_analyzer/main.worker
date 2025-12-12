@@ -9,6 +9,7 @@ compatible_models:
   - "openai:gpt-4-turbo*"
   - "google:gemini-*-pro*"
   - "google:gemini-*-flash*"
+allow_empty_input: true
 toolsets:
   filesystem: {}
   workers:
