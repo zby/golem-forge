@@ -116,6 +116,12 @@ export const WorkerFrontmatterSchema = z.object({
   sandbox: WorkerSandboxConfigSchema.optional(),
   toolsets: ToolsetsConfigSchema.optional(),
   attachment_policy: AttachmentPolicySchema.optional(),
+  /**
+   * Whether this worker can be invoked with no text input.
+   * Default false: CLI will error if no input/attachments are provided,
+   * even when a sandbox is available, unless this is set true.
+   */
+  allow_empty_input: z.boolean().default(false),
   server_side_tools: z.array(ServerSideToolConfigSchema).default([]),
   locked: z.boolean().default(false),
   /**

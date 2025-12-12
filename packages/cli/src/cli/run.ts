@@ -401,13 +401,35 @@ async function executeWorker(
   // Read text input
   const textInput = await readInput(options, textArgs);
 
-  // Check if this worker has sandbox configured (program-level or worker-level)
-  const hasSandbox = !!effectiveConfig.sandbox || !!workerDefinition.sandbox || workerDefinition.toolsets?.filesystem;
+  const providesSandbox = !!effectiveConfig.sandbox;
+  const needsSandbox =
+    !!workerDefinition.sandbox ||
+    !!workerDefinition.toolsets?.filesystem ||
+    !!workerDefinition.toolsets?.git;
 
-  // Require either text input, attachments, or sandbox
-  // Sandbox workers can run without explicit input since they operate on sandbox contents
-  if (!textInput && !attachments?.length && !hasSandbox) {
-    throw new Error("No input provided. Use text arguments, --input, --file, file attachments, or pipe to stdin.");
+  if (needsSandbox && !providesSandbox) {
+    throw new Error(
+      `Worker "${workerDefinition.name}" requests sandboxed tools or restrictions, ` +
+      `but no program sandbox is configured. Add a sandbox section to golem-forge.config.yaml.`
+    );
+  }
+
+  // Sandbox is only available when configured at program level.
+  const hasSandbox = providesSandbox;
+  const allowEmptyInput = workerDefinition.allow_empty_input ?? false;
+
+  // Require either text input or attachments.
+  // Workers with sandbox access may opt-in to empty input via allow_empty_input.
+  if (!textInput && !attachments?.length) {
+    if (!hasSandbox) {
+      throw new Error("No input provided. Use text arguments, --input, --file, file attachments, or pipe to stdin.");
+    }
+    if (!allowEmptyInput) {
+      throw new Error(
+        "No input provided. This worker has sandbox/tool access, but does not allow empty input. " +
+        "Provide a task prompt, attach files, or set allow_empty_input: true in the worker front matter."
+      );
+    }
   }
 
   if (options.trace === 'debug') {
@@ -505,7 +527,7 @@ async function executeWorker(
     if (!effectiveTextInput) {
       if (attachments && attachments.length > 0) {
         effectiveTextInput = "Please process the attached file(s).";
-      } else if (hasSandbox) {
+      } else if (hasSandbox && allowEmptyInput) {
         effectiveTextInput = "Please proceed with your task using the sandbox contents.";
       }
     }

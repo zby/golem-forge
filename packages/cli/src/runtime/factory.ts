@@ -31,7 +31,6 @@ import {
 } from "@golem-forge/core";
 import { WorkerRegistry } from "../worker/registry.js";
 import {
-  createMountSandbox,
   createMountSandboxAsync,
   createTestSandbox,
   type MountSandboxConfig,
@@ -139,11 +138,6 @@ async function createSandbox(options: CLIWorkerRuntimeOptions): Promise<FileOper
   // Create temp sandbox for testing
   if (options.useTestSandbox) {
     return await createTestSandbox();
-  }
-
-  // Default: mount program root at /
-  if (options.programRoot) {
-    return createMountSandbox({ root: options.programRoot });
   }
 
   return undefined;

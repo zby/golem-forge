@@ -144,6 +144,7 @@ Briefly set the persona and constraints.
 ```
 
 Avoid enumerating tool lists or sandbox mounts in the body unless needed for behavior; tool schemas are injected automatically, and sandbox rules are enforced by runtime.
+If a worker is intended to run with no text input (operate purely on sandbox contents), set `allow_empty_input: true` in front matter.
 
 ### Lifecycle
 

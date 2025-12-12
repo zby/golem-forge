@@ -82,6 +82,17 @@ describe("createCLIWorkerRuntime", () => {
       expect(runtime.getSandbox()).toBeDefined();
     });
 
+    it("does not create sandbox by default", async () => {
+      const runtime = await createCLIWorkerRuntime({
+        worker: simpleWorker,
+        programRoot: "/tmp/test-program",
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+      });
+
+      expect(runtime.getSandbox()).toBeUndefined();
+    });
+
     it("initializes sandbox when configured", async () => {
       const runtime = await createCLIWorkerRuntime({
         worker: workerWithFilesystem,
@@ -113,6 +124,7 @@ describe("createCLIWorkerRuntime", () => {
     it("throws error if filesystem toolset requested without sandbox", async () => {
       await expect(createCLIWorkerRuntime({
         worker: workerWithFilesystem,
+        programRoot: "/tmp/test-program",
         approvalMode: "approve_all",
         model: TEST_MODEL,
       })).rejects.toThrow("Filesystem toolset requires a sandbox");
@@ -487,13 +499,13 @@ describe("createCLIWorkerRuntime", () => {
       );
 
       // Should emit toolResult
-      // Note: Core's ToolExecutor passes undefined for structuredResult - UI handles conversion
       expect(mockRuntimeUI.showToolResult).toHaveBeenCalledWith(
         "call_1",
         "read_file",
+        { path: "/workspace/test.txt" },
         "success",
         expect.any(Number), // durationMs
-        undefined, // structuredResult - Core leaves conversion to UI
+        expect.objectContaining({ kind: "file_content" }),
         undefined // no error
       );
     });

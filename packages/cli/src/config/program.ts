@@ -89,8 +89,9 @@ const CONFIG_FILE_NAMES = [
 export async function loadProgramConfigFile(configPath: string): Promise<ProgramConfig> {
   const content = await fs.readFile(configPath, "utf-8");
   const parsed = yaml.load(content);
+  const normalized = (parsed ?? {}) as unknown;
 
-  const result = ProgramConfigSchema.safeParse(parsed);
+  const result = ProgramConfigSchema.safeParse(normalized);
   if (!result.success) {
     const issues = result.error.issues.map(
       (issue) => `  - ${issue.path.join(".")}: ${issue.message}`
@@ -153,15 +154,13 @@ export async function findProgramConfig(
  */
 export function resolveSandboxConfig(
   programRoot: string,
-  sandboxConfig?: SandboxProgramConfig
+  sandboxConfig: SandboxProgramConfig
 ): ResolvedSandboxConfig {
-  // Default: mount program root at /
-  const config = sandboxConfig ?? { root: "." };
-  const sandboxRoot = path.resolve(programRoot, config.root);
+  const sandboxRoot = path.resolve(programRoot, sandboxConfig.root);
 
   return {
     root: sandboxRoot,
-    readonly: config.readonly,
+    readonly: sandboxConfig.readonly,
   };
 }
 
@@ -170,9 +169,6 @@ export function resolveSandboxConfig(
  */
 export function getDefaultProgramConfig(): ProgramConfig {
   return {
-    sandbox: {
-      root: ".",
-    },
     approval: {
       mode: "interactive",
     },

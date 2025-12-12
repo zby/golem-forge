@@ -393,10 +393,11 @@ Test instructions
       }
     });
 
-    it("should allow running sandbox-only workers without input (worker-defined sandbox)", async () => {
+    it("should error when worker declares sandbox without program sandbox", async () => {
       // Create a worker with sandbox configuration (mount-based)
       const sandboxWorker = `---
 name: sandbox-processor
+allow_empty_input: true
 sandbox:
   restrict: /workspace
   readonly: false
@@ -410,11 +411,12 @@ Process files in the workspace.
       Object.defineProperty(process.stdin, "isTTY", { value: true, writable: true });
 
       try {
-        await runCLI(["node", "cli", workerDir]);
+        await expect(
+          runCLI(["node", "cli", workerDir])
+        ).rejects.toThrow("process.exit called");
 
-        // Should use the sandbox-only default message
-        expect(mockRun).toHaveBeenCalledWith(
-          "Please proceed with your task using the sandbox contents."
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+          expect.stringContaining('requests sandboxed tools or restrictions')
         );
       } finally {
         Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, writable: true });
@@ -425,6 +427,7 @@ Process files in the workspace.
       // Worker without sandbox configuration
       const plainWorker = `---
 name: plain-worker
+allow_empty_input: true
 ---
 Process files.
 `;

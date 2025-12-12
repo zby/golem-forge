@@ -130,6 +130,7 @@ describe('formatParseError', () => {
         name: 'test',
         instructions: 'test',
         mode: 'single',
+        allow_empty_input: false,
         server_side_tools: [],
         locked: false,
         max_context_tokens: 8000,
