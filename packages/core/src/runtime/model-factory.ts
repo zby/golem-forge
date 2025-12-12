@@ -147,13 +147,15 @@ export function createModelWithOptions(
       return googleProvider(model);
     }
     case "openrouter": {
-      // OpenRouter uses OpenAI-compatible API
+      // OpenRouter uses OpenAI-compatible Chat Completions API
+      // Note: Must use .chat() - OpenRouter doesn't support OpenAI's Responses API
+      // which is the default in AI SDK v6
       const openrouterProvider = createOpenAI({
         apiKey: options.apiKey,
         baseURL: options.baseURL || "https://openrouter.ai/api/v1",
         headers: options.headers,
       });
-      return openrouterProvider(model);
+      return openrouterProvider.chat(model);
     }
     default:
       throw new Error(`Unsupported provider: ${provider}`);

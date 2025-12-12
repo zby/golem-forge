@@ -1,10 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { createAnthropicMock, createOpenAIMock, createGoogleMock } = vi.hoisted(() => ({
-  createAnthropicMock: vi.fn(() => (model: string) => ({ provider: "anthropic", model } as any)),
-  createOpenAIMock: vi.fn(() => (model: string) => ({ provider: "openai", model } as any)),
-  createGoogleMock: vi.fn(() => (model: string) => ({ provider: "google", model } as any)),
-}));
+const { createAnthropicMock, createOpenAIMock, createGoogleMock, openAIChatMock } = vi.hoisted(() => {
+  // Track which API method was used
+  const openAIChatMock = vi.fn((model: string) => ({ provider: "openai.chat", model } as any));
+
+  return {
+    createAnthropicMock: vi.fn(() => (model: string) => ({ provider: "anthropic", model } as any)),
+    createOpenAIMock: vi.fn(() => {
+      // Return a provider with both default (responses) and .chat() methods
+      const provider = (model: string) => ({ provider: "openai.responses", model } as any);
+      provider.chat = openAIChatMock;
+      provider.responses = (model: string) => ({ provider: "openai.responses", model } as any);
+      return provider;
+    }),
+    createGoogleMock: vi.fn(() => (model: string) => ({ provider: "google", model } as any)),
+    openAIChatMock,
+  };
+});
 
 vi.mock("@ai-sdk/anthropic", () => ({
   createAnthropic: createAnthropicMock,
@@ -82,5 +94,20 @@ describe("createModelWithOptions", () => {
         headers: { "x-test": "1" },
       })
     );
+  });
+
+  it("uses Chat Completions API for OpenRouter (not Responses API)", () => {
+    // OpenRouter doesn't support OpenAI's Responses API, only Chat Completions
+    // AI SDK v6 defaults to Responses API, so we must explicitly use .chat()
+    const model = createModelWithOptions("openrouter:mistralai/devstral-2512:free", {
+      apiKey: "k",
+    });
+
+    // Verify .chat() was called (returns "openai.chat" provider)
+    expect(openAIChatMock).toHaveBeenCalledWith("mistralai/devstral-2512:free");
+    expect(model).toEqual({
+      provider: "openai.chat",
+      model: "mistralai/devstral-2512:free",
+    });
   });
 });
