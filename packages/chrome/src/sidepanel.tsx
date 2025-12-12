@@ -10,7 +10,6 @@ import { createRoot } from 'react-dom/client';
 import { createUIEventBus } from '@golem-forge/core';
 import { UIProvider } from '@golem-forge/ui-react';
 import { settingsManager } from './storage/settings-manager';
-import { programManager } from './storage/program-manager';
 import { createChromeAdapter } from './services/chrome-adapter';
 import {
   ChromeUIStateProvider,
@@ -18,7 +17,7 @@ import {
   useChromeUIActions,
 } from './contexts/ChromeUIStateContext';
 import { ChatTab } from './components/ChatTab';
-import type { LLMProvider, Program } from './storage/types';
+import type { LLMProvider } from './storage/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Styles
@@ -168,6 +167,13 @@ const DEFAULT_MODELS: Record<LLMProvider, Array<{ id: string; name: string }>> =
 // Settings Tab Component
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Settings Tab Component
+ *
+ * Note: User-managed "stored programs" feature has been removed.
+ * Currently, only bundled demo programs are supported in the Chat tab.
+ * This simplifies the codebase by having a single source of truth for programs.
+ */
 function SettingsTab() {
   // API Keys - display values
   const [anthropicKey, setAnthropicKey] = useState('');
@@ -182,24 +188,15 @@ function SettingsTab() {
   const [defaultProvider, setDefaultProvider] = useState<LLMProvider>('anthropic');
   const [defaultModel, setDefaultModel] = useState('claude-sonnet-4-20250514');
 
-  // Programs
-  const [programs, setPrograms] = useState<Program[]>([]);
-  const [newProgramName, setNewProgramName] = useState('');
-
   // UI state
   const [saved, setSaved] = useState(false);
-  const [activeSection, setActiveSection] = useState<'api' | 'model' | 'programs'>('api');
+  const [activeSection, setActiveSection] = useState<'api' | 'model'>('api');
 
   // Get actions for refreshing API key status
   const { refreshAPIKeyStatus } = useChromeUIActions();
 
   useEffect(() => {
-    async function init() {
-      await loadSettings();
-      await programManager.ensureDefaultProgram();
-      await loadPrograms();
-    }
-    init();
+    loadSettings();
   }, []);
 
   async function loadSettings() {
@@ -226,11 +223,6 @@ function SettingsTab() {
           break;
       }
     }
-  }
-
-  async function loadPrograms() {
-    const programList = await programManager.listPrograms();
-    setPrograms(programList);
   }
 
   async function handleSaveAPIKeys() {
@@ -290,27 +282,6 @@ function SettingsTab() {
     }
   }
 
-  async function handleCreateProgram() {
-    if (!newProgramName.trim()) return;
-
-    await programManager.createProgram({
-      name: newProgramName.trim(),
-      workerSources: [],
-      githubBranch: 'main',
-      triggers: [],
-    });
-
-    setNewProgramName('');
-    await loadPrograms();
-  }
-
-  async function handleDeleteProgram(programId: string) {
-    if (!confirm('Are you sure you want to delete this program?')) return;
-
-    await programManager.deleteProgram(programId);
-    await loadPrograms();
-  }
-
   const sectionButtonStyle = (section: typeof activeSection) => ({
     padding: '8px 12px',
     border: 'none',
@@ -331,9 +302,6 @@ function SettingsTab() {
         </button>
         <button style={sectionButtonStyle('model')} onClick={() => setActiveSection('model')}>
           Model
-        </button>
-        <button style={sectionButtonStyle('programs')} onClick={() => setActiveSection('programs')}>
-          Programs
         </button>
       </div>
 
@@ -440,80 +408,6 @@ function SettingsTab() {
         </>
       )}
 
-      {/* Programs Section */}
-      {activeSection === 'programs' && (
-        <>
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Create New Program</label>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <input
-                type="text"
-                style={{ ...styles.formInput, flex: 1 }}
-                value={newProgramName}
-                onChange={(e) => setNewProgramName(e.target.value)}
-                placeholder="Program name..."
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateProgram()}
-              />
-              <button
-                style={{
-                  ...styles.saveButton,
-                  padding: '10px 16px',
-                }}
-                onClick={handleCreateProgram}
-                disabled={!newProgramName.trim()}
-              >
-                Create
-              </button>
-            </div>
-          </div>
-
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Existing Programs</label>
-            {programs.length === 0 ? (
-              <p style={{ color: '#6b7280', fontSize: '13px', margin: '8px 0' }}>
-                No programs yet. Create one above.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {programs.map((p) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '10px 12px',
-                      backgroundColor: '#f3f4f6',
-                      borderRadius: '6px',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 500, fontSize: '14px' }}>{p.name}</div>
-                      {p.description && (
-                        <div style={{ fontSize: '12px', color: '#6b7280' }}>{p.description}</div>
-                      )}
-                    </div>
-                    <button
-                      style={{
-                        padding: '4px 8px',
-                        backgroundColor: '#ef4444',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '12px',
-                      }}
-                      onClick={() => handleDeleteProgram(p.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
     </div>
   );
 }

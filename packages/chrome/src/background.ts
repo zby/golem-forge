@@ -4,6 +4,8 @@
  * Handles extension lifecycle events and manages sidepanel behavior.
  */
 
+import { DEFAULT_SETTINGS } from './storage/settings-manager';
+
 // Enable sidepanel on action click
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
@@ -14,51 +16,19 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     console.log('Golem Forge extension installed');
 
-    const now = Date.now();
-
-    // Initialize default settings
+    // Initialize default settings (use shared DEFAULT_SETTINGS constant)
     chrome.storage.local.get('settings', (result) => {
       if (!result.settings) {
         chrome.storage.local.set({
-          settings: {
-            defaultProvider: 'anthropic',
-            defaultModel: 'claude-sonnet-4-20250514',
-            showApprovals: true,
-            maxIterations: 50,
-          },
+          settings: DEFAULT_SETTINGS,
         });
       }
     });
 
-    // Add bundled worker source
-    chrome.storage.local.get('workerSources', (result) => {
-      if (!result.workerSources || result.workerSources.length === 0) {
-        chrome.storage.local.set({
-          workerSources: [],
-        });
-      }
-    });
+    // Note: "Stored programs" feature has been removed.
+    // The extension now uses only bundled demo programs.
+    // This simplifies the architecture by having a single source of truth.
 
-    // Create default program (storage key kept as 'projects' for BACKCOMPAT)
-    chrome.storage.local.get('projects', (result) => {
-      if (!result.projects || result.projects.length === 0) {
-        chrome.storage.local.set({
-          projects: [
-            {
-              id: `default-${now}`,
-              name: 'Default Program',
-              description: 'Your first Golem Forge program',
-              workerSources: [],
-              githubBranch: 'main',
-              triggers: [],
-              createdAt: now,
-              updatedAt: now,
-            },
-          ],
-        });
-        console.log('Created default program');
-      }
-    });
   } else if (details.reason === 'update') {
     console.log('Golem Forge extension updated');
   }
@@ -67,10 +37,9 @@ chrome.runtime.onInstalled.addListener((details) => {
 // Handle messages from popup/sidepanel
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'getState') {
-    // Return current extension state (storage key kept as 'projects' for BACKCOMPAT)
-    chrome.storage.local.get(['projects', 'settings', 'apiKeys'], (result) => {
+    // Return current extension state
+    chrome.storage.local.get(['settings', 'apiKeys'], (result) => {
       sendResponse({
-        programs: result.projects || [], // Renamed from projects to programs
         settings: result.settings || {},
         hasAPIKeys: (result.apiKeys || []).length > 0,
       });
@@ -98,7 +67,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === 'openProgram') {
-    // Store program ID for sidepanel to read on load
+    // Store bundled program ID for sidepanel to read on load
+    // Note: This only supports bundled programs, not stored programs
     chrome.storage.local.set({ pendingProgramId: message.programId });
     sendResponse({ success: true });
     return true;

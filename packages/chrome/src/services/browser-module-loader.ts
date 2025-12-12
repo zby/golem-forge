@@ -3,12 +3,21 @@
  *
  * Custom module loading strategies for the browser extension.
  *
- * In a bundled environment (Chrome extension), dynamic import() works but
- * the modules must be:
- * 1. Pre-bundled with the extension, OR
- * 2. Loaded from a URL (with appropriate CORS headers)
+ * IMPORTANT: MV3 Content Security Policy Restrictions
+ * ====================================================
+ * Chrome extensions using Manifest V3 have strict CSP that prevents:
+ * - Loading remote code via fetch() + eval()
+ * - Dynamic import() from external URLs
+ * - Any form of remote code execution
  *
- * This module provides utilities for both approaches.
+ * This means custom tools MUST be:
+ * 1. Pre-bundled with the extension at build time, OR
+ * 2. Pre-registered in the bundledModules map
+ *
+ * Remote URL loading (e.g., import('https://example.com/tools.js')) will NOT
+ * work in the Chrome extension environment, even though the fallback code
+ * attempts it. The fallback exists only for development/testing in non-extension
+ * environments.
  */
 
 import type { ModuleLoader } from '@golem-forge/core';
@@ -55,20 +64,19 @@ export const browserModuleLoader: ModuleLoader = {
     }
 
     // Fall back to dynamic import
-    // This works for:
-    // - Modules bundled with the extension (if bundler supports it)
-    // - Full URLs (https://...)
+    // Note: In MV3 Chrome extensions, this will only work for modules
+    // that are bundled with the extension. Remote URLs will fail due to CSP.
     try {
       return await import(/* @vite-ignore */ specifier);
     } catch (error) {
       // Provide helpful error message
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Failed to load custom tools module '${specifier}'.\n` +
-        `In browser, modules must be either:\n` +
-        `  1. Pre-registered in bundledModules map\n` +
-        `  2. Bundled with the extension and resolvable by the bundler\n` +
-        `  3. A full URL to an ESM module\n\n` +
+        `Failed to load custom tools module '${specifier}'.\n\n` +
+        `In Chrome extensions (MV3), modules must be:\n` +
+        `  1. Pre-registered in bundledModules map at build time\n` +
+        `  2. Bundled with the extension (resolved by Vite/bundler)\n\n` +
+        `NOTE: Remote URL loading is NOT supported due to MV3 CSP restrictions.\n\n` +
         `Original error: ${message}`
       );
     }

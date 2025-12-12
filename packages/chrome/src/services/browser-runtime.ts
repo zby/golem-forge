@@ -1113,77 +1113,98 @@ export class BrowserWorkerRuntime {
         }
         messages.push({ role: 'assistant', content: assistantContent });
 
-        // Execute tool calls
+        // Execute tool calls with proper approval flow (same as run())
         const toolResults: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: unknown }> = [];
 
         for (const call of toolCalls) {
           toolCallCount++;
-          const tool = this.tools[call.toolName];
-          if (!tool) {
-            toolResults.push({
-              type: 'tool-result',
-              toolCallId: call.toolCallId,
-              toolName: call.toolName,
-              result: { error: `Tool not found: ${call.toolName}` },
-            });
-            continue;
-          }
-
           const toolStart = Date.now();
-          try {
-            if (runtimeUI) {
-              runtimeUI.showToolStarted(
-                call.toolCallId,
-                call.toolName,
-                call.args as Record<string, unknown>
-              );
-            }
 
-            const toolResult = await (tool as any).execute(call.args, { toolCallId: call.toolCallId });
-
-            if (runtimeUI) {
-              const durationMs = Date.now() - toolStart;
-              const uiValue: ToolResultValue = isToolResultValue(toolResult)
-                ? toolResult
-                : { kind: 'json', data: toolResult };
-              runtimeUI.showToolResult(
-                call.toolCallId,
-                call.toolName,
-                call.args as Record<string, unknown>,
-                'success',
-                durationMs,
-                uiValue
-              );
-            }
-
-            toolResults.push({
-              type: 'tool-result',
-              toolCallId: call.toolCallId,
-              toolName: call.toolName,
-              result: toolResult,
-            });
-          } catch (err) {
-            if (runtimeUI) {
-              const durationMs = Date.now() - toolStart;
-              const errorMsg = sanitizeErrorMessage(err);
-              runtimeUI.showToolResult(
-                call.toolCallId,
-                call.toolName,
-                call.args as Record<string, unknown>,
-                'error',
-                durationMs,
-                undefined,
-                errorMsg
-              );
-            }
-            const errorMsg = sanitizeErrorMessage(err);
-            toolResults.push({
-              type: 'tool-result',
-              toolCallId: call.toolCallId,
-              toolName: call.toolName,
-              result: { error: errorMsg },
-            });
+          // Emit tool started event in event mode
+          if (runtimeUI) {
+            runtimeUI.showToolStarted(
+              call.toolCallId,
+              call.toolName,
+              call.args as Record<string, unknown>
+            );
           }
+
+          const tool = this.tools[call.toolName] as NamedTool | undefined;
+          let toolResult: unknown;
+          let toolStatus: 'success' | 'error' = 'success';
+
+          if (!tool || !tool.execute) {
+            toolResult = { error: `Tool not found: ${call.toolName}` };
+            toolStatus = 'error';
+          } else {
+            // Check if tool needs approval (supports both static boolean and dynamic function)
+            const needsApproval = typeof tool.needsApproval === 'function'
+              ? await tool.needsApproval(call.args, { toolCallId: call.toolCallId, messages })
+              : tool.needsApproval;
+
+            if (needsApproval) {
+              // Request approval before executing
+              const decision = await this.approvalController.requestApproval({
+                toolName: call.toolName,
+                toolArgs: call.args as Record<string, unknown>,
+                description: `Execute tool: ${call.toolName}`,
+              });
+
+              if (!decision.approved) {
+                toolResult = {
+                  success: false,
+                  error: `Operation denied: ${decision.note || 'User rejected'}`,
+                };
+                toolStatus = 'error';
+              } else {
+                // Approved - execute the tool
+                try {
+                  toolResult = await tool.execute(call.args, {
+                    toolCallId: call.toolCallId,
+                    messages,
+                  });
+                } catch (err) {
+                  toolResult = { error: err instanceof Error ? err.message : String(err) };
+                  toolStatus = 'error';
+                }
+              }
+            } else {
+              // No approval needed - execute directly
+              try {
+                toolResult = await tool.execute(call.args, {
+                  toolCallId: call.toolCallId,
+                  messages,
+                });
+              } catch (err) {
+                toolResult = { error: err instanceof Error ? err.message : String(err) };
+                toolStatus = 'error';
+              }
+            }
+          }
+
+          const durationMs = Date.now() - toolStart;
+
+          // Emit tool result event or call callback
+          if (runtimeUI) {
+            runtimeUI.showToolResult(
+              call.toolCallId,
+              call.toolName,
+              call.args as Record<string, unknown>,
+              toolStatus,
+              durationMs,
+              { kind: 'json', data: toolResult },
+              toolStatus === 'error' ? String((toolResult as { error: string }).error) : undefined
+            );
+          } else {
+            this.options.onToolCall?.(call.toolName, call.args as Record<string, unknown>, toolResult);
+          }
+
+          toolResults.push({
+            type: 'tool-result',
+            toolCallId: call.toolCallId,
+            toolName: call.toolName,
+            result: toolResult,
+          });
         }
 
         messages.push({ role: 'tool', content: toolResults });

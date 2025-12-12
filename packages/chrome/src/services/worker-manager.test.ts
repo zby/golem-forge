@@ -1,7 +1,8 @@
 /**
  * Worker Manager Tests
  *
- * Tests for the browser-compatible YAML frontmatter parser and worker parsing.
+ * Tests for worker parsing using the shared parseWorkerString from @golem-forge/core.
+ * These tests verify the integration with core's parser in the browser context.
  */
 
 import { describe, it, expect } from 'vitest';

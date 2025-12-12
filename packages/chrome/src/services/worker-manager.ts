@@ -7,10 +7,14 @@
  * - GitHub-fetched workers (cached in OPFS)
  *
  * The output is the same WorkerDefinition type, but discovery is different.
+ *
+ * Note: Worker parsing uses the shared `parseWorkerString` from @golem-forge/core
+ * to avoid code duplication. The core parser uses the `yaml` package which is
+ * browser-compatible.
  */
 
 import {
-  WorkerDefinitionSchema,
+  parseWorkerString,
   type WorkerDefinition,
   type ParseResult,
   type ParseError,
@@ -20,189 +24,9 @@ import type { WorkerSource, GitHubWorkerSource } from '../storage/types';
 import { programManager } from '../storage/program-manager';
 import { settingsManager } from '../storage/settings-manager';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Browser-compatible YAML Frontmatter Parser
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Simple YAML parser for frontmatter.
- * Handles basic YAML structures used in worker files.
- * Does not require Node.js Buffer like gray-matter.
- */
-function parseSimpleYaml(yaml: string): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  const lines = yaml.split('\n');
-
-  // Stack tracks the current context: { indent, container, currentKey }
-  // container is the object/array we're adding to
-  // currentKey is the key whose value we're populating (for nested structures)
-  const stack: Array<{ indent: number; container: Record<string, unknown>; currentKey?: string }> = [
-    { indent: -1, container: result },
-  ];
-
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
-    const line = lines[lineIndex];
-
-    // Skip empty lines and comments
-    if (!line.trim() || line.trim().startsWith('#')) continue;
-
-    // Calculate indentation
-    const indent = line.search(/\S/);
-    const content = line.trim();
-
-    // Pop stack until we find parent with smaller indent
-    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-      stack.pop();
-    }
-
-    const parent = stack[stack.length - 1];
-
-    // Determine which object to write to
-    // If parent has a currentKey, we write to the nested object at that key
-    const targetObj = parent.currentKey
-      ? parent.container[parent.currentKey] as Record<string, unknown>
-      : parent.container;
-
-    // Check if it's a list item
-    if (content.startsWith('- ')) {
-      const value = content.slice(2).trim();
-      if (parent.currentKey && Array.isArray(parent.container[parent.currentKey])) {
-        // Parse the value
-        (parent.container[parent.currentKey] as unknown[]).push(parseYamlValue(value));
-      }
-      continue;
-    }
-
-    // Parse key: value
-    const colonIndex = content.indexOf(':');
-    if (colonIndex === -1) continue;
-
-    const key = content.slice(0, colonIndex).trim();
-    const valueStr = content.slice(colonIndex + 1).trim();
-
-    if (valueStr === '' || valueStr === '{}') {
-      // Empty object or will have nested content
-      let newValue: Record<string, unknown> | unknown[];
-
-      if (valueStr === '{}') {
-        newValue = {};
-      } else {
-        // Check next line to determine if it's an array or object
-        const nextLineIndex = lineIndex + 1;
-        if (nextLineIndex < lines.length) {
-          const nextLine = lines[nextLineIndex].trim();
-          if (nextLine.startsWith('- ')) {
-            newValue = [];
-          } else {
-            newValue = {};
-          }
-        } else {
-          newValue = {};
-        }
-      }
-
-      targetObj[key] = newValue;
-
-      // Push new context for nested content
-      if (!Array.isArray(newValue)) {
-        stack.push({ indent, container: targetObj, currentKey: key });
-      } else {
-        stack.push({ indent, container: targetObj, currentKey: key });
-      }
-    } else {
-      // Simple value
-      targetObj[key] = parseYamlValue(valueStr);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Parse a YAML value string into its JavaScript type.
- */
-function parseYamlValue(value: string): unknown {
-  // Remove quotes
-  if ((value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))) {
-    return value.slice(1, -1);
-  }
-
-  // Boolean
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-
-  // Null
-  if (value === 'null' || value === '~') return null;
-
-  // Number
-  const num = Number(value);
-  if (!isNaN(num) && value !== '') return num;
-
-  // String
-  return value;
-}
-
-/**
- * Parse frontmatter from a worker file content.
- * Browser-compatible alternative to gray-matter.
- */
-function parseFrontmatter(content: string): { data: Record<string, unknown>; content: string } {
-  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/;
-  const match = content.match(frontmatterRegex);
-
-  if (!match) {
-    // No frontmatter, return empty data
-    return { data: {}, content: content.trim() };
-  }
-
-  const yamlContent = match[1];
-  const bodyContent = match[2];
-
-  try {
-    const data = parseSimpleYaml(yamlContent);
-    return { data, content: bodyContent.trim() };
-  } catch {
-    return { data: {}, content: content.trim() };
-  }
-}
-
-// Re-export types for convenience
+// Re-export parseWorkerString and types for convenience
+export { parseWorkerString };
 export type { WorkerDefinition, ParseResult, ParseError, ParseWorkerResult };
-
-/**
- * Parse a .worker file from a string.
- * Browser-compatible parser - does not use Node.js Buffer.
- */
-export function parseWorkerString(content: string, filePath?: string): ParseWorkerResult {
-  const fileContext = filePath ? ` in ${filePath}` : '';
-
-  try {
-    const parsed = parseFrontmatter(content);
-    const result = WorkerDefinitionSchema.safeParse({
-      ...parsed.data,
-      instructions: parsed.content.trim(),
-    });
-
-    if (!result.success) {
-      return {
-        success: false,
-        error: `Invalid worker definition${fileContext}`,
-        details: result.error,
-      };
-    }
-
-    return {
-      success: true,
-      worker: result.data,
-    };
-  } catch (err) {
-    return {
-      success: false,
-      error: `Failed to parse worker file${fileContext}: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Worker Info Type
@@ -403,16 +227,60 @@ Be constructive and specific in your feedback.
 // Worker Manager
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Storage key for persisted GitHub workers
+const GITHUB_WORKERS_STORAGE_KEY = 'githubWorkersCache';
+
 /**
  * Worker Manager for the browser extension.
  *
  * Manages worker discovery and loading from:
  * - Bundled programs (included in extension)
- * - GitHub sources (fetched and cached)
+ * - GitHub sources (fetched and cached in chrome.storage.local)
  */
 export class WorkerManager {
   private cache = new Map<string, WorkerDefinition>();
   private githubWorkerCache = new Map<string, string>(); // sourceId:name -> content
+  private initialized = false;
+
+  /**
+   * Initialize the worker manager by loading persisted GitHub workers.
+   * Called lazily on first access that needs GitHub workers.
+   */
+  private async ensureInitialized(): Promise<void> {
+    if (this.initialized) return;
+
+    try {
+      const result = await chrome.storage.local.get(GITHUB_WORKERS_STORAGE_KEY);
+      const cached = result[GITHUB_WORKERS_STORAGE_KEY] as Record<string, string> | undefined;
+
+      if (cached) {
+        for (const [key, content] of Object.entries(cached)) {
+          this.githubWorkerCache.set(key, content);
+        }
+        console.log(`[WorkerManager] Loaded ${Object.keys(cached).length} persisted GitHub workers`);
+      }
+    } catch (err) {
+      console.warn('[WorkerManager] Failed to load persisted GitHub workers:', err);
+    }
+
+    this.initialized = true;
+  }
+
+  /**
+   * Persist GitHub workers to chrome.storage.local.
+   */
+  private async persistGitHubWorkers(): Promise<void> {
+    const data: Record<string, string> = {};
+    for (const [key, content] of this.githubWorkerCache) {
+      data[key] = content;
+    }
+
+    try {
+      await chrome.storage.local.set({ [GITHUB_WORKERS_STORAGE_KEY]: data });
+    } catch (err) {
+      console.warn('[WorkerManager] Failed to persist GitHub workers:', err);
+    }
+  }
 
   /**
    * Get all bundled programs.
@@ -486,7 +354,9 @@ export class WorkerManager {
       });
     }
 
-    // GitHub source
+    // GitHub source - ensure persisted workers are loaded
+    await this.ensureInitialized();
+
     const source = await programManager.getWorkerSource(sourceId);
     if (!source || source.type !== 'github') {
       return [];
@@ -532,7 +402,9 @@ export class WorkerManager {
       }
       content = program.mainWorker;
     } else {
-      // GitHub source
+      // GitHub source - ensure persisted workers are loaded
+      await this.ensureInitialized();
+
       const githubContent = this.githubWorkerCache.get(cacheKey);
       if (!githubContent) {
         throw new Error(`Worker not found: ${workerId} in source ${sourceId}. Try syncing the source first.`);
@@ -603,18 +475,31 @@ export class WorkerManager {
       }
     }
 
+    // Persist synced workers to chrome.storage.local
+    await this.persistGitHubWorkers();
+
     // Update last sync timestamp
     await programManager.updateWorkerSource(sourceId, {
       lastSync: Date.now(),
     });
+
+    console.log(`[WorkerManager] Synced ${workerFiles.length} workers from source ${sourceId}`);
   }
 
   /**
-   * Clear all caches.
+   * Clear all caches (both in-memory and persisted).
    */
-  clearCache(): void {
+  async clearCache(): Promise<void> {
     this.cache.clear();
     this.githubWorkerCache.clear();
+    this.initialized = false;
+
+    // Also clear persisted cache
+    try {
+      await chrome.storage.local.remove(GITHUB_WORKERS_STORAGE_KEY);
+    } catch (err) {
+      console.warn('[WorkerManager] Failed to clear persisted GitHub workers:', err);
+    }
   }
 }
 

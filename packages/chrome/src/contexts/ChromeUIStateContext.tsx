@@ -123,18 +123,26 @@ export function ChromeUIStateProvider({
     refreshAPIKeyStatus();
   }, []);
 
-  // Check for pending tab from popup navigation
+  // Check for pending tab and pending program from popup navigation
   useEffect(() => {
-    async function checkPendingTab() {
-      const result = await chrome.storage.local.get('pendingTab');
+    async function checkPendingState() {
+      const result = await chrome.storage.local.get(['pendingTab', 'pendingProgramId']);
+
+      // Handle pending tab
       if (result.pendingTab) {
         if (result.pendingTab === 'settings' || result.pendingTab === 'chat') {
           setState(prev => ({ ...prev, activeTab: result.pendingTab }));
         }
         await chrome.storage.local.remove('pendingTab');
       }
+
+      // Handle pending program selection
+      if (result.pendingProgramId) {
+        setState(prev => ({ ...prev, selectedProgramId: result.pendingProgramId }));
+        await chrome.storage.local.remove('pendingProgramId');
+      }
     }
-    checkPendingTab();
+    checkPendingState();
   }, []);
 
   // Refresh API key status when tab changes (in case user just added keys)

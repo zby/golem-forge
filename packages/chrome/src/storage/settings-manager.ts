@@ -15,8 +15,9 @@ import {
 
 /**
  * Default extension settings.
+ * Exported for use in background.ts initialization.
  */
-const DEFAULT_SETTINGS: ExtensionSettings = {
+export const DEFAULT_SETTINGS: ExtensionSettings = {
   defaultProvider: 'anthropic',
   defaultModel: 'claude-sonnet-4-20250514',
   showApprovals: true,

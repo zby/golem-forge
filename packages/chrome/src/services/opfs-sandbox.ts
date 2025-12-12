@@ -436,6 +436,11 @@ export class OPFSSandbox implements MountSandbox {
 
   private findMount(normalizedPath: string): ResolvedMount | undefined {
     for (const mount of this.config.mounts) {
+      // Handle root mount target `/` - it matches all paths
+      if (mount.target === '/') {
+        return mount;
+      }
+      // For non-root mounts, require exact match or prefix match with /
       if (
         normalizedPath === mount.target ||
         normalizedPath.startsWith(mount.target + '/')
@@ -480,14 +485,40 @@ export class OPFSSandbox implements MountSandbox {
 export async function createOPFSSandbox(
   config: MountSandboxConfig
 ): Promise<OPFSSandbox> {
-  // Process mounts
+  // Validate root path
+  if (!config.root.startsWith('/')) {
+    throw new InvalidPathError(
+      `Root path must be absolute (start with /): ${config.root}`,
+      config.root
+    );
+  }
+
+  // Process and validate mounts
   const resolvedMounts: ResolvedMount[] = [];
   if (config.mounts) {
     for (const mount of config.mounts) {
+      // Validate mount target is absolute
+      if (!mount.target.startsWith('/')) {
+        throw new InvalidPathError(
+          `Mount target must be absolute (start with /): ${mount.target}`,
+          mount.target
+        );
+      }
+
+      // Validate mount source is absolute
+      if (!mount.source.startsWith('/')) {
+        throw new InvalidPathError(
+          `Mount source must be absolute (start with /): ${mount.source}`,
+          mount.source
+        );
+      }
+
+      // Normalize target (remove trailing slashes)
       let normalizedTarget = mount.target;
       while (normalizedTarget.length > 1 && normalizedTarget.endsWith('/')) {
         normalizedTarget = normalizedTarget.slice(0, -1);
       }
+
       resolvedMounts.push({
         source: mount.source,
         target: normalizedTarget,
