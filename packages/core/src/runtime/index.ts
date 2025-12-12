@@ -30,6 +30,9 @@ export type {
   ToolExecutorOptions,
 } from "./types.js";
 
+// Interrupt helpers
+export { createInterruptSignal, InterruptError, isInterruptError } from "./interrupt.js";
+
 // Events
 export type {
   RuntimeEvent,

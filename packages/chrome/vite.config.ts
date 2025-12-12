@@ -61,6 +61,7 @@ export default defineConfig({
       // Link to local @golem-forge/core package (npm workspaces handles this,
       // but Vite needs explicit alias for bundling)
       '@golem-forge/core': resolve(__dirname, '../core/src'),
+      '@golem-forge/ui-react': resolve(__dirname, '../ui-react/src'),
     },
   },
   define: {

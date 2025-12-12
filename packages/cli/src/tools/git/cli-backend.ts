@@ -661,9 +661,10 @@ export class CLIGitBackend implements GitBackend {
 
       summaries.push({
         path: file.sandboxPath,
-        operation: file.operation,
         additions,
         deletions,
+        ...(file.operation === "create" ? { isNew: true } : {}),
+        ...(file.operation === "delete" ? { isDeleted: true } : {}),
       });
     }
 

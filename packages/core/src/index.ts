@@ -166,6 +166,9 @@ export {
   createWorkerRuntime,
   defaultWorkerRunnerFactory,
   matchModelPattern,
+  createInterruptSignal,
+  InterruptError,
+  isInterruptError,
   // Re-exported AI SDK types and functions (platform packages should use these)
   type Tool,
   type ToolExecutionOptions,
@@ -359,6 +362,50 @@ export { createRuntimeUI } from './runtime-ui.js';
 // UI Implementation - interface for UI implementations
 export type { UIImplementation } from './ui-implementation.js';
 export { BaseUIImplementation } from './ui-implementation.js';
+
+// ============================================================================
+// UI Utilities (Platform-Agnostic)
+// ============================================================================
+
+export {
+  // Headless UI implementation
+  HeadlessAdapter,
+  createHeadlessAdapter,
+  type HeadlessAdapterOptions,
+} from "./ui/headless-adapter.js";
+
+export {
+  // Slash command parsing
+  parseCommand,
+  isCommand,
+  isBuiltinCommand,
+  classifyCommand,
+  optionsToArgs,
+  BUILTIN_COMMANDS,
+  CommandParseError,
+  type ParsedCommand,
+  type BuiltinCommand,
+  type CommandType,
+} from "./ui/command-parser.js";
+
+export {
+  // Manual tool UI helpers
+  extractManualToolInfo,
+  getManualToolInfos,
+} from "./ui/manual-tool-info.js";
+
+export {
+  // Zod schema -> manual tool fields
+  deriveFieldsFromSchema,
+  isZodObjectSchema,
+  type FieldType,
+} from "./ui/schema-to-fields.js";
+
+export {
+  // Tool result helpers
+  toToolResultEvent,
+  isSuccessResult,
+} from "./ui/result-utils.js";
 
 // ============================================================================
 // UI State Management (Platform-Agnostic)

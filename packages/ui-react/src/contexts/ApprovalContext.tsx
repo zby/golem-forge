@@ -69,6 +69,21 @@ export function ApprovalProvider({
   const [pending, setPending] = useState<PendingApproval | null>(null);
   const stateRef = useRef<ApprovalState>(state);
   const pendingRef = useRef<PendingApproval | null>(pending);
+  const respondRef = useRef<(approved: ApprovalResultData) => void>(() => {
+    throw new Error('Approval actions not initialized yet');
+  });
+  const addSessionRef = useRef<(pattern: ApprovalPattern) => void>(() => {
+    throw new Error('Approval actions not initialized yet');
+  });
+  const addAlwaysRef = useRef<(pattern: ApprovalPattern) => void>(() => {
+    throw new Error('Approval actions not initialized yet');
+  });
+  const removeAlwaysRef = useRef<(pattern: ApprovalPattern) => void>(() => {
+    throw new Error('Approval actions not initialized yet');
+  });
+  const clearSessionRef = useRef<() => void>(() => {
+    throw new Error('Approval actions not initialized yet');
+  });
 
   useEffect(() => {
     stateRef.current = state;
@@ -81,13 +96,6 @@ export function ApprovalProvider({
   // Subscribe to approval required events
   useEffect(() => {
     const unsub = bus.on('approvalRequired', (event) => {
-      if (pendingRef.current !== null) {
-        throw new Error(
-          `Invariant violation: received approvalRequired while an approval is already pending (pendingRequestId=${pendingRef.current.requestId}, newRequestId=${event.requestId}). ` +
-          'Core is expected to serialize approvals.'
-        );
-      }
-
       // Check if auto-approved
       const request = {
         type: event.type,
@@ -104,13 +112,23 @@ export function ApprovalProvider({
         return;
       }
 
-      // Set as pending
-      const nextPending: PendingApproval = {
-        ...event,
-        timestamp: Date.now(),
-      };
-      pendingRef.current = nextPending;
-      setPending(nextPending);
+      // Set as pending (ignore concurrent approvals; core is expected to serialize approvals)
+      setPending((current) => {
+        if (current !== null) {
+          console.error(
+            `Invariant violation: received approvalRequired while an approval is already pending (pendingRequestId=${current.requestId}, newRequestId=${event.requestId}). ` +
+            'Core is expected to serialize approvals.'
+          );
+          return current;
+        }
+
+        const nextPending: PendingApproval = {
+          ...event,
+          timestamp: Date.now(),
+        };
+        pendingRef.current = nextPending;
+        return nextPending;
+      });
     });
 
     return unsub;
@@ -182,16 +200,23 @@ export function ApprovalProvider({
     });
   }, []);
 
-  const actions = useMemo(
-    () => ({
-      respond,
-      addSession,
-      addAlways,
-      removeAlways: removeAlwaysFn,
-      clearSession,
-    }),
-    [respond, addSession, addAlways, removeAlwaysFn, clearSession]
-  );
+  useEffect(() => {
+    respondRef.current = respond;
+    addSessionRef.current = addSession;
+    addAlwaysRef.current = addAlways;
+    removeAlwaysRef.current = removeAlwaysFn;
+    clearSessionRef.current = clearSession;
+  }, [respond, addSession, addAlways, removeAlwaysFn, clearSession]);
+
+  const actions = useMemo(() => {
+    return {
+      respond: (result: ApprovalResultData) => respondRef.current(result),
+      addSession: (pattern: ApprovalPattern) => addSessionRef.current(pattern),
+      addAlways: (pattern: ApprovalPattern) => addAlwaysRef.current(pattern),
+      removeAlways: (pattern: ApprovalPattern) => removeAlwaysRef.current(pattern),
+      clearSession: () => clearSessionRef.current(),
+    };
+  }, []);
 
   const value: ApprovalContextValue = { state, pending };
 
