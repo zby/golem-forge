@@ -729,4 +729,77 @@ describe("RuntimeUI event emission", () => {
     // Should emit endSession with error
     expect(mockRuntimeUI.endSession).toHaveBeenCalledWith("error", "API error");
   });
+
+  it("should format APICallError with detailed information", async () => {
+    // Import APICallError to create a proper error instance
+    const { APICallError } = await import("ai");
+
+    const apiError = new APICallError({
+      message: "Provider returned error",
+      url: "https://api.openrouter.ai/v1/chat/completions",
+      statusCode: 402,
+      responseBody: JSON.stringify({
+        error: {
+          message: "Insufficient credits: You have $0.00 remaining.",
+          code: 402,
+        }
+      }),
+      requestBodyValues: {},
+    });
+
+    mockGenerateText.mockRejectedValueOnce(apiError);
+
+    const mockBus = {
+      emit: vi.fn(),
+      on: vi.fn(() => vi.fn()),
+      off: vi.fn(),
+      clear: vi.fn(),
+    };
+
+    const mockRuntimeUI = {
+      bus: mockBus,
+      showMessage: vi.fn(),
+      showStatus: vi.fn(),
+      startStreaming: vi.fn(),
+      appendStreaming: vi.fn(),
+      endStreaming: vi.fn(),
+      showToolStarted: vi.fn(),
+      showToolResult: vi.fn(),
+      updateWorker: vi.fn(),
+      showManualTools: vi.fn(),
+      showDiffSummary: vi.fn(),
+      showDiffContent: vi.fn(),
+      endSession: vi.fn(),
+      requestApproval: vi.fn(),
+      getUserInput: vi.fn(),
+      updateContextUsage: vi.fn(),
+      onInterrupt: vi.fn(),
+      onManualToolInvoke: vi.fn(() => vi.fn()),
+      onGetDiff: vi.fn(() => vi.fn()),
+    };
+
+    const runtime = new WorkerRuntime({
+      worker: simpleWorker,
+      approvalMode: "approve_all",
+      model: TEST_MODEL,
+      runtimeUI: mockRuntimeUI,
+    });
+    await runtime.initialize();
+
+    const result = await runtime.run("Hello!");
+
+    expect(result.success).toBe(false);
+
+    // Should include detailed error info from APICallError
+    expect(result.error).toContain("Provider returned error");
+    expect(result.error).toContain("Status: 402");
+    expect(result.error).toContain("Insufficient credits");
+    expect(result.error).toContain("Endpoint: api.openrouter.ai");
+
+    // showStatus should also receive the detailed error
+    expect(mockRuntimeUI.showStatus).toHaveBeenCalledWith(
+      "error",
+      expect.stringContaining("Status: 402")
+    );
+  });
 });

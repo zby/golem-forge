@@ -9,7 +9,7 @@
  * factory functions that inject platform-specific tools (filesystem, shell, etc.).
  */
 
-import { generateText, type ModelMessage, type Tool, type LanguageModel } from "ai";
+import { generateText, APICallError, type ModelMessage, type Tool, type LanguageModel } from "ai";
 import { type WorkerDefinition, workerNeedsSandbox } from "../worker-schema.js";
 import type { FileOperations } from "../sandbox-types.js";
 import type { RuntimeUI } from "../runtime-ui.js";
@@ -72,6 +72,78 @@ function getAttachmentExtension(name: string | undefined): string {
     return "";
   }
   return baseName.slice(lastDot).toLowerCase();
+}
+
+/**
+ * Format an AI SDK error with detailed information.
+ * Extracts status code, response body, and other useful debugging info from APICallError.
+ */
+function formatSDKError(err: unknown): string {
+  // Check if this is an APICallError from the AI SDK
+  if (APICallError.isInstance(err)) {
+    const parts: string[] = [];
+
+    // Start with the basic message
+    parts.push(err.message);
+
+    // Add status code if available
+    if (err.statusCode) {
+      parts.push(`Status: ${err.statusCode}`);
+    }
+
+    // Add response body if it contains useful info
+    if (err.responseBody) {
+      // Try to parse as JSON for better formatting
+      try {
+        const body = typeof err.responseBody === 'string'
+          ? JSON.parse(err.responseBody)
+          : err.responseBody;
+
+        // Extract error message from common response formats
+        // Only add if it provides new information
+        const detailMsg = body.error?.message || body.message || body.error;
+        if (detailMsg && typeof detailMsg === 'string' && detailMsg !== err.message) {
+          parts.push(`Details: ${detailMsg}`);
+        } else if (body.error && typeof body.error === 'object') {
+          // Some providers return error as an object with code and type
+          const errorParts: string[] = [];
+          if (body.error.type) errorParts.push(`type: ${body.error.type}`);
+          if (body.error.code) errorParts.push(`code: ${body.error.code}`);
+          if (body.error.param) errorParts.push(`param: ${body.error.param}`);
+          if (errorParts.length > 0) {
+            parts.push(`Details: ${errorParts.join(', ')}`);
+          }
+        }
+      } catch {
+        // If not JSON, include raw response (truncated)
+        const responseStr = String(err.responseBody).slice(0, 500);
+        if (responseStr && responseStr !== err.message) {
+          parts.push(`Response: ${responseStr}`);
+        }
+      }
+    }
+
+    // Add cause if it provides additional info
+    if (err.cause && err.cause instanceof Error && err.cause.message !== err.message) {
+      parts.push(`Cause: ${err.cause.message}`);
+    }
+
+    // Add URL for debugging (helpful for identifying which provider failed)
+    if (err.url) {
+      // Extract just the hostname to avoid leaking API keys in query params
+      try {
+        const url = new URL(err.url);
+        parts.push(`Endpoint: ${url.hostname}`);
+      } catch {
+        // URL parsing failed, skip
+      }
+    }
+
+    return parts.join('\n');
+  }
+
+  // For other errors, just return the message
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -802,7 +874,8 @@ export class WorkerRuntime implements WorkerRunner {
         };
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
+      // Format error with detailed SDK info when available
+      const errorMsg = formatSDKError(err);
       this.emit({
         type: "execution_error",
         success: false,
