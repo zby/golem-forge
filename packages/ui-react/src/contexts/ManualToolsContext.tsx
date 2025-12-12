@@ -13,9 +13,11 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
-import type { UIEventBus, ManualToolInfoEvent } from '@golem-forge/core';
+import type { ManualToolInfoEvent } from '@golem-forge/core';
+import { useEventBus } from './EventBusContext.js';
 
 interface ManualToolsContextValue {
   /** Currently available manual tools */
@@ -31,16 +33,17 @@ interface ManualToolsContextValue {
 }
 
 const ManualToolsContext = createContext<ManualToolsContextValue | null>(null);
+const ManualToolsActionsContext = createContext<ManualToolsContextValue['actions'] | null>(null);
 
 export interface ManualToolsProviderProps {
   children: ReactNode;
-  bus: UIEventBus;
 }
 
 /**
  * Provider that manages manual tools state and subscribes to bus events.
  */
-export function ManualToolsProvider({ children, bus }: ManualToolsProviderProps) {
+export function ManualToolsProvider({ children }: ManualToolsProviderProps) {
+  const bus = useEventBus();
   const [tools, setTools] = useState<ManualToolInfoEvent[]>([]);
 
   // Subscribe to manual tools events
@@ -75,16 +78,20 @@ export function ManualToolsProvider({ children, bus }: ManualToolsProviderProps)
     setTools([]);
   }, []);
 
+  const actions = useMemo(() => ({ invoke, clear }), [invoke, clear]);
+
   const value: ManualToolsContextValue = {
     tools,
     hasTools: tools.length > 0,
-    actions: { invoke, clear },
+    actions,
   };
 
   return (
-    <ManualToolsContext.Provider value={value}>
-      {children}
-    </ManualToolsContext.Provider>
+    <ManualToolsActionsContext.Provider value={actions}>
+      <ManualToolsContext.Provider value={value}>
+        {children}
+      </ManualToolsContext.Provider>
+    </ManualToolsActionsContext.Provider>
   );
 }
 
@@ -114,9 +121,9 @@ export function useHasManualTools(): boolean {
  * Hook to access manual tools actions.
  */
 export function useManualToolsActions() {
-  const ctx = useContext(ManualToolsContext);
-  if (!ctx) {
+  const actions = useContext(ManualToolsActionsContext);
+  if (!actions) {
     throw new Error('useManualToolsActions must be used within ManualToolsProvider');
   }
-  return ctx.actions;
+  return actions;
 }

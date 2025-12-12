@@ -66,10 +66,10 @@ export function UIProvider({
   return (
     <EventBusProvider bus={bus}>
       <UIStateProvider initialMode={initialUIMode} initialFocus={initialUIFocus}>
-        <WorkerProvider bus={bus}>
-          <ApprovalProvider bus={bus} initialAlwaysApprovals={initialAlwaysApprovals}>
-            <ManualToolsProvider bus={bus}>
-              <MessagesProvider bus={bus}>
+        <WorkerProvider>
+          <ApprovalProvider initialAlwaysApprovals={initialAlwaysApprovals}>
+            <ManualToolsProvider>
+              <MessagesProvider>
                 {children}
               </MessagesProvider>
             </ManualToolsProvider>

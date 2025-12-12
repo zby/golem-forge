@@ -13,9 +13,10 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
-import type { UIEventBus } from '@golem-forge/core';
+import { useEventBus } from './EventBusContext.js';
 import {
   type MessageState,
   createMessageState,
@@ -28,24 +29,18 @@ import {
   clearMessages,
 } from '../state/message-state.js';
 
-interface MessagesContextValue {
-  state: MessageState;
-  actions: {
-    clear: () => void;
-  };
-}
-
-const MessagesContext = createContext<MessagesContextValue | null>(null);
-
 export interface MessagesProviderProps {
   children: ReactNode;
-  bus: UIEventBus;
 }
+
+const MessagesStateContext = createContext<MessageState | null>(null);
+const MessagesActionsContext = createContext<{ clear: () => void } | null>(null);
 
 /**
  * Provider that manages message state and subscribes to bus events.
  */
-export function MessagesProvider({ children, bus }: MessagesProviderProps) {
+export function MessagesProvider({ children }: MessagesProviderProps) {
+  const bus = useEventBus();
   const [state, setState] = useState(createMessageState);
 
   // Subscribe to events
@@ -105,15 +100,14 @@ export function MessagesProvider({ children, bus }: MessagesProviderProps) {
     setState(clearMessages);
   }, []);
 
-  const value: MessagesContextValue = {
-    state,
-    actions: { clear },
-  };
+  const actions = useMemo(() => ({ clear }), [clear]);
 
   return (
-    <MessagesContext.Provider value={value}>
-      {children}
-    </MessagesContext.Provider>
+    <MessagesActionsContext.Provider value={actions}>
+      <MessagesStateContext.Provider value={state}>
+        {children}
+      </MessagesStateContext.Provider>
+    </MessagesActionsContext.Provider>
   );
 }
 
@@ -121,20 +115,20 @@ export function MessagesProvider({ children, bus }: MessagesProviderProps) {
  * Hook to access the full message state.
  */
 export function useMessagesState(): MessageState {
-  const ctx = useContext(MessagesContext);
-  if (!ctx) {
+  const state = useContext(MessagesStateContext);
+  if (!state) {
     throw new Error('useMessagesState must be used within MessagesProvider');
   }
-  return ctx.state;
+  return state;
 }
 
 /**
  * Hook to access message actions (clear, etc.).
  */
 export function useMessagesActions() {
-  const ctx = useContext(MessagesContext);
-  if (!ctx) {
+  const actions = useContext(MessagesActionsContext);
+  if (!actions) {
     throw new Error('useMessagesActions must be used within MessagesProvider');
   }
-  return ctx.actions;
+  return actions;
 }

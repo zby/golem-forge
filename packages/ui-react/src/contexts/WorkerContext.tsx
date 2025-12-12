@@ -13,15 +13,15 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
-import type { UIEventBus } from '@golem-forge/core';
+import { useEventBus } from './EventBusContext.js';
 import {
   type WorkerState,
   type WorkerNode,
   createWorkerState,
   updateFromProgress,
-  setActiveWorker,
   removeWorker,
   clearWorkers,
   getActiveWorker,
@@ -35,23 +35,23 @@ interface WorkerContextValue {
   workerPath: ReturnType<typeof getWorkerPath>;
   workersInOrder: WorkerNode[];
   actions: {
-    setActive: (id: string | null) => void;
     remove: (id: string) => void;
     clear: () => void;
   };
 }
 
 const WorkerContext = createContext<WorkerContextValue | null>(null);
+const WorkerActionsContext = createContext<WorkerContextValue['actions'] | null>(null);
 
 export interface WorkerProviderProps {
   children: ReactNode;
-  bus: UIEventBus;
 }
 
 /**
  * Provider that manages worker state and subscribes to bus events.
  */
-export function WorkerProvider({ children, bus }: WorkerProviderProps) {
+export function WorkerProvider({ children }: WorkerProviderProps) {
+  const bus = useEventBus();
   const [state, setState] = useState(createWorkerState);
 
   // Subscribe to worker update events
@@ -71,10 +71,6 @@ export function WorkerProvider({ children, bus }: WorkerProviderProps) {
     return unsub;
   }, [bus]);
 
-  const setActive = useCallback((id: string | null) => {
-    setState((s) => setActiveWorker(s, id));
-  }, []);
-
   const remove = useCallback((id: string) => {
     setState((s) => removeWorker(s, id));
   }, []);
@@ -88,22 +84,28 @@ export function WorkerProvider({ children, bus }: WorkerProviderProps) {
   const workerPath = getWorkerPath(state);
   const workersInOrder = getWorkersInTreeOrder(state);
 
+  const actions = useMemo(
+    () => ({
+      remove,
+      clear,
+    }),
+    [remove, clear]
+  );
+
   const value: WorkerContextValue = {
     state,
     activeWorker,
     workerPath,
     workersInOrder,
-    actions: {
-      setActive,
-      remove,
-      clear,
-    },
+    actions,
   };
 
   return (
-    <WorkerContext.Provider value={value}>
-      {children}
-    </WorkerContext.Provider>
+    <WorkerActionsContext.Provider value={actions}>
+      <WorkerContext.Provider value={value}>
+        {children}
+      </WorkerContext.Provider>
+    </WorkerActionsContext.Provider>
   );
 }
 
@@ -155,9 +157,9 @@ export function useWorkersInOrder(): WorkerNode[] {
  * Hook to access worker actions.
  */
 export function useWorkerActions() {
-  const ctx = useContext(WorkerContext);
-  if (!ctx) {
+  const actions = useContext(WorkerActionsContext);
+  if (!actions) {
     throw new Error('useWorkerActions must be used within WorkerProvider');
   }
-  return ctx.actions;
+  return actions;
 }

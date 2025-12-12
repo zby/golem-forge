@@ -274,6 +274,29 @@ describe('RuntimeUI', () => {
         expect(result).toEqual({ approved: true });
       });
 
+      it('should reject concurrent approval requests', async () => {
+        const handler = vi.fn();
+        bus.on('approvalRequired', handler);
+
+        const first = ui.requestApproval(
+          'tool_call',
+          'First approval',
+          {},
+          'low',
+          []
+        );
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        const firstRequestId = handler.mock.calls[0][0].requestId;
+
+        await expect(
+          ui.requestApproval('tool_call', 'Second approval', {}, 'low', [])
+        ).rejects.toThrow(/another approval is pending/i);
+
+        bus.emit('approvalResponse', { requestId: firstRequestId, approved: true });
+        await expect(first).resolves.toEqual({ approved: true });
+      });
+
       it('should handle session approval', async () => {
         const handler = vi.fn();
         bus.on('approvalRequired', handler);

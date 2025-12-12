@@ -13,9 +13,12 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
+  useRef,
   type ReactNode,
 } from 'react';
-import type { UIEventBus, ApprovalRequiredEvent } from '@golem-forge/core';
+import type { ApprovalRequiredEvent } from '@golem-forge/core';
+import { useEventBus } from './EventBusContext.js';
 import {
   type ApprovalState,
   type ApprovalResultData,
@@ -36,20 +39,19 @@ interface PendingApproval extends ApprovalRequiredEvent {
 interface ApprovalContextValue {
   state: ApprovalState;
   pending: PendingApproval | null;
-  actions: {
-    respond: (approved: ApprovalResultData) => void;
-    addSession: (pattern: ApprovalPattern) => void;
-    addAlways: (pattern: ApprovalPattern) => void;
-    removeAlways: (pattern: ApprovalPattern) => void;
-    clearSession: () => void;
-  };
 }
 
 const ApprovalContext = createContext<ApprovalContextValue | null>(null);
+const ApprovalActionsContext = createContext<{
+  respond: (approved: ApprovalResultData) => void;
+  addSession: (pattern: ApprovalPattern) => void;
+  addAlways: (pattern: ApprovalPattern) => void;
+  removeAlways: (pattern: ApprovalPattern) => void;
+  clearSession: () => void;
+} | null>(null);
 
 export interface ApprovalProviderProps {
   children: ReactNode;
-  bus: UIEventBus;
   initialAlwaysApprovals?: ApprovalPattern[];
 }
 
@@ -58,17 +60,34 @@ export interface ApprovalProviderProps {
  */
 export function ApprovalProvider({
   children,
-  bus,
   initialAlwaysApprovals = [],
 }: ApprovalProviderProps) {
+  const bus = useEventBus();
   const [state, setState] = useState(() =>
     createApprovalState(initialAlwaysApprovals)
   );
   const [pending, setPending] = useState<PendingApproval | null>(null);
+  const stateRef = useRef<ApprovalState>(state);
+  const pendingRef = useRef<PendingApproval | null>(pending);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  useEffect(() => {
+    pendingRef.current = pending;
+  }, [pending]);
 
   // Subscribe to approval required events
   useEffect(() => {
     const unsub = bus.on('approvalRequired', (event) => {
+      if (pendingRef.current !== null) {
+        throw new Error(
+          `Invariant violation: received approvalRequired while an approval is already pending (pendingRequestId=${pendingRef.current.requestId}, newRequestId=${event.requestId}). ` +
+          'Core is expected to serialize approvals.'
+        );
+      }
+
       // Check if auto-approved
       const request = {
         type: event.type,
@@ -76,7 +95,7 @@ export function ApprovalProvider({
         risk: event.risk,
       };
 
-      if (isAutoApproved(state, request)) {
+      if (isAutoApproved(stateRef.current, request)) {
         // Auto-approve immediately
         bus.emit('approvalResponse', {
           requestId: event.requestId,
@@ -86,76 +105,102 @@ export function ApprovalProvider({
       }
 
       // Set as pending
-      setPending({
+      const nextPending: PendingApproval = {
         ...event,
         timestamp: Date.now(),
-      });
+      };
+      pendingRef.current = nextPending;
+      setPending(nextPending);
     });
 
     return unsub;
-  }, [bus, state]);
+  }, [bus]);
 
   // Respond to pending approval
-  const respond = useCallback(
-    (result: ApprovalResultData) => {
-      if (!pending) return;
+  const respond = useCallback((result: ApprovalResultData) => {
+    const currentPending = pendingRef.current;
+    if (!currentPending) {
+      throw new Error('No pending approval to respond to');
+    }
 
-      const request = {
-        type: pending.type,
-        description: pending.description,
-        risk: pending.risk,
-      };
+    const request = {
+      type: currentPending.type,
+      description: currentPending.description,
+      risk: currentPending.risk,
+    };
 
-      // Update state with approval decision
-      setState((s) => addApproval(s, request, result));
+    // Update state with approval decision
+    setState((s) => {
+      const next = addApproval(s, request, result);
+      stateRef.current = next;
+      return next;
+    });
 
-      // Emit response to bus with full approval semantics
-      // Preserve 'session'|'always' discriminators for the runtime
-      bus.emit('approvalResponse', {
-        requestId: pending.requestId,
-        approved: result.approved,
-        // Only include reason for denied results
-        ...(result.approved === false && result.reason ? { reason: result.reason } : {}),
-      });
+    // Emit response to bus with full approval semantics
+    // Preserve 'session'|'always' discriminators for the runtime
+    bus.emit('approvalResponse', {
+      requestId: currentPending.requestId,
+      approved: result.approved,
+      // Only include reason for denied results
+      ...(result.approved === false && result.reason ? { reason: result.reason } : {}),
+    });
 
-      // Clear pending
-      setPending(null);
-    },
-    [bus, pending]
-  );
+    // Clear pending
+    pendingRef.current = null;
+    setPending(null);
+  }, [bus]);
 
   const addSession = useCallback((pattern: ApprovalPattern) => {
-    setState((s) => addSessionApproval(s, pattern));
+    setState((s) => {
+      const next = addSessionApproval(s, pattern);
+      stateRef.current = next;
+      return next;
+    });
   }, []);
 
   const addAlways = useCallback((pattern: ApprovalPattern) => {
-    setState((s) => addAlwaysApproval(s, pattern));
+    setState((s) => {
+      const next = addAlwaysApproval(s, pattern);
+      stateRef.current = next;
+      return next;
+    });
   }, []);
 
   const removeAlwaysFn = useCallback((pattern: ApprovalPattern) => {
-    setState((s) => removeAlwaysApproval(s, pattern));
+    setState((s) => {
+      const next = removeAlwaysApproval(s, pattern);
+      stateRef.current = next;
+      return next;
+    });
   }, []);
 
   const clearSession = useCallback(() => {
-    setState((s) => clearSessionApprovals(s));
+    setState((s) => {
+      const next = clearSessionApprovals(s);
+      stateRef.current = next;
+      return next;
+    });
   }, []);
 
-  const value: ApprovalContextValue = {
-    state,
-    pending,
-    actions: {
+  const actions = useMemo(
+    () => ({
       respond,
       addSession,
       addAlways,
       removeAlways: removeAlwaysFn,
       clearSession,
-    },
-  };
+    }),
+    [respond, addSession, addAlways, removeAlwaysFn, clearSession]
+  );
+
+  const value: ApprovalContextValue = { state, pending };
 
   return (
-    <ApprovalContext.Provider value={value}>
-      {children}
-    </ApprovalContext.Provider>
+    <ApprovalActionsContext.Provider value={actions}>
+      <ApprovalContext.Provider value={value}>
+        {children}
+      </ApprovalContext.Provider>
+    </ApprovalActionsContext.Provider>
   );
 }
 
@@ -185,9 +230,9 @@ export function usePendingApproval(): PendingApproval | null {
  * Hook to access approval actions.
  */
 export function useApprovalActions() {
-  const ctx = useContext(ApprovalContext);
-  if (!ctx) {
+  const actions = useContext(ApprovalActionsContext);
+  if (!actions) {
     throw new Error('useApprovalActions must be used within ApprovalProvider');
   }
-  return ctx.actions;
+  return actions;
 }

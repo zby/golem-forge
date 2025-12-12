@@ -76,7 +76,6 @@ export {
   workerFromProgress,
   addWorker,
   updateWorkerStatus,
-  setActiveWorker,
   removeWorker,
   updateFromProgress,
   clearWorkers,

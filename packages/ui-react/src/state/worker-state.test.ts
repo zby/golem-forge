@@ -8,7 +8,6 @@ import {
   workerFromProgress,
   addWorker,
   updateWorkerStatus,
-  setActiveWorker,
   removeWorker,
   updateFromProgress,
   clearWorkers,
@@ -54,20 +53,6 @@ describe('Worker State', () => {
       expect(worker.status).toBe('running');
       expect(worker.depth).toBe(0);
       expect(worker.parentId).toBeUndefined();
-      expect(worker.children).toEqual([]);
-    });
-
-    it('should preserve existing children', () => {
-      const progress: TaskProgress = {
-        id: 'parent',
-        task: 'Parent task',
-        status: 'running',
-        depth: 0,
-      };
-
-      const worker = workerFromProgress(progress, ['child-1', 'child-2']);
-
-      expect(worker.children).toEqual(['child-1', 'child-2']);
     });
   });
 
@@ -77,7 +62,6 @@ describe('Worker State', () => {
         id: 'w1',
         task: 'Task 1',
         status: 'pending',
-        children: [],
         depth: 0,
       };
 
@@ -92,7 +76,6 @@ describe('Worker State', () => {
         id: 'root',
         task: 'Root task',
         status: 'running',
-        children: [],
         depth: 0,
       };
 
@@ -107,7 +90,6 @@ describe('Worker State', () => {
         id: 'root',
         task: 'Root',
         status: 'running',
-        children: [],
         depth: 0,
       });
 
@@ -117,35 +99,35 @@ describe('Worker State', () => {
         task: 'Child',
         status: 'pending',
         parentId: 'root',
-        children: [],
         depth: 1,
       });
 
       expect(state.rootWorkerId).toBe('root');
     });
 
-    it('should update parent children list', () => {
-      // Add parent
+    it('should handle out-of-order parent/child insertion', () => {
+      // Add child before parent exists
+      state = addWorker(state, {
+        id: 'child',
+        task: 'Child',
+        status: 'running',
+        parentId: 'parent',
+        depth: 1,
+      });
+
+      // Add parent later
       state = addWorker(state, {
         id: 'parent',
         task: 'Parent',
         status: 'running',
-        children: [],
         depth: 0,
       });
 
-      // Add child
-      state = addWorker(state, {
-        id: 'child',
-        task: 'Child',
-        status: 'pending',
-        parentId: 'parent',
-        children: [],
-        depth: 1,
-      });
+      const children = getWorkerChildren(state, 'parent');
+      expect(children.map((c) => c.id)).toEqual(['child']);
 
-      const parent = state.workers.get('parent')!;
-      expect(parent.children).toContain('child');
+      const ordered = getWorkersInTreeOrder(state);
+      expect(ordered.map((w) => w.id)).toEqual(['parent', 'child']);
     });
   });
 
@@ -155,7 +137,6 @@ describe('Worker State', () => {
         id: 'w1',
         task: 'Task',
         status: 'pending',
-        children: [],
         depth: 0,
       });
 
@@ -171,36 +152,12 @@ describe('Worker State', () => {
     });
   });
 
-  describe('setActiveWorker', () => {
-    it('should set active worker', () => {
-      state = addWorker(state, {
-        id: 'w1',
-        task: 'Task',
-        status: 'running',
-        children: [],
-        depth: 0,
-      });
-
-      state = setActiveWorker(state, 'w1');
-
-      expect(state.activeWorkerId).toBe('w1');
-    });
-
-    it('should allow setting to null', () => {
-      state = setActiveWorker(state, 'w1');
-      state = setActiveWorker(state, null);
-
-      expect(state.activeWorkerId).toBeNull();
-    });
-  });
-
   describe('removeWorker', () => {
     it('should remove worker', () => {
       state = addWorker(state, {
         id: 'w1',
         task: 'Task',
         status: 'complete',
-        children: [],
         depth: 0,
       });
 
@@ -215,7 +172,6 @@ describe('Worker State', () => {
         id: 'parent',
         task: 'Parent',
         status: 'running',
-        children: [],
         depth: 0,
       });
       state = addWorker(state, {
@@ -223,7 +179,6 @@ describe('Worker State', () => {
         task: 'Child 1',
         status: 'running',
         parentId: 'parent',
-        children: [],
         depth: 1,
       });
       state = addWorker(state, {
@@ -231,7 +186,6 @@ describe('Worker State', () => {
         task: 'Child 2',
         status: 'running',
         parentId: 'parent',
-        children: [],
         depth: 1,
       });
       state = addWorker(state, {
@@ -239,7 +193,6 @@ describe('Worker State', () => {
         task: 'Grandchild',
         status: 'running',
         parentId: 'child1',
-        children: [],
         depth: 2,
       });
 
@@ -248,36 +201,32 @@ describe('Worker State', () => {
       expect(state.workers.size).toBe(0);
     });
 
-    it('should update parent children list', () => {
+    it('should not strand descendants when inserted out of order', () => {
+      // Add child and grandchild before parent exists
+      state = addWorker(state, {
+        id: 'grandchild',
+        task: 'Grandchild',
+        status: 'running',
+        parentId: 'child',
+        depth: 2,
+      });
+      state = addWorker(state, {
+        id: 'child',
+        task: 'Child',
+        status: 'running',
+        parentId: 'parent',
+        depth: 1,
+      });
       state = addWorker(state, {
         id: 'parent',
         task: 'Parent',
         status: 'running',
-        children: [],
         depth: 0,
       });
-      state = addWorker(state, {
-        id: 'child1',
-        task: 'Child 1',
-        status: 'running',
-        parentId: 'parent',
-        children: [],
-        depth: 1,
-      });
-      state = addWorker(state, {
-        id: 'child2',
-        task: 'Child 2',
-        status: 'running',
-        parentId: 'parent',
-        children: [],
-        depth: 1,
-      });
 
-      state = removeWorker(state, 'child1');
+      state = removeWorker(state, 'parent');
 
-      const parent = state.workers.get('parent')!;
-      expect(parent.children).not.toContain('child1');
-      expect(parent.children).toContain('child2');
+      expect(state.workers.size).toBe(0);
     });
 
     it('should update active worker if removed', () => {
@@ -285,7 +234,6 @@ describe('Worker State', () => {
         id: 'parent',
         task: 'Parent',
         status: 'running',
-        children: [],
         depth: 0,
       });
       state = addWorker(state, {
@@ -293,10 +241,8 @@ describe('Worker State', () => {
         task: 'Child',
         status: 'running',
         parentId: 'parent',
-        children: [],
         depth: 1,
       });
-      state = setActiveWorker(state, 'child');
 
       state = removeWorker(state, 'child');
 
@@ -325,7 +271,6 @@ describe('Worker State', () => {
         id: 'w1',
         task: 'Old task',
         status: 'pending',
-        children: [],
         depth: 0,
       });
 
@@ -341,15 +286,33 @@ describe('Worker State', () => {
       expect(state.workers.get('w1')?.status).toBe('running');
     });
 
-    it('should set active on running status', () => {
+    it('should transition active worker on completion', () => {
       state = updateFromProgress(state, {
-        id: 'w1',
-        task: 'Task',
+        id: 'parent',
+        task: 'Parent task',
         status: 'running',
         depth: 0,
       });
+      state = updateFromProgress(state, {
+        id: 'child',
+        task: 'Child task',
+        status: 'running',
+        depth: 1,
+        parentId: 'parent',
+      });
 
-      expect(state.activeWorkerId).toBe('w1');
+      expect(state.activeWorkerId).toBe('child');
+
+      // Child completes, parent still running, so active moves back to parent
+      state = updateFromProgress(state, {
+        id: 'child',
+        task: 'Child task',
+        status: 'complete',
+        depth: 1,
+        parentId: 'parent',
+      });
+
+      expect(state.activeWorkerId).toBe('parent');
     });
   });
 
@@ -359,10 +322,8 @@ describe('Worker State', () => {
         id: 'w1',
         task: 'Task',
         status: 'running',
-        children: [],
         depth: 0,
       });
-      state = setActiveWorker(state, 'w1');
 
       state = clearWorkers();
 
@@ -379,7 +340,6 @@ describe('Worker State', () => {
         id: 'root',
         task: 'Root task',
         status: 'running',
-        children: [],
         depth: 0,
       });
       state = addWorker(state, {
@@ -387,7 +347,6 @@ describe('Worker State', () => {
         task: 'Parent task',
         status: 'running',
         parentId: 'root',
-        children: [],
         depth: 1,
       });
       state = addWorker(state, {
@@ -395,10 +354,8 @@ describe('Worker State', () => {
         task: 'Child task',
         status: 'running',
         parentId: 'parent',
-        children: [],
         depth: 2,
       });
-      state = setActiveWorker(state, 'child');
     });
 
     it('should return path from root to active worker', () => {
@@ -419,7 +376,26 @@ describe('Worker State', () => {
     });
 
     it('should return empty array when no active worker', () => {
-      state = setActiveWorker(state, null);
+      state = updateFromProgress(state, {
+        id: 'child',
+        task: 'Child task',
+        status: 'complete',
+        depth: 2,
+        parentId: 'parent',
+      });
+      state = updateFromProgress(state, {
+        id: 'parent',
+        task: 'Parent task',
+        status: 'complete',
+        depth: 1,
+        parentId: 'root',
+      });
+      state = updateFromProgress(state, {
+        id: 'root',
+        task: 'Root task',
+        status: 'complete',
+        depth: 0,
+      });
       const path = getWorkerPath(state);
       expect(path).toEqual([]);
     });
@@ -431,10 +407,8 @@ describe('Worker State', () => {
         id: 'w1',
         task: 'Task',
         status: 'running',
-        children: [],
         depth: 0,
       });
-      state = setActiveWorker(state, 'w1');
 
       const active = getActiveWorker(state);
 
@@ -452,14 +426,12 @@ describe('Worker State', () => {
         id: 'w1',
         task: 'Task 1',
         status: 'complete',
-        children: [],
         depth: 0,
       });
       state = addWorker(state, {
         id: 'w2',
         task: 'Task 2',
         status: 'running',
-        children: [],
         depth: 0,
       });
 
@@ -480,7 +452,6 @@ describe('Worker State', () => {
         id: 'root',
         task: 'Root',
         status: 'running',
-        children: [],
         depth: 0,
       });
       state = addWorker(state, {
@@ -488,7 +459,6 @@ describe('Worker State', () => {
         task: 'Child 1',
         status: 'running',
         parentId: 'root',
-        children: [],
         depth: 1,
       });
       state = addWorker(state, {
@@ -496,7 +466,6 @@ describe('Worker State', () => {
         task: 'Grandchild',
         status: 'running',
         parentId: 'child1',
-        children: [],
         depth: 2,
       });
       state = addWorker(state, {
@@ -504,7 +473,6 @@ describe('Worker State', () => {
         task: 'Child 2',
         status: 'running',
         parentId: 'root',
-        children: [],
         depth: 1,
       });
 
@@ -525,7 +493,6 @@ describe('Worker State', () => {
         id: 'root',
         task: 'Root',
         status: 'running',
-        children: [],
         depth: 0,
       });
       state = addWorker(state, {
@@ -533,7 +500,6 @@ describe('Worker State', () => {
         task: 'Child 1',
         status: 'running',
         parentId: 'root',
-        children: [],
         depth: 1,
       });
       state = addWorker(state, {
@@ -541,7 +507,6 @@ describe('Worker State', () => {
         task: 'Child 2',
         status: 'running',
         parentId: 'root',
-        children: [],
         depth: 1,
       });
 
@@ -558,7 +523,6 @@ describe('Worker State', () => {
         id: 'parent',
         task: 'Parent',
         status: 'running',
-        children: [],
         depth: 0,
       });
       state = addWorker(state, {
@@ -566,7 +530,6 @@ describe('Worker State', () => {
         task: 'Child 1',
         status: 'running',
         parentId: 'parent',
-        children: [],
         depth: 1,
       });
       state = addWorker(state, {
@@ -574,7 +537,6 @@ describe('Worker State', () => {
         task: 'Child 2',
         status: 'running',
         parentId: 'parent',
-        children: [],
         depth: 1,
       });
 
@@ -594,28 +556,24 @@ describe('Worker State', () => {
         id: 'w1',
         task: 'Pending',
         status: 'pending',
-        children: [],
         depth: 0,
       });
       state = addWorker(state, {
         id: 'w2',
         task: 'Running',
         status: 'running',
-        children: [],
         depth: 0,
       });
       state = addWorker(state, {
         id: 'w3',
         task: 'Complete',
         status: 'complete',
-        children: [],
         depth: 0,
       });
       state = addWorker(state, {
         id: 'w4',
         task: 'Error',
         status: 'error',
-        children: [],
         depth: 0,
       });
 
@@ -637,7 +595,6 @@ describe('Worker State', () => {
         id: 'w1',
         task: 'Task',
         status: 'running',
-        children: [],
         depth: 0,
       });
 

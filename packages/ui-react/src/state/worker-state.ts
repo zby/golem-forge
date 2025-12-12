@@ -22,7 +22,6 @@ export interface WorkerNode {
   task: string;
   status: WorkerStatus;
   parentId?: string;
-  children: string[];
   depth: number;
 }
 
@@ -83,15 +82,13 @@ export function createWorkerState(): WorkerState {
  * Create a worker node from task progress.
  */
 export function workerFromProgress(
-  progress: TaskProgress,
-  existingChildren: string[] = []
+  progress: TaskProgress
 ): WorkerNode {
   return {
     id: progress.id,
     task: progress.task,
     status: progress.status,
     parentId: progress.parentId,
-    children: existingChildren,
     depth: progress.depth,
   };
 }
@@ -100,6 +97,65 @@ export function workerFromProgress(
 // State Updates
 // ============================================================================
 
+function recomputeActiveWorkerId(workers: Map<string, WorkerNode>): string | null {
+  let best: WorkerNode | null = null;
+  for (const worker of workers.values()) {
+    if (worker.status !== 'running') continue;
+    if (!best) {
+      best = worker;
+      continue;
+    }
+    if (worker.depth > best.depth) {
+      best = worker;
+      continue;
+    }
+    if (worker.depth === best.depth && worker.id > best.id) {
+      best = worker;
+    }
+  }
+  return best?.id ?? null;
+}
+
+function recomputeRootWorkerId(
+  workers: Map<string, WorkerNode>,
+  currentRoot: string | null
+): string | null {
+  if (currentRoot && workers.has(currentRoot)) {
+    return currentRoot;
+  }
+
+  const depthZero = Array.from(workers.values())
+    .filter((w) => w.depth === 0)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  if (depthZero.length > 0) {
+    return depthZero[0].id;
+  }
+
+  const orphanRoots = Array.from(workers.values())
+    .filter((w) => !w.parentId || !workers.has(w.parentId))
+    .sort((a, b) => (a.depth - b.depth) || a.id.localeCompare(b.id));
+  return orphanRoots[0]?.id ?? null;
+}
+
+function buildChildrenMap(workers: Map<string, WorkerNode>): Map<string, string[]> {
+  const childrenByParentId = new Map<string, string[]>();
+  for (const worker of workers.values()) {
+    if (!worker.parentId) continue;
+    const parentId = worker.parentId;
+    const existing = childrenByParentId.get(parentId);
+    if (existing) {
+      existing.push(worker.id);
+    } else {
+      childrenByParentId.set(parentId, [worker.id]);
+    }
+  }
+  for (const [parentId, childIds] of childrenByParentId.entries()) {
+    childIds.sort((a, b) => a.localeCompare(b));
+    childrenByParentId.set(parentId, childIds);
+  }
+  return childrenByParentId;
+}
+
 /**
  * Add a worker to the tree.
  */
@@ -107,24 +163,12 @@ export function addWorker(state: WorkerState, worker: WorkerNode): WorkerState {
   const newWorkers = new Map(state.workers);
   newWorkers.set(worker.id, worker);
 
-  // Update parent's children list
-  if (worker.parentId && newWorkers.has(worker.parentId)) {
-    const parent = newWorkers.get(worker.parentId)!;
-    if (!parent.children.includes(worker.id)) {
-      newWorkers.set(worker.parentId, {
-        ...parent,
-        children: [...parent.children, worker.id],
-      });
-    }
-  }
-
   // Set root if this is depth 0
-  const newRootWorkerId =
-    worker.depth === 0 ? worker.id : state.rootWorkerId;
+  const newRootWorkerId = worker.depth === 0 ? worker.id : state.rootWorkerId;
 
   return {
     workers: newWorkers,
-    activeWorkerId: state.activeWorkerId,
+    activeWorkerId: recomputeActiveWorkerId(newWorkers),
     rootWorkerId: newRootWorkerId,
   };
 }
@@ -148,19 +192,7 @@ export function updateWorkerStatus(
   return {
     ...state,
     workers: newWorkers,
-  };
-}
-
-/**
- * Set the active worker.
- */
-export function setActiveWorker(
-  state: WorkerState,
-  id: string | null
-): WorkerState {
-  return {
-    ...state,
-    activeWorkerId: id,
+    activeWorkerId: recomputeActiveWorkerId(newWorkers),
   };
 }
 
@@ -174,39 +206,20 @@ export function removeWorker(state: WorkerState, id: string): WorkerState {
   }
 
   const newWorkers = new Map(state.workers);
+  const childrenByParentId = buildChildrenMap(newWorkers);
 
-  // Remove children recursively
   function removeRecursive(workerId: string): void {
-    const w = newWorkers.get(workerId);
-    if (w) {
-      for (const childId of w.children) {
-        removeRecursive(childId);
-      }
-      newWorkers.delete(workerId);
+    const childIds = childrenByParentId.get(workerId) ?? [];
+    for (const childId of childIds) {
+      removeRecursive(childId);
     }
+    newWorkers.delete(workerId);
   }
 
   removeRecursive(id);
 
-  // Update parent's children list
-  if (worker.parentId && newWorkers.has(worker.parentId)) {
-    const parent = newWorkers.get(worker.parentId)!;
-    newWorkers.set(worker.parentId, {
-      ...parent,
-      children: parent.children.filter((childId) => childId !== id),
-    });
-  }
-
-  // Update active/root if needed
-  let newActiveWorkerId = state.activeWorkerId;
-  let newRootWorkerId = state.rootWorkerId;
-
-  if (state.activeWorkerId === id) {
-    newActiveWorkerId = worker.parentId || null;
-  }
-  if (state.rootWorkerId === id) {
-    newRootWorkerId = null;
-  }
+  const newActiveWorkerId = recomputeActiveWorkerId(newWorkers);
+  const newRootWorkerId = recomputeRootWorkerId(newWorkers, state.rootWorkerId === id ? null : state.rootWorkerId);
 
   return {
     workers: newWorkers,
@@ -232,27 +245,27 @@ export function updateFromProgress(
       ...existing,
       task: progress.task,
       status: progress.status,
+      depth: progress.depth,
+      parentId: progress.parentId,
     });
-
-    // Set as active if running
-    const newActiveWorkerId =
-      progress.status === 'running' ? progress.id : state.activeWorkerId;
 
     return {
       ...state,
       workers: newWorkers,
-      activeWorkerId: newActiveWorkerId,
+      activeWorkerId: recomputeActiveWorkerId(newWorkers),
+      rootWorkerId:
+        progress.depth === 0 ? progress.id : recomputeRootWorkerId(newWorkers, state.rootWorkerId),
     };
   } else {
     // Create new worker
     const worker = workerFromProgress(progress);
     let newState = addWorker(state, worker);
 
-    // Set as active if running
-    if (progress.status === 'running') {
-      newState = setActiveWorker(newState, progress.id);
-    }
-
+    newState = {
+      ...newState,
+      rootWorkerId:
+        progress.depth === 0 ? progress.id : recomputeRootWorkerId(newState.workers, newState.rootWorkerId),
+    };
     return newState;
   }
 }
@@ -325,30 +338,44 @@ export function getWorkerList(state: WorkerState): WorkerNode[] {
  */
 export function getWorkersInTreeOrder(state: WorkerState): WorkerNode[] {
   const result: WorkerNode[] = [];
+  const childrenByParentId = buildChildrenMap(state.workers);
+  const visited = new Set<string>();
 
   function visit(workerId: string): void {
+    if (visited.has(workerId)) return;
     const worker = state.workers.get(workerId);
     if (!worker) {
       return;
     }
 
     result.push(worker);
+    visited.add(workerId);
 
-    for (const childId of worker.children) {
+    const childIds = childrenByParentId.get(workerId) ?? [];
+    for (const childId of childIds) {
       visit(childId);
     }
   }
 
-  // Start from root
-  if (state.rootWorkerId) {
+  // Start from configured root if available
+  if (state.rootWorkerId && state.workers.has(state.rootWorkerId)) {
     visit(state.rootWorkerId);
+  } else {
+    // Otherwise start from inferred roots
+    const roots = Array.from(state.workers.values())
+      .filter((w) => w.depth === 0 || !w.parentId || !state.workers.has(w.parentId))
+      .sort((a, b) => (a.depth - b.depth) || a.id.localeCompare(b.id));
+    for (const root of roots) {
+      visit(root.id);
+    }
   }
 
-  // Add any orphaned workers (shouldn't happen but defensive)
-  for (const worker of state.workers.values()) {
-    if (!result.includes(worker)) {
-      result.push(worker);
-    }
+  // Add any unvisited workers (defensive)
+  const remaining = Array.from(state.workers.values())
+    .filter((w) => !visited.has(w.id))
+    .sort((a, b) => (a.depth - b.depth) || a.id.localeCompare(b.id));
+  for (const worker of remaining) {
+    visit(worker.id);
   }
 
   return result;
@@ -371,14 +398,14 @@ export function getWorkerChildren(
   state: WorkerState,
   workerId: string
 ): WorkerNode[] {
-  const worker = state.workers.get(workerId);
-  if (!worker) {
-    return [];
+  const children: WorkerNode[] = [];
+  for (const worker of state.workers.values()) {
+    if (worker.parentId === workerId) {
+      children.push(worker);
+    }
   }
-
-  return worker.children
-    .map((id) => state.workers.get(id))
-    .filter((w): w is WorkerNode => w !== undefined);
+  children.sort((a, b) => a.id.localeCompare(b.id));
+  return children;
 }
 
 // ============================================================================

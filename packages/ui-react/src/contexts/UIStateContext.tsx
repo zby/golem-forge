@@ -12,6 +12,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
 
@@ -53,6 +54,7 @@ interface UIStateContextValue {
 }
 
 const UIStateContext = createContext<UIStateContextValue | null>(null);
+const UIStateActionsContext = createContext<UIStateContextValue['actions'] | null>(null);
 
 const initialState: UIState = {
   mode: 'idle',
@@ -109,21 +111,28 @@ export function UIStateProvider({
     }));
   }, []);
 
-  const value: UIStateContextValue = {
-    state,
-    actions: {
+  const actions = useMemo(
+    () => ({
       setMode,
       setFocus,
       setError,
       setInputEnabled,
       clearError,
-    },
+    }),
+    [setMode, setFocus, setError, setInputEnabled, clearError]
+  );
+
+  const value: UIStateContextValue = {
+    state,
+    actions,
   };
 
   return (
-    <UIStateContext.Provider value={value}>
-      {children}
-    </UIStateContext.Provider>
+    <UIStateActionsContext.Provider value={actions}>
+      <UIStateContext.Provider value={value}>
+        {children}
+      </UIStateContext.Provider>
+    </UIStateActionsContext.Provider>
   );
 }
 
@@ -186,9 +195,9 @@ export function useIsInputEnabled(): boolean {
  * Hook to access UI state actions.
  */
 export function useUIStateActions() {
-  const ctx = useContext(UIStateContext);
-  if (!ctx) {
+  const actions = useContext(UIStateActionsContext);
+  if (!actions) {
     throw new Error('useUIStateActions must be used within UIStateProvider');
   }
-  return ctx.actions;
+  return actions;
 }

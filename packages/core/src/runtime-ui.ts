@@ -216,6 +216,7 @@ const DEFAULT_INPUT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
   // Generate unique request IDs
   let requestCounter = 0;
+  let pendingApprovalRequestId: string | null = null;
   function generateRequestId(): string {
     return `req-${Date.now()}-${++requestCounter}`;
   }
@@ -325,8 +326,16 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
       workerPath: WorkerInfo[],
       options?: ApprovalOptions
     ): Promise<ApprovalResult> {
+      if (pendingApprovalRequestId !== null) {
+        throw new Error(
+          `Invariant violation: requestApproval called while another approval is pending (pendingRequestId=${pendingApprovalRequestId}). ` +
+          'Core must serialize approval requests.'
+        );
+      }
+
       const requestId = generateRequestId();
       const timeoutMs = options?.timeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS;
+      pendingApprovalRequestId = requestId;
 
       return new Promise((resolve, reject) => {
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -342,6 +351,9 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
           }
           if (abortHandler && options?.signal) {
             options.signal.removeEventListener('abort', abortHandler);
+          }
+          if (pendingApprovalRequestId === requestId) {
+            pendingApprovalRequestId = null;
           }
         }
 
