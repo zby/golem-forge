@@ -14,7 +14,7 @@ Enable GitHub synchronization for browser extension - OAuth auth, clone/pull/pus
 ## Tasks
 
 ### 1. GitHub OAuth Authentication
-- [ ] Add `identity` permission to manifest.json
+- [x] Add `identity` permission to manifest.json (already present; still need to implement usage)
 - [ ] Create `GitHubAuth` service (`services/github-auth.ts`)
   - [ ] `launchAuthFlow()` - Chrome identity API OAuth
   - [ ] `getToken()` - retrieve stored token
