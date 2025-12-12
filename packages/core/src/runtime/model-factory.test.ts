@@ -1,8 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const createAnthropicMock = vi.fn(() => (model: string) => ({ provider: "anthropic", model } as any));
-const createOpenAIMock = vi.fn(() => (model: string) => ({ provider: "openai", model } as any));
-const createGoogleMock = vi.fn(() => (model: string) => ({ provider: "google", model } as any));
+const { createAnthropicMock, createOpenAIMock, createGoogleMock } = vi.hoisted(() => ({
+  createAnthropicMock: vi.fn(() => (model: string) => ({ provider: "anthropic", model } as any)),
+  createOpenAIMock: vi.fn(() => (model: string) => ({ provider: "openai", model } as any)),
+  createGoogleMock: vi.fn(() => (model: string) => ({ provider: "google", model } as any)),
+}));
 
 vi.mock("@ai-sdk/anthropic", () => ({
   createAnthropic: createAnthropicMock,
@@ -54,4 +56,3 @@ describe("createModelWithOptions", () => {
     );
   });
 });
-
