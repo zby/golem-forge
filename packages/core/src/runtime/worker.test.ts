@@ -104,6 +104,54 @@ describe("WorkerRuntime", () => {
         "WorkerRuntime.run() called before initialize()"
       );
     });
+
+    it("throws error when worker needs sandbox but none is provided", () => {
+      const workerWithFilesystem: WorkerDefinition = {
+        ...simpleWorker,
+        name: "filesystem-worker",
+        toolsets: { filesystem: {} },
+      };
+
+      expect(() => {
+        new WorkerRuntime({
+          worker: workerWithFilesystem,
+          approvalMode: "approve_all",
+          model: TEST_MODEL,
+        });
+      }).toThrow("requires sandbox");
+    });
+
+    it("throws error when worker has sandbox restrictions but no sandbox provided", () => {
+      const workerWithSandboxConfig: WorkerDefinition = {
+        ...simpleWorker,
+        name: "sandboxed-worker",
+        sandbox: { restrict: "/workspace" },
+      };
+
+      expect(() => {
+        new WorkerRuntime({
+          worker: workerWithSandboxConfig,
+          approvalMode: "approve_all",
+          model: TEST_MODEL,
+        });
+      }).toThrow("requires sandbox");
+    });
+
+    it("throws error when worker needs git toolset but no sandbox provided", () => {
+      const workerWithGit: WorkerDefinition = {
+        ...simpleWorker,
+        name: "git-worker",
+        toolsets: { git: {} },
+      };
+
+      expect(() => {
+        new WorkerRuntime({
+          worker: workerWithGit,
+          approvalMode: "approve_all",
+          model: TEST_MODEL,
+        });
+      }).toThrow("requires sandbox");
+    });
   });
 
   describe("run", () => {

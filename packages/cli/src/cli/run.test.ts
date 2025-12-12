@@ -397,7 +397,6 @@ Test instructions
       // Create a worker with sandbox configuration (mount-based)
       const sandboxWorker = `---
 name: sandbox-processor
-allow_empty_input: true
 sandbox:
   restrict: /workspace
   readonly: false
@@ -406,17 +405,25 @@ Process files in the workspace.
 `;
       await fs.writeFile(path.join(workerDir, "main.worker"), sandboxWorker);
 
+      // Mock createCLIWorkerRuntime to reject with sandbox error
+      // This simulates the error from core WorkerRuntime constructor
+      mockCreateCLIWorkerRuntime.mockRejectedValueOnce(
+        new Error('Worker "sandbox-processor" requires sandbox')
+      );
+
       // Save original isTTY
       const originalIsTTY = process.stdin.isTTY;
       Object.defineProperty(process.stdin, "isTTY", { value: true, writable: true });
 
       try {
+        // Provide input to pass input validation, so sandbox check can run
         await expect(
-          runCLI(["node", "cli", workerDir])
+          runCLI(["node", "cli", workerDir, "process the files"])
         ).rejects.toThrow("process.exit called");
 
+        // Error now comes from core WorkerRuntime constructor
         expect(consoleErrorSpy).toHaveBeenCalledWith(
-          expect.stringContaining('requests sandboxed tools or restrictions')
+          expect.stringContaining('requires sandbox')
         );
       } finally {
         Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, writable: true });

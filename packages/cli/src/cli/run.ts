@@ -401,21 +401,9 @@ async function executeWorker(
   // Read text input
   const textInput = await readInput(options, textArgs);
 
-  const providesSandbox = !!effectiveConfig.sandbox;
-  const needsSandbox =
-    !!workerDefinition.sandbox ||
-    !!workerDefinition.toolsets?.filesystem ||
-    !!workerDefinition.toolsets?.git;
-
-  if (needsSandbox && !providesSandbox) {
-    throw new Error(
-      `Worker "${workerDefinition.name}" requests sandboxed tools or restrictions, ` +
-      `but no program sandbox is configured. Add a sandbox section to golem-forge.config.yaml.`
-    );
-  }
-
   // Sandbox is only available when configured at program level.
-  const hasSandbox = providesSandbox;
+  // Note: Worker sandbox requirements are validated in core WorkerRuntime constructor.
+  const hasSandbox = !!effectiveConfig.sandbox;
   const allowEmptyInput = workerDefinition.allow_empty_input ?? false;
 
   // Require either text input or attachments.

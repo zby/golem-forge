@@ -246,6 +246,17 @@ async function executeWorkerDelegation(
     };
   }
 
+  // Validate that sandbox is available if attachments are requested
+  if (attachments && attachments.length > 0 && !sandbox) {
+    return {
+      success: false,
+      error: `Cannot pass attachments to worker '${workerName}': no sandbox is configured. ` +
+        `Attachments require sandbox access to read files.`,
+      workerName,
+      toolCallCount: 0,
+    };
+  }
+
   try {
     // Look up the worker by name
     const lookupResult = await registry.get(workerName);
@@ -265,7 +276,10 @@ async function executeWorkerDelegation(
     // Model compatibility is validated by WorkerRuntime during construction
 
     // Read attachments from sandbox if specified
-    const attachmentData = await readAttachments(sandbox, attachments);
+    // Note: sandbox availability is validated above when attachments are requested
+    const attachmentData = attachments && attachments.length > 0
+      ? await readAttachments(sandbox!, attachments)
+      : [];
 
     // Build instructions: append dynamic instructions if provided
     let finalInstructions = childWorker.instructions;
@@ -443,43 +457,39 @@ function isBinaryMimeType(mimeType: string): boolean {
 /**
  * Read attachments from sandbox paths.
  * Uses Uint8Array for binary data (works in both Node.js and browser).
+ *
+ * @throws Error if any attachment cannot be read (permission error, not found, etc.)
  */
 async function readAttachments(
-  sandbox: FileOperations | undefined,
-  paths: string[] | undefined
-): Promise<Array<{ data: Uint8Array | string; mimeType: string }>> {
-  if (!sandbox || !paths || paths.length === 0) {
-    return [];
-  }
-
-  const attachments: Array<{ data: Uint8Array | string; mimeType: string }> = [];
+  sandbox: FileOperations,
+  paths: string[]
+): Promise<Array<{ data: Uint8Array | string; mimeType: string; name: string }>> {
+  const attachments: Array<{ data: Uint8Array | string; mimeType: string; name: string }> = [];
 
   for (const filePath of paths) {
-    try {
-      const mimeType = getMediaType(filePath);
+    const mimeType = getMediaType(filePath);
+    const name = filePath.split('/').pop() || filePath;
 
-      if (isBinaryMimeType(mimeType)) {
-        // Binary files: use readBinary and return as Uint8Array
-        const binaryContent = await sandbox.readBinary(filePath);
-        // Convert ArrayBuffer to Uint8Array if needed
-        const uint8Data = binaryContent instanceof Uint8Array
-          ? binaryContent
-          : new Uint8Array(binaryContent);
-        attachments.push({
-          data: uint8Data,
-          mimeType: mimeType,
-        });
-      } else {
-        // Text files: use regular read
-        const textContent = await sandbox.read(filePath);
-        attachments.push({
-          data: textContent,
-          mimeType: mimeType,
-        });
-      }
-    } catch (error) {
-      // Skip files that can't be read
-      console.warn(`Could not read attachment ${filePath}: ${error}`);
+    if (isBinaryMimeType(mimeType)) {
+      // Binary files: use readBinary and return as Uint8Array
+      const binaryContent = await sandbox.readBinary(filePath);
+      // Convert ArrayBuffer to Uint8Array if needed
+      const uint8Data = binaryContent instanceof Uint8Array
+        ? binaryContent
+        : new Uint8Array(binaryContent);
+      attachments.push({
+        data: uint8Data,
+        mimeType: mimeType,
+        name,
+      });
+    } else {
+      // Text files: use regular read
+      const textContent = await sandbox.read(filePath);
+      attachments.push({
+        data: textContent,
+        mimeType: mimeType,
+        name,
+      });
     }
   }
 

@@ -17,6 +17,7 @@ import {
   ToolsetRegistry,
   IsomorphicGitBackend,
   isToolResultValue,
+  workerNeedsSandbox,
   type LanguageModel,
   type Tool,
   type NamedTool,
@@ -491,6 +492,14 @@ export class BrowserWorkerRuntime {
       }
     }
 
+    // Validate sandbox requirements - worker config vs runtime config mismatch
+    if (workerNeedsSandbox(this.worker) && !this.sandbox) {
+      throw new Error(
+        `Worker "${this.worker.name}" requires sandbox (declares filesystem/git toolset or sandbox restrictions), ` +
+        `but no program is configured. Set programId in options.`
+      );
+    }
+
     // Register tools based on worker config
     await this.registerTools();
     log('Registered tools:', Object.keys(this.tools));
@@ -517,13 +526,6 @@ export class BrowserWorkerRuntime {
       if (toolsetName === 'shell') {
         console.warn('Shell toolset is not available in browser - skipping');
         continue;
-      }
-
-      // Special handling for filesystem (requires sandbox)
-      if (toolsetName === 'filesystem') {
-        if (!this.sandbox) {
-          throw new Error('Filesystem toolset requires a program. Set programId in options.');
-        }
       }
 
       // Build context for toolset factory

@@ -255,6 +255,7 @@ export {
   WorkerFrontmatterSchema,
   WorkerDefinitionSchema,
   formatParseError,
+  workerNeedsSandbox,
 } from './worker-schema.js';
 
 export type {

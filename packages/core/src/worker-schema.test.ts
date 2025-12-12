@@ -9,7 +9,9 @@ import {
   WorkerSandboxConfigSchema,
   ApprovalDecisionTypeSchema,
   formatParseError,
+  workerNeedsSandbox,
   type ParseWorkerResult,
+  type WorkerDefinition,
 } from './worker-schema.js';
 
 describe('ApprovalDecisionTypeSchema', () => {
@@ -157,5 +159,53 @@ describe('formatParseError', () => {
       error: 'Something went wrong',
     };
     expect(formatParseError(result)).toBe('Something went wrong');
+  });
+});
+
+describe('workerNeedsSandbox', () => {
+  const baseWorker: WorkerDefinition = {
+    name: 'test',
+    instructions: 'test',
+    mode: 'single',
+    allow_empty_input: false,
+    server_side_tools: [],
+    locked: false,
+    max_context_tokens: 8000,
+  };
+
+  it('returns false for worker without sandbox features', () => {
+    expect(workerNeedsSandbox(baseWorker)).toBe(false);
+  });
+
+  it('returns true for worker with filesystem toolset', () => {
+    const worker: WorkerDefinition = {
+      ...baseWorker,
+      toolsets: { filesystem: {} },
+    };
+    expect(workerNeedsSandbox(worker)).toBe(true);
+  });
+
+  it('returns true for worker with git toolset', () => {
+    const worker: WorkerDefinition = {
+      ...baseWorker,
+      toolsets: { git: {} },
+    };
+    expect(workerNeedsSandbox(worker)).toBe(true);
+  });
+
+  it('returns true for worker with sandbox restrictions', () => {
+    const worker: WorkerDefinition = {
+      ...baseWorker,
+      sandbox: { restrict: '/workspace' },
+    };
+    expect(workerNeedsSandbox(worker)).toBe(true);
+  });
+
+  it('returns false for worker with other toolsets only', () => {
+    const worker: WorkerDefinition = {
+      ...baseWorker,
+      toolsets: { workers: { allowed_workers: ['helper'] } },
+    };
+    expect(workerNeedsSandbox(worker)).toBe(false);
   });
 });

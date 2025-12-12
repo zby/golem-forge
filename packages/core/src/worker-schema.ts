@@ -178,3 +178,22 @@ export function formatParseError(result: ParseWorkerResult): string {
 
   return message;
 }
+
+/**
+ * Check if a worker definition requires sandbox features.
+ *
+ * A worker needs sandbox if it declares:
+ * - `sandbox` configuration (restrictions on sandbox access)
+ * - `toolsets.filesystem` (filesystem tools)
+ * - `toolsets.git` (git tools operate on sandbox)
+ *
+ * @param worker - Worker definition to check
+ * @returns true if the worker requires sandbox features
+ */
+export function workerNeedsSandbox(worker: WorkerDefinition): boolean {
+  return (
+    !!worker.sandbox ||
+    !!worker.toolsets?.filesystem ||
+    !!worker.toolsets?.git
+  );
+}

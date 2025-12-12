@@ -10,7 +10,7 @@
  */
 
 import { generateText, type ModelMessage, type Tool, type LanguageModel } from "ai";
-import type { WorkerDefinition } from "../worker-schema.js";
+import { type WorkerDefinition, workerNeedsSandbox } from "../worker-schema.js";
 import type { FileOperations } from "../sandbox-types.js";
 import type { RuntimeUI } from "../runtime-ui.js";
 import { ApprovalController } from "../approval/index.js";
@@ -314,6 +314,14 @@ export class WorkerRuntime implements WorkerRunner {
 
     // Use injected sandbox if provided
     this.sandbox = options.sandbox;
+
+    // Validate sandbox requirements - worker config vs runtime config mismatch
+    if (workerNeedsSandbox(this.worker) && !this.sandbox) {
+      throw new Error(
+        `Worker "${this.worker.name}" requires sandbox (declares filesystem/git toolset or sandbox restrictions), ` +
+        `but no sandbox is configured. Add a sandbox section to the program config.`
+      );
+    }
 
     // Use injected tools if provided
     if (options.tools) {
