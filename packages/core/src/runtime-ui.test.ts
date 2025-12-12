@@ -104,6 +104,7 @@ describe('RuntimeUI', () => {
         ui.showToolResult(
           'call-1',
           'read_file',
+          { path: '/test.ts' },
           'success',
           100,
           { kind: 'text', content: 'File contents' }
@@ -112,6 +113,7 @@ describe('RuntimeUI', () => {
         expect(handler).toHaveBeenCalledWith({
           toolCallId: 'call-1',
           toolName: 'read_file',
+          args: { path: '/test.ts' },
           status: 'success',
           durationMs: 100,
           value: { kind: 'text', content: 'File contents' },
@@ -123,11 +125,12 @@ describe('RuntimeUI', () => {
         const handler = vi.fn();
         bus.on('toolResult', handler);
 
-        ui.showToolResult('call-1', 'failing_tool', 'error', 50, undefined, 'Failed');
+        ui.showToolResult('call-1', 'failing_tool', {}, 'error', 50, undefined, 'Failed');
 
         expect(handler).toHaveBeenCalledWith({
           toolCallId: 'call-1',
           toolName: 'failing_tool',
+          args: {},
           status: 'error',
           durationMs: 50,
           value: undefined,

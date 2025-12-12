@@ -8,6 +8,7 @@
 import type { Tool } from "ai";
 import type { ApprovalController } from "../approval/index.js";
 import type { RuntimeUI } from "../runtime-ui.js";
+import { isToolResultValue, type ToolResultValue } from "../ui-events.js";
 import type { RuntimeEventCallback, RuntimeEventData } from "./events.js";
 import type {
   ToolCall,
@@ -176,12 +177,25 @@ export class ToolExecutor {
       const status = isError ? 'error' : 'success';
       const error = isError ? (typeof output === 'string' ? output : String(output)) : undefined;
 
+      let uiValue: ToolResultValue | undefined;
+      if (!isError) {
+        if (isToolResultValue(output)) {
+          uiValue = output;
+        } else if (output !== undefined) {
+          uiValue =
+            typeof output === 'string'
+              ? { kind: 'text', content: output }
+              : { kind: 'json', data: output };
+        }
+      }
+
       this.runtimeUI.showToolResult(
         toolCallId,
         toolName,
+        toolArgs,
         status,
         durationMs,
-        undefined, // value - let UI implementation handle conversion
+        uiValue,
         error
       );
     }

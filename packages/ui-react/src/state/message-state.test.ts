@@ -94,6 +94,7 @@ describe('Message State', () => {
       const result: ToolResultData = {
         toolName: 'read_file',
         toolCallId: 'call-123',
+        args: {},
         status: 'success',
         summary: 'Read file.txt',
         durationMs: 50,
@@ -112,6 +113,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'test_tool',
+        {},
         'success',
         100,
         { kind: 'text', content: 'Short text' }
@@ -130,6 +132,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'test_tool',
+        {},
         'success',
         100,
         { kind: 'text', content: longText }
@@ -147,6 +150,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'write_file',
+        {},
         'success',
         100,
         { kind: 'diff', path: '/test.ts', modified: 'new', isNew: true, bytesWritten: 10 }
@@ -163,6 +167,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'read_file',
+        {},
         'success',
         50,
         { kind: 'file_content', path: '/data.json', content: '{}', size: 256 }
@@ -179,6 +184,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'list_dir',
+        {},
         'success',
         30,
         { kind: 'file_list', path: '/src', files: ['a.ts', 'b.ts'], count: 2 }
@@ -195,6 +201,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'api_call',
+        {},
         'success',
         200,
         { kind: 'json', data: { key: 'value' }, summary: 'API response received' }
@@ -211,6 +218,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'write_file',
+        {},
         'success',
         100,
         {
@@ -234,6 +242,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'read_file',
+        {},
         'success',
         50,
         {
@@ -256,6 +265,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'git_status',
+        {},
         'success',
         75,
         {
@@ -276,6 +286,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'custom_tool',
+        {},
         'success',
         75,
         {
@@ -295,6 +306,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'failing_tool',
+        {},
         'error',
         50,
         undefined,
@@ -318,6 +330,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'read_tool',
+        {},
         'success',
         100,
         value
@@ -345,6 +358,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'write_file',
+        {},
         'success',
         150,
         value
@@ -374,6 +388,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'read_file',
+        {},
         'success',
         50,
         value
@@ -402,6 +417,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'list_dir',
+        {},
         'success',
         30,
         value
@@ -429,6 +445,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'api_call',
+        {},
         'success',
         200,
         value
@@ -457,6 +474,7 @@ describe('Message State', () => {
         state,
         'call-1',
         'test_tool',
+        {},
         'success',
         100,
         value
@@ -625,6 +643,7 @@ describe('Message State', () => {
       state = addToolResult(state, {
         toolName: 'test',
         toolCallId: '1',
+        args: {},
         status: 'success',
         durationMs: 10,
       });
@@ -722,6 +741,7 @@ describe('Message State', () => {
       state = addToolResult(state, {
         toolName: 'test',
         toolCallId: '1',
+        args: {},
         status: 'success',
         durationMs: 10,
       });

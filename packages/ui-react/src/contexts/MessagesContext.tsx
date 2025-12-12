@@ -70,6 +70,7 @@ export function MessagesProvider({ children, bus }: MessagesProviderProps) {
             s,
             event.toolCallId,
             event.toolName,
+            event.args,
             event.status,
             event.durationMs,
             event.value,

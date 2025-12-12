@@ -344,6 +344,8 @@ export type ToolResultValue = WellKnownResultValue | CustomResultValue;
 export interface ToolResultEvent {
   toolCallId: string;
   toolName: string;
+  /** Arguments passed to the tool */
+  args: Record<string, unknown>;
   status: ToolResultStatus;
   /** Structured result value */
   value?: ToolResultValue;

@@ -16,6 +16,7 @@ import {
   streamText,
   ToolsetRegistry,
   IsomorphicGitBackend,
+  isToolResultValue,
   type LanguageModel,
   type Tool,
   type NamedTool,
@@ -28,6 +29,7 @@ import {
   type WorkerRunnerOptions,
   type RunInput,
   type Attachment,
+  type ToolResultValue,
 } from '@golem-forge/core';
 import { createSandboxGitAdapter } from './opfs-git-adapter';
 import { createBrowserWorkerRegistry } from './browser-worker-registry';
@@ -871,6 +873,7 @@ export class BrowserWorkerRuntime {
             runtimeUI.showToolResult(
               tc.toolCallId,
               tc.toolName,
+              tc.args,
               toolStatus,
               durationMs,
               { kind: 'json', data: toolResult },
@@ -1124,15 +1127,31 @@ export class BrowserWorkerRuntime {
             continue;
           }
 
+          const toolStart = Date.now();
           try {
             if (runtimeUI) {
-              runtimeUI.showToolStarted(call.toolName, call.args as Record<string, unknown>);
+              runtimeUI.showToolStarted(
+                call.toolCallId,
+                call.toolName,
+                call.args as Record<string, unknown>
+              );
             }
 
             const toolResult = await (tool as any).execute(call.args, { toolCallId: call.toolCallId });
 
             if (runtimeUI) {
-              runtimeUI.showToolResult(call.toolName, toolResult);
+              const durationMs = Date.now() - toolStart;
+              const uiValue: ToolResultValue = isToolResultValue(toolResult)
+                ? toolResult
+                : { kind: 'json', data: toolResult };
+              runtimeUI.showToolResult(
+                call.toolCallId,
+                call.toolName,
+                call.args as Record<string, unknown>,
+                'success',
+                durationMs,
+                uiValue
+              );
             }
 
             toolResults.push({
@@ -1142,6 +1161,19 @@ export class BrowserWorkerRuntime {
               result: toolResult,
             });
           } catch (err) {
+            if (runtimeUI) {
+              const durationMs = Date.now() - toolStart;
+              const errorMsg = sanitizeErrorMessage(err);
+              runtimeUI.showToolResult(
+                call.toolCallId,
+                call.toolName,
+                call.args as Record<string, unknown>,
+                'error',
+                durationMs,
+                undefined,
+                errorMsg
+              );
+            }
             const errorMsg = sanitizeErrorMessage(err);
             toolResults.push({
               type: 'tool-result',

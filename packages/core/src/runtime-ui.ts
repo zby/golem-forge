@@ -94,6 +94,7 @@ export interface RuntimeUI {
   showToolResult(
     toolCallId: string,
     toolName: string,
+    args: Record<string, unknown>,
     status: 'success' | 'error' | 'interrupted',
     durationMs: number,
     value?: ToolResultValue,
@@ -256,12 +257,13 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
     showToolResult(
       toolCallId: string,
       toolName: string,
+      args: Record<string, unknown>,
       status: 'success' | 'error' | 'interrupted',
       durationMs: number,
       value?: ToolResultValue,
       error?: string
     ): void {
-      bus.emit('toolResult', { toolCallId, toolName, status, durationMs, value, error });
+      bus.emit('toolResult', { toolCallId, toolName, args, status, durationMs, value, error });
     },
 
     updateWorker(

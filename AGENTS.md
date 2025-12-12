@@ -89,6 +89,8 @@ npm run dev -w @golem-forge/chrome   # Watch mode
 - Each allowed worker becomes a directly callable tool (e.g., `greeter(input: "...")`)
 - Declare sandboxes explicitly with the minimal access needed
 - Document available tools in `instructions` so models know how to call them
+- For testing workers non-interactively (CI, tight loops), run via the CLI with `--headless` to disable the UI. In headless mode approvals default to deny unless configured.
+- Use `--auto-approve [mode]` to auto-approve approvals during headless runs (`true`, `false`, or `session`), and `--auto-manual <tool>` to automatically invoke a manual tool action (e.g., `submit`) when available.
 
 ---
 

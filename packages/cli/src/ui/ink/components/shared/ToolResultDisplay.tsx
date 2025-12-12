@@ -22,7 +22,7 @@ export interface ToolResultDisplayProps {
 export function ToolResultDisplay({
   result,
   maxContentLength = 200,
-  maxLines = 10,
+  maxLines = 5,
   expanded = false,
 }: ToolResultDisplayProps): React.ReactElement {
   const theme = useTheme();
@@ -36,8 +36,30 @@ export function ToolResultDisplay({
   const truncateLines = (str: string): string => {
     const lines = str.split("\n");
     if (lines.length <= maxLines) return str;
-    return lines.slice(0, maxLines).join("\n") + `\n... (${lines.length - maxLines} more lines)`;
+    const visibleCount = Math.max(maxLines - 1, 0);
+    const visibleLines = lines.slice(0, visibleCount);
+    const remaining = lines.length - visibleCount;
+    const prefix = visibleLines.length > 0 ? visibleLines.join("\n") + "\n" : "";
+    return prefix + `... (${remaining} more lines)`;
   };
+
+  const truncatePreview = (str: string, max?: number): string =>
+    truncateLines(truncate(str, max));
+
+  const stringifyArgs = (args: Record<string, unknown>): string => {
+    try {
+      return JSON.stringify(args, (_k, v) =>
+        typeof v === "bigint" ? v.toString() : v
+      );
+    } catch {
+      return "[unserializable args]";
+    }
+  };
+
+  const argsPreview =
+    result.args && Object.keys(result.args).length > 0
+      ? truncate(stringifyArgs(result.args), 120)
+      : undefined;
 
   // Error status
   if (result.status === "error") {
@@ -46,6 +68,9 @@ export function ToolResultDisplay({
         <Box>
           <Text color={theme.colors.status.error}>x </Text>
           <Text bold>{result.toolName}</Text>
+          {argsPreview && (
+            <Text color={theme.colors.text.muted}> ({argsPreview})</Text>
+          )}
           <Text color={theme.colors.status.error}> failed</Text>
           <Text color={theme.colors.text.muted}> ({result.durationMs}ms)</Text>
         </Box>
@@ -64,6 +89,9 @@ export function ToolResultDisplay({
       <Box>
         <Text color={theme.colors.status.warning}>! </Text>
         <Text bold>{result.toolName}</Text>
+        {argsPreview && (
+          <Text color={theme.colors.text.muted}> ({argsPreview})</Text>
+        )}
         <Text color={theme.colors.status.warning}> interrupted</Text>
         <Text color={theme.colors.text.muted}> ({result.durationMs}ms)</Text>
       </Box>
@@ -76,14 +104,18 @@ export function ToolResultDisplay({
       <Box>
         <Text color={theme.colors.status.success}>+ </Text>
         <Text bold>{result.toolName}</Text>
+        {argsPreview && (
+          <Text color={theme.colors.text.muted}> ({argsPreview})</Text>
+        )}
         <Text color={theme.colors.text.muted}> ({result.durationMs}ms)</Text>
       </Box>
       <ResultContent
         value={result.value}
         summary={result.summary}
         theme={theme}
-        truncate={truncate}
         truncateLines={truncateLines}
+        truncatePreview={truncatePreview}
+        maxLines={maxLines}
         expanded={expanded}
       />
     </Box>
@@ -97,8 +129,9 @@ interface ResultContentProps {
   value?: ToolResultValue;
   summary?: string;
   theme: ReturnType<typeof useTheme>;
-  truncate: (str: string, max?: number) => string;
   truncateLines: (str: string) => string;
+  truncatePreview: (str: string, max?: number) => string;
+  maxLines: number;
   expanded: boolean;
 }
 
@@ -106,8 +139,9 @@ function ResultContent({
   value,
   summary,
   theme,
-  truncate,
   truncateLines,
+  truncatePreview,
+  maxLines,
   expanded,
 }: ResultContentProps): React.ReactElement | null {
   // If no value, fall back to summary
@@ -115,7 +149,7 @@ function ResultContent({
     if (summary) {
       return (
         <Box paddingLeft={2}>
-          <Text color={theme.colors.text.primary}>{truncate(summary)}</Text>
+          <Text color={theme.colors.text.primary}>{truncatePreview(summary)}</Text>
         </Box>
       );
     }
@@ -131,7 +165,9 @@ function ResultContent({
   switch (value.kind) {
     case "text": {
       const textValue = value as { kind: "text"; content: string; summary?: string };
-      const content = expanded ? truncateLines(textValue.content) : truncate(textValue.content);
+      const content = expanded
+        ? truncateLines(textValue.content)
+        : truncatePreview(textValue.content);
       return (
         <Box paddingLeft={2} flexDirection="column">
           <Text color={theme.colors.text.primary}>{content}</Text>
@@ -149,21 +185,32 @@ function ResultContent({
         bytesWritten: number;
         summary?: string;
       };
+      const diffRendered =
+        diffValue.original !== undefined
+          ? renderSimpleDiff(diffValue.original, diffValue.modified)
+          : diffValue.modified;
+      const collapsedText =
+        diffValue.original !== undefined
+          ? diffRendered
+          : diffValue.summary || diffRendered;
       return (
         <Box paddingLeft={2} flexDirection="column">
           <Box>
             <Text color={theme.colors.text.accent}>{diffValue.path}</Text>
             {diffValue.isNew && <Text color={theme.colors.status.success}> (new)</Text>}
           </Box>
-          {expanded && diffValue.original !== undefined && (
+          {expanded ? (
             <Box paddingLeft={2}>
               <Text color={theme.colors.text.muted}>
-                {truncateLines(renderSimpleDiff(diffValue.original, diffValue.modified))}
+                {truncateLines(diffRendered)}
               </Text>
             </Box>
-          )}
-          {!expanded && diffValue.summary && (
-            <Text color={theme.colors.text.muted}>{diffValue.summary}</Text>
+          ) : (
+            <Box paddingLeft={2}>
+              <Text color={theme.colors.text.muted}>
+                {truncatePreview(collapsedText)}
+              </Text>
+            </Box>
           )}
         </Box>
       );
@@ -177,17 +224,18 @@ function ResultContent({
         size: number;
         summary?: string;
       };
+      const content = expanded
+        ? truncateLines(fcValue.content)
+        : truncatePreview(fcValue.content);
       return (
         <Box paddingLeft={2} flexDirection="column">
           <Box>
             <Text color={theme.colors.text.accent}>{fcValue.path}</Text>
             <Text color={theme.colors.text.muted}> ({fcValue.size} bytes)</Text>
           </Box>
-          {expanded && (
-            <Box paddingLeft={2}>
-              <Text color={theme.colors.text.primary}>{truncateLines(fcValue.content)}</Text>
-            </Box>
-          )}
+          <Box paddingLeft={2}>
+            <Text color={theme.colors.text.primary}>{content}</Text>
+          </Box>
         </Box>
       );
     }
@@ -200,26 +248,30 @@ function ResultContent({
         count: number;
         summary?: string;
       };
+      const limit = Math.max(maxLines, 1);
+      const needsMoreLine = flValue.files.length > limit;
+      const filesToShow = needsMoreLine
+        ? flValue.files.slice(0, Math.max(limit - 1, 0))
+        : flValue.files;
+      const remaining = flValue.files.length - filesToShow.length;
       return (
         <Box paddingLeft={2} flexDirection="column">
           <Box>
             <Text color={theme.colors.text.accent}>{flValue.path}</Text>
             <Text color={theme.colors.text.muted}> ({flValue.count} entries)</Text>
           </Box>
-          {expanded && (
-            <Box paddingLeft={2} flexDirection="column">
-              {flValue.files.slice(0, 10).map((file, i) => (
-                <Text key={i} color={theme.colors.text.primary}>
-                  {file}
-                </Text>
-              ))}
-              {flValue.files.length > 10 && (
-                <Text color={theme.colors.text.muted}>
-                  ... {flValue.files.length - 10} more
-                </Text>
-              )}
-            </Box>
-          )}
+          <Box paddingLeft={2} flexDirection="column">
+            {filesToShow.map((file, i) => (
+              <Text key={i} color={theme.colors.text.primary}>
+                {file}
+              </Text>
+            ))}
+            {needsMoreLine && remaining > 0 && (
+              <Text color={theme.colors.text.muted}>
+                ... {remaining} more
+              </Text>
+            )}
+          </Box>
         </Box>
       );
     }
@@ -230,7 +282,7 @@ function ResultContent({
       return (
         <Box paddingLeft={2} flexDirection="column">
           <Text color={theme.colors.text.primary}>
-            {expanded ? truncateLines(jsonStr) : truncate(jsonStr, 100)}
+            {expanded ? truncateLines(jsonStr) : truncatePreview(jsonStr)}
           </Text>
         </Box>
       );
@@ -242,7 +294,9 @@ function ResultContent({
       const displayText = customValue.summary || (customValue.data ? JSON.stringify(customValue.data) : `(${customValue.kind})`);
       return (
         <Box paddingLeft={2}>
-          <Text color={theme.colors.text.primary}>{truncate(displayText)}</Text>
+          <Text color={theme.colors.text.primary}>
+            {expanded ? truncateLines(displayText) : truncatePreview(displayText)}
+          </Text>
         </Box>
       );
     }

@@ -220,6 +220,7 @@ describe('UIEventBus', () => {
       bus.emit('toolResult', {
         toolCallId: 't1',
         toolName: 'test',
+        args: {},
         status: 'success',
         durationMs: 100,
       });

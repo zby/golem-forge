@@ -39,6 +39,8 @@ export interface StatusUpdate {
 export interface ToolResultData {
   toolName: string;
   toolCallId: string;
+  /** Arguments passed to the tool */
+  args: Record<string, unknown>;
   status: ToolResultStatus;
   /** Structured result value for rich rendering */
   value?: ToolResultValue;
@@ -190,6 +192,7 @@ export function addToolResultFromEvent(
   state: MessageState,
   toolCallId: string,
   toolName: string,
+  args: Record<string, unknown>,
   status: ToolResultStatus,
   durationMs: number,
   value?: ToolResultValue,
@@ -200,6 +203,7 @@ export function addToolResultFromEvent(
   const result: ToolResultData = {
     toolCallId,
     toolName,
+    args,
     status,
     value, // Preserve the full value for rich rendering
     summary,
