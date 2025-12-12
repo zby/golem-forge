@@ -1,6 +1,7 @@
 ---
 name: whiteboard_orchestrator
 description: Orchestrate whiteboard photo to project plan conversion
+allow_empty_input: true
 toolsets:
   filesystem: {}
   workers:

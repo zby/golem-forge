@@ -1,0 +1,3 @@
+# Program config for file_manager example
+sandbox:
+  root: "workspace"

@@ -1,0 +1,3 @@
+# Ignore generated plans except .gitkeep
+plans/*
+!plans/.gitkeep
