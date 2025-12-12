@@ -42,7 +42,7 @@ export GOLEM_FORGE_MODEL="google:gemini-2.0-flash"
 └─────────────────────┬───────────────────────────────────────┘
                       │ pdf_analyzer({
                       │   input: "Analyze this document",
-                      │   attachments: ["input/doc.pdf"],
+                      │   attachments: ["/input/doc.pdf"],
                       │   instructions: "Focus on..."
                       │ })
                       ▼
