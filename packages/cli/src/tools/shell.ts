@@ -409,8 +409,8 @@ export function createShellTool(options: ShellToolOptions = {}): NamedTool {
         case 'ask':
           return true;   // Needs approval
         case 'blocked':
-          // Will be blocked in execute - require approval so we can block it properly
-          return true;
+          // Fail fast without prompting; execute will raise BlockedError with context.
+          return false;
         default:
           return true;   // Default: require approval
       }

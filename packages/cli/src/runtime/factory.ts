@@ -249,11 +249,30 @@ async function createTools(
 
         // If not in registry, try to dynamically import the toolset module
         if (!factory) {
+          const specifier = `../tools/${toolsetName}/index.js`;
           try {
-            await import(`../tools/${toolsetName}/index.js`);
+            await import(specifier);
             factory = ToolsetRegistry.get(toolsetName);
-          } catch {
-            // Module doesn't exist
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            const code = err && typeof err === "object" && "code" in err
+              ? String((err as { code?: unknown }).code)
+              : undefined;
+
+            // Only treat "module not found" for the toolset entrypoint as "unknown toolset".
+            // If the module exists but throws (syntax/runtime), surface the real error.
+            const isMissingToolsetModule =
+              code === "ERR_MODULE_NOT_FOUND" &&
+              (message.includes(`/tools/${toolsetName}/index.js`) ||
+                message.includes(`\\tools\\${toolsetName}\\index.js`) ||
+                message.includes(specifier));
+
+            if (!isMissingToolsetModule) {
+              throw new Error(
+                `Failed to load toolset "${toolsetName}" for worker "${worker.name}": ${message}`,
+                { cause: err as unknown }
+              );
+            }
           }
         }
 

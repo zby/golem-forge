@@ -146,6 +146,30 @@ describe("createCLIWorkerRuntime", () => {
         model: TEST_MODEL,
       })).rejects.toThrow('Unknown toolset "unknownToolset"');
     });
+
+    it("surfaces dynamic toolset import errors", async () => {
+      const workerWithThrowingToolset: WorkerDefinition = {
+        name: "throwing-toolset-worker",
+        instructions: "Test worker",
+        toolsets: {
+          throwingToolset: {},
+        },
+      };
+
+      try {
+        await createCLIWorkerRuntime({
+          worker: workerWithThrowingToolset,
+          useTestSandbox: true,
+          approvalMode: "approve_all",
+          model: TEST_MODEL,
+        });
+        expect.fail("Expected toolset import to throw");
+      } catch (err) {
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toContain('Failed to load toolset "throwingToolset"');
+        expect((err as Error).message).toContain("Intentional test toolset import failure");
+      }
+    });
   });
 
   describe("tool execution", () => {

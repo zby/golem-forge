@@ -281,7 +281,7 @@ describe('createShellTool', () => {
       expect(needsApproval({ command: 'git commit -m "test"', timeout: 30 })).toBe(true);
     });
 
-    it('should return true for blocked commands (will be blocked in execute)', () => {
+    it('should return false for blocked commands (fail fast, no approval prompt)', () => {
       const tool = createShellTool({
         config: {
           rules: [{ pattern: 'git ', approval: 'preApproved' }],
@@ -289,8 +289,7 @@ describe('createShellTool', () => {
       });
 
       const needsApproval = tool.needsApproval as (input: ShellInput) => boolean;
-      // Unknown commands are blocked, need approval so we can show the BlockedError
-      expect(needsApproval({ command: 'rm -rf /', timeout: 30 })).toBe(true);
+      expect(needsApproval({ command: 'rm -rf /', timeout: 30 })).toBe(false);
     });
 
     it('should use default when no rule matches', () => {

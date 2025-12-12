@@ -79,6 +79,9 @@ vi.mock("./program.js", () => {
     workerPaths: ["workers"],
   });
   const mockFindProgramRoot = vi.fn().mockResolvedValue(null);
+  const mockResolveWorkerPaths = vi.fn().mockImplementation((programRoot: string, workerPaths: string[]) =>
+    workerPaths.map((p) => path.resolve(programRoot, p))
+  );
   const mockResolveSandboxConfig = vi.fn().mockImplementation((programRoot, config) => ({
     mode: config?.mode ?? "sandboxed",
     root: programRoot,
@@ -91,6 +94,7 @@ vi.mock("./program.js", () => {
     getEffectiveConfig: mockGetEffectiveConfig,
     findProgramRoot: mockFindProgramRoot,
     resolveSandboxConfig: mockResolveSandboxConfig,
+    resolveWorkerPaths: mockResolveWorkerPaths,
     __mockGetEffectiveConfig: mockGetEffectiveConfig,
     __mockFindProgramRoot: mockFindProgramRoot,
   };
@@ -251,6 +255,16 @@ Test instructions
           worker: expect.objectContaining({ name: "test-worker" }),
           programRoot: workerDir,
         })
+      );
+    });
+
+    it("should pass workerPaths into worker registry for delegation", async () => {
+      await runCLI(["node", "cli", workerDir, "--input", "test"]);
+
+      const runtimeOptions = mockCreateCLIWorkerRuntime.mock.calls[0]?.[0] as any;
+      expect(runtimeOptions.registry).toBeDefined();
+      expect(runtimeOptions.registry.getSearchPaths()).toContain(
+        path.resolve(workerDir, "workers")
       );
     });
 

@@ -2,7 +2,10 @@
  * Tests for CLI git backend.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as os from 'os';
 import { CLIGitBackend, createCLIGitBackend } from './cli-backend.js';
 import { GitError } from './types.js';
 
@@ -124,6 +127,99 @@ describe('CLIGitBackend', () => {
     });
   });
 
+  describe('pushToLocal safety', () => {
+    let repoDir: string;
+
+    beforeEach(async () => {
+      repoDir = await fs.mkdtemp(path.join(os.tmpdir(), 'golem-forge-git-backend-test-'));
+      await fs.mkdir(path.join(repoDir, '.git'), { recursive: true });
+    });
+
+    afterEach(async () => {
+      await fs.rm(repoDir, { recursive: true, force: true });
+    });
+
+    it('fails before writing when target branch mismatches', async () => {
+      (backend as any).execGit = vi.fn((args: string[]) => {
+        if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return 'main\n';
+        throw new Error(`Unexpected git command: ${args.join(' ')}`);
+      });
+
+      const staged = await backend.createStagedCommit({
+        files: [{
+          sandboxPath: '/workspace/generated.txt',
+          content: Buffer.from('content'),
+        }],
+        message: 'Worker commit',
+      });
+
+      await expect(backend.push({
+        commitId: staged.id,
+        target: {
+          type: 'local',
+          path: repoDir,
+          branch: 'not-main',
+        },
+      })).rejects.toThrow(GitError);
+
+      await expect(fs.access(path.join(repoDir, 'workspace', 'generated.txt'))).rejects.toThrow();
+    });
+
+    it('fails before writing when repo has staged changes', async () => {
+      (backend as any).execGit = vi.fn((args: string[]) => {
+        if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return 'main\n';
+        if (args[0] === 'status' && args[1] === '--porcelain') return 'A  preexisting.txt\n';
+        throw new Error(`Unexpected git command: ${args.join(' ')}`);
+      });
+
+      const staged = await backend.createStagedCommit({
+        files: [{
+          sandboxPath: '/workspace/generated.txt',
+          content: Buffer.from('content'),
+        }],
+        message: 'Worker commit',
+      });
+
+      await expect(backend.push({
+        commitId: staged.id,
+        target: {
+          type: 'local',
+          path: repoDir,
+          branch: 'main',
+        },
+      })).rejects.toThrow(/pre-existing staged/i);
+
+      await expect(fs.access(path.join(repoDir, 'workspace', 'generated.txt'))).rejects.toThrow();
+    });
+
+    it('fails before writing when repo has unstaged changes', async () => {
+      (backend as any).execGit = vi.fn((args: string[]) => {
+        if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return 'main\n';
+        if (args[0] === 'status' && args[1] === '--porcelain') return ' M preexisting.txt\n';
+        throw new Error(`Unexpected git command: ${args.join(' ')}`);
+      });
+
+      const staged = await backend.createStagedCommit({
+        files: [{
+          sandboxPath: '/workspace/generated.txt',
+          content: Buffer.from('content'),
+        }],
+        message: 'Worker commit',
+      });
+
+      await expect(backend.push({
+        commitId: staged.id,
+        target: {
+          type: 'local',
+          path: repoDir,
+          branch: 'main',
+        },
+      })).rejects.toThrow(/pre-existing unstaged/i);
+
+      await expect(fs.access(path.join(repoDir, 'workspace', 'generated.txt'))).rejects.toThrow();
+    });
+  });
+
   describe('dispose', () => {
     it('clears staged commits', async () => {
       await backend.createStagedCommit({
@@ -150,20 +246,17 @@ describe('createCLIGitBackend', () => {
     expect(backend).toBeInstanceOf(CLIGitBackend);
   });
 
-  it('accepts env option for credential inheritance', () => {
+  it('accepts credentials option for auth/env plumbing', () => {
     const backend = createCLIGitBackend({
       programRoot: '/test/program',
-      env: {
-        GIT_AUTHOR_NAME: 'Test Author',
-        GIT_AUTHOR_EMAIL: 'test@example.com',
-      },
+      credentials: { mode: 'inherit', env: { GITHUB_TOKEN: 'test-token' } },
     });
     expect(backend).toBeInstanceOf(CLIGitBackend);
   });
 
-  it('accepts empty env for explicit mode', () => {
+  it('accepts explicit mode credentials config', () => {
     const backend = createCLIGitBackend({
-      env: {},
+      credentials: { mode: 'explicit', env: {} },
     });
     expect(backend).toBeInstanceOf(CLIGitBackend);
   });

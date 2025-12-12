@@ -259,7 +259,11 @@ export function getDiffSummary(
   let removed = 0;
 
   for (const change of changes) {
-    const lineCount = change.value.split("\n").filter(l => l !== "").length;
+    const lines = change.value.split("\n");
+    if (lines[lines.length - 1] === "") {
+      lines.pop();
+    }
+    const lineCount = lines.length;
     if (change.added) {
       added += lineCount;
     } else if (change.removed) {

@@ -41,6 +41,20 @@ describe('GitHub authentication', () => {
       expect(() => getGitHubAuth()).toThrow(GitAuthError);
     });
 
+    it('uses injected env before process.env', () => {
+      process.env.GITHUB_TOKEN = 'host-token';
+
+      const auth = getGitHubAuth({ env: { GITHUB_TOKEN: 'injected-token' } });
+
+      expect(auth.password).toBe('injected-token');
+    });
+
+    it('explicit mode does not fall back to process.env', () => {
+      process.env.GITHUB_TOKEN = 'host-token';
+
+      expect(() => getGitHubAuth({ mode: 'explicit', env: {} })).toThrow(GitAuthError);
+    });
+
     it('error message includes helpful instructions', () => {
       try {
         getGitHubAuth();
@@ -59,6 +73,13 @@ describe('GitHub authentication', () => {
       process.env.GITHUB_TOKEN = 'test-token';
 
       expect(hasGitHubAuth()).toBe(true);
+    });
+
+    it('explicit mode returns true only when injected token is provided', () => {
+      process.env.GITHUB_TOKEN = 'host-token';
+
+      expect(hasGitHubAuth({ mode: 'explicit', env: {} })).toBe(false);
+      expect(hasGitHubAuth({ mode: 'explicit', env: { GITHUB_TOKEN: 'injected' } })).toBe(true);
     });
 
     it('returns false when no auth available', () => {

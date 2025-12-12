@@ -102,6 +102,15 @@ describe("getDiffSummary", () => {
     expect(result).toMatch(/-\d+/);
   });
 
+  it("counts blank lines in additions/removals", () => {
+    const original = "line1\nline2\n";
+    const modified = "line1\n\nline2\n";
+    const result = getDiffSummary(original, modified);
+
+    expect(result).toMatch(/\+1/);
+    expect(result).not.toMatch(/-\d+/);
+  });
+
   it("returns 'no changes' for identical content", () => {
     const content = "same content";
     const result = getDiffSummary(content, content);

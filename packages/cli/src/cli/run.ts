@@ -10,8 +10,9 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import { createCLIWorkerRuntime, type CLIWorkerRuntimeOptions, type Attachment, type RunInput, type WorkerResult } from "../runtime/index.js";
 import { parseWorkerString } from "../worker/index.js";
+import { WorkerRegistry } from "../worker/registry.js";
 import { createRuntimeUIApprovalCallback } from "./approval.js";
-import { getEffectiveConfig, findProgramRoot, resolveSandboxConfig } from "./program.js";
+import { getEffectiveConfig, findProgramRoot, resolveSandboxConfig, resolveWorkerPaths } from "./program.js";
 import type { ApprovalMode } from "../approval/index.js";
 import type { MountSandboxConfig } from "../sandbox/index.js";
 import { createUIEventBus, createRuntimeUI } from "@golem-forge/core";
@@ -407,12 +408,12 @@ async function executeWorker(
   const allowEmptyInput = workerDefinition.allow_empty_input ?? false;
 
   // Require either text input or attachments.
-  // Workers with sandbox access may opt-in to empty input via allow_empty_input.
+  // Workers may opt-in to empty input via allow_empty_input.
   if (!textInput && !attachments?.length) {
-    if (!hasSandbox) {
-      throw new Error("No input provided. Use text arguments, --input, --file, file attachments, or pipe to stdin.");
-    }
     if (!allowEmptyInput) {
+      if (!hasSandbox) {
+        throw new Error("No input provided. Use text arguments, --input, --file, file attachments, or pipe to stdin.");
+      }
       throw new Error(
         "No input provided. This worker has sandbox/tool access, but does not allow empty input. " +
         "Provide a task prompt, attach files, or set allow_empty_input: true in the worker front matter."
@@ -492,6 +493,9 @@ async function executeWorker(
     workerFilePath,
     mountSandboxConfig,
     runtimeUI,
+    registry: new WorkerRegistry({
+      searchPaths: resolveWorkerPaths(programRoot, effectiveConfig.workerPaths ?? ["workers", ".workers"]),
+    }),
   };
 
   // Create and initialize runtime using CLI factory

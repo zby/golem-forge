@@ -11,7 +11,7 @@ import * as crypto from 'crypto';
 import { spawnSync } from 'child_process';
 import { Octokit } from '@octokit/rest';
 
-import type { GitBackend, CreateStagedCommitInput, PushInput, PullInput } from './backend.js';
+import type { GitBackend, CreateStagedCommitInput, PushInput, PullInput, DiffSummary } from './backend.js';
 import type {
   StagedCommit,
   StagedCommitData,
@@ -21,11 +21,11 @@ import type {
   LocalTarget,
   PushResult,
   BranchListResult,
+  GitCredentialsConfig,
 } from './types.js';
 import { GitError, GitAuthError } from './types.js';
 import { getGitHubAuth } from './auth.js';
 import { generateNewFilePatch, generateDeleteFilePatch, computeDiffStats } from './merge.js';
-import type { DiffSummary } from '../../ui/types.js';
 
 /**
  * Options for git command execution.
@@ -99,15 +99,8 @@ function resolveTargetPath(targetPath: string, programRoot?: string): string {
 export interface CLIGitBackendOptions {
   /** Program root directory for resolving relative paths */
   programRoot?: string;
-  /**
-   * Additional environment variables to pass to git commands.
-   * These are merged with process.env (explicit vars take precedence).
-   * Useful for:
-   * - GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL (override committer identity)
-   * - GIT_SSH_COMMAND (custom SSH configuration)
-   * - GIT_TERMINAL_PROMPT=0 (disable prompts in automation)
-   */
-  env?: Record<string, string>;
+  /** Credential config controlling env + auth fallbacks */
+  credentials?: GitCredentialsConfig;
 }
 
 /**
@@ -125,11 +118,13 @@ export interface CLIGitBackendOptions {
 export class CLIGitBackend implements GitBackend {
   private stagedCommits: Map<string, StagedCommitData> = new Map();
   private programRoot?: string;
+  private credentials?: GitCredentialsConfig;
   private env?: Record<string, string>;
 
   constructor(options: CLIGitBackendOptions = {}) {
     this.programRoot = options.programRoot;
-    this.env = options.env;
+    this.credentials = options.credentials;
+    this.env = options.credentials?.env;
   }
 
   /**
@@ -246,6 +241,66 @@ export class CLIGitBackend implements GitBackend {
       throw new GitError(`Not a git repository: ${repoPath}`);
     }
 
+    // Verify we're on the target branch (if specified) BEFORE any side effects.
+    // Note: We do NOT checkout branches automatically - that would be a surprising side effect.
+    if (target.branch) {
+      try {
+        const currentBranch = this.execGit(['rev-parse', '--abbrev-ref', 'HEAD'], repoPath).trim();
+
+        if (currentBranch !== target.branch) {
+          throw new GitError(
+            `Target branch "${target.branch}" does not match current branch "${currentBranch}". ` +
+            `Please checkout the target branch first, or omit the branch to commit on the current branch.`
+          );
+        }
+      } catch (error) {
+        if (error instanceof GitError) {
+          throw error;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        throw new GitError(`Failed to check branch: ${message}`);
+      }
+    }
+
+    // Safety: fail if repo has pre-existing changes (staged or unstaged).
+    // This avoids mixing a worker-generated commit with unrelated local modifications.
+    try {
+      const status = this.execGit(['status', '--porcelain'], repoPath);
+      const lines = status
+        .split('\n')
+        .map(l => l.trimEnd())
+        .filter(Boolean);
+
+      let hasStaged = false;
+      let hasUnstaged = false;
+      for (const line of lines) {
+        if (line.startsWith('??')) {
+          hasUnstaged = true;
+          continue;
+        }
+        const indexStatus = line[0];
+        const worktreeStatus = line[1];
+        if (indexStatus && indexStatus !== ' ') hasStaged = true;
+        if (worktreeStatus && worktreeStatus !== ' ') hasUnstaged = true;
+      }
+
+      if (hasStaged || hasUnstaged) {
+        const parts: string[] = [];
+        if (hasStaged) parts.push('staged');
+        if (hasUnstaged) parts.push('unstaged');
+        throw new GitError(
+          `Repository has pre-existing ${parts.join(' and ')} changes. ` +
+          `Please commit/stash/clean your working tree before running git push.`
+        );
+      }
+    } catch (error) {
+      if (error instanceof GitError) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new GitError(`Failed to check repository status: ${message}`);
+    }
+
     // Write files to working tree
     for (const file of staged.files) {
       const content = staged.contents.get(file.sandboxPath);
@@ -299,27 +354,6 @@ export class CLIGitBackend implements GitBackend {
       throw new GitError(`Failed to commit: ${message}`);
     }
 
-    // Verify we're on the target branch (if specified)
-    // Note: We do NOT checkout branches automatically - that would be a surprising side effect
-    if (target.branch) {
-      try {
-        const currentBranch = this.execGit(['rev-parse', '--abbrev-ref', 'HEAD'], repoPath).trim();
-
-        if (currentBranch !== target.branch) {
-          throw new GitError(
-            `Target branch "${target.branch}" does not match current branch "${currentBranch}". ` +
-            `Please checkout the target branch first, or omit the branch to commit on the current branch.`
-          );
-        }
-      } catch (error) {
-        if (error instanceof GitError) {
-          throw error;
-        }
-        const message = error instanceof Error ? error.message : String(error);
-        throw new GitError(`Failed to check branch: ${message}`);
-      }
-    }
-
     // Clean up staged commit after successful push
     this.stagedCommits.delete(staged.id);
 
@@ -333,7 +367,7 @@ export class CLIGitBackend implements GitBackend {
    * Push to GitHub using Octokit API.
    */
   private async pushToGitHub(staged: StagedCommitData, target: GitHubTarget): Promise<PushResult> {
-    const auth = getGitHubAuth();
+    const auth = getGitHubAuth({ mode: this.credentials?.mode, env: this.credentials?.env });
     const octokit = new Octokit({ auth: auth.password });
 
     const [owner, repo] = target.repo.split('/');
@@ -517,7 +551,7 @@ export class CLIGitBackend implements GitBackend {
     source: GitHubTarget,
     paths: string[]
   ): Promise<Array<{ path: string; content: Buffer }>> {
-    const auth = getGitHubAuth();
+    const auth = getGitHubAuth({ mode: this.credentials?.mode, env: this.credentials?.env });
     const octokit = new Octokit({ auth: auth.password });
 
     const [owner, repo] = source.repo.split('/');
@@ -682,7 +716,7 @@ export class CLIGitBackend implements GitBackend {
    * List branches in a GitHub repository.
    */
   private async listGitHubBranches(target: GitHubTarget): Promise<BranchListResult> {
-    const auth = getGitHubAuth();
+    const auth = getGitHubAuth({ mode: this.credentials?.mode, env: this.credentials?.env });
     const octokit = new Octokit({ auth: auth.password });
 
     const [owner, repo] = target.repo.split('/');
