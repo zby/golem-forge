@@ -17,7 +17,9 @@
     "test:live": "npm run test:live -w @golem-forge/cli",
     "lint": "npm run lint -w @golem-forge/cli",
     "check:arch": "node scripts/check-architecture.mjs",
-    "clean": "npm run clean -w @golem-forge/core -w @golem-forge/ui-react -w @golem-forge/cli"
+    "clean": "npm run clean -w @golem-forge/core -w @golem-forge/ui-react -w @golem-forge/cli",
+    "demo:greeter": "npx golem-forge examples/greeter 'Hello, how are you?'",
+    "demo:calculator": "npx golem-forge examples/calculator 'What is the 20th Fibonacci number?'"
   },
   "devDependencies": {
     "typescript": "^5.7.0"
