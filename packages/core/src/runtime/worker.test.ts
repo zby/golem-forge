@@ -152,6 +152,25 @@ describe("WorkerRuntime", () => {
         });
       }).toThrow("requires sandbox");
     });
+
+    it("uses sharedSandbox for sandbox-required workers", () => {
+      const workerWithFilesystem: WorkerDefinition = {
+        ...simpleWorker,
+        name: "filesystem-worker",
+        toolsets: { filesystem: {} },
+      };
+
+      const sharedSandbox = { read: vi.fn() } as any;
+
+      const runtime = new WorkerRuntime({
+        worker: workerWithFilesystem,
+        approvalMode: "approve_all",
+        model: TEST_MODEL,
+        sharedSandbox,
+      });
+
+      expect(runtime.getSandbox()).toBe(sharedSandbox);
+    });
   });
 
   describe("run", () => {

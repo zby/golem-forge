@@ -125,6 +125,7 @@ export function createModelWithOptions(
       const openaiProvider = createOpenAI({
         apiKey: options.apiKey,
         baseURL: options.baseURL,
+        headers: options.headers,
       });
       return openaiProvider(model);
     }
@@ -139,6 +140,7 @@ export function createModelWithOptions(
       const openrouterProvider = createOpenAI({
         apiKey: options.apiKey,
         baseURL: options.baseURL || "https://openrouter.ai/api/v1",
+        headers: options.headers,
       });
       return openrouterProvider(model);
     }
