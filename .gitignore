@@ -25,8 +25,8 @@ coverage/
 .env
 .env.local
 
-# Runtime sandbox data - add 'sandbox/' to per-example .gitignore files
-sandbox/
+# Runtime sandbox data (root level only, not src/sandbox/ directories)
+/sandbox/
 
 # Experiments (local development explorations)
 experiments/
