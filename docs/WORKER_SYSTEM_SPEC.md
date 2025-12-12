@@ -79,7 +79,7 @@ A tool is a callable function exposed to the LLM with:
 | `description` | Yes | Human-readable description (shown to LLM) |
 | `inputSchema` | Yes | Schema defining expected arguments |
 | `execute` | Yes | The function to invoke |
-| `needsApproval` | No | Whether tool requires user approval (see §4) |
+| `needsApproval` | No | Boolean OR function receiving `(args) → boolean`. Enables dynamic approval based on arguments (see §4) |
 
 ### 3.2 Easy Function Wrapping
 
@@ -150,7 +150,25 @@ Tools can be configured with approval requirements:
 | `ask` | Always prompt user |
 | `blocked` | Never execute, always deny |
 
-### 4.4 Approval Request
+### 4.4 Dynamic Approval
+
+The `needsApproval` property can be a function that receives tool arguments and returns a boolean. This enables context-sensitive approval:
+
+```
+// Example: write_file only needs approval for certain paths
+needsApproval: (args) => {
+  if (args.path.startsWith('/tmp/')) return false;  // temp files ok
+  if (args.path.startsWith('/config/')) return true; // config needs approval
+  return true; // default: ask
+}
+```
+
+Use cases:
+- File operations: approve writes to sensitive paths, skip for temp/output dirs
+- Network calls: approve external hosts, skip for localhost
+- Destructive operations: approve deletion of large datasets
+
+### 4.5 Approval Request
 
 When a tool requires approval, the system presents:
 
@@ -160,7 +178,7 @@ When a tool requires approval, the system presents:
 
 User responds with: approve / deny / remember
 
-### 4.5 Session Memory
+### 4.6 Session Memory
 
 If user chooses "remember", the decision SHOULD be cached for the session:
 
@@ -168,7 +186,7 @@ If user chooses "remember", the decision SHOULD be cached for the session:
 - Reduces approval fatigue for repeated operations
 - Memory is scoped to session (not persisted)
 
-### 4.6 Approval Propagation
+### 4.7 Approval Propagation
 
 When workers delegate to other workers:
 
