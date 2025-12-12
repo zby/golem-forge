@@ -312,8 +312,8 @@ export class WorkerRuntime implements WorkerRunner {
     // Store RuntimeUI for UI events
     this.runtimeUI = options.runtimeUI;
 
-    // Use injected sandbox if provided
-    this.sandbox = options.sandbox;
+    // Use injected sandbox if provided, otherwise inherited sandbox for delegation
+    this.sandbox = options.sandbox ?? options.sharedSandbox;
 
     // Validate sandbox requirements - worker config vs runtime config mismatch
     if (workerNeedsSandbox(this.worker) && !this.sandbox) {
@@ -538,7 +538,7 @@ export class WorkerRuntime implements WorkerRunner {
             type: "message_send",
             iteration: iterationNum,
             messages: messages.map(m => ({ role: m.role as "system" | "user" | "assistant" | "tool", content: m.content })),
-            toolCount: Object.keys(this.tools).length,
+            toolCount: Object.keys(llmTools).length,
           });
 
           // Call generateText - SDK handles tool execution and approval

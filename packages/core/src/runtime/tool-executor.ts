@@ -17,6 +17,32 @@ import type {
   ToolExecutorOptions,
 } from "./types.js";
 
+function stringifyForDisplay(value: unknown): string {
+  if (value === undefined) return "undefined";
+  if (typeof value === "string") return value;
+
+  try {
+    const seen = new WeakSet<object>();
+    const json = JSON.stringify(value, (_key, v) => {
+      if (typeof v === "bigint") return v.toString();
+      if (typeof v === "object" && v !== null) {
+        if (seen.has(v)) return "[Circular]";
+        seen.add(v);
+      }
+      return v;
+    });
+    if (json !== undefined) return json;
+  } catch {
+    // fall through
+  }
+
+  try {
+    return String(value);
+  } catch {
+    return "[Unserializable output]";
+  }
+}
+
 /**
  * Executes tools with approval handling and event emission.
  *
@@ -149,7 +175,7 @@ export class ToolExecutor {
     const durationMs = Date.now() - startTime;
 
     // Emit tool_call_end or tool_call_error event
-    const outputStr = typeof output === "string" ? output : JSON.stringify(output);
+    const outputStr = stringifyForDisplay(output);
     const maxOutputLen = 1000;
 
     if (isError) {
@@ -175,7 +201,7 @@ export class ToolExecutor {
     // Emit UI tool result event
     if (this.runtimeUI) {
       const status = isError ? 'error' : 'success';
-      const error = isError ? (typeof output === 'string' ? output : String(output)) : undefined;
+      const error = isError ? outputStr : undefined;
 
       let uiValue: ToolResultValue | undefined;
       if (!isError) {
