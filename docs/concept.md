@@ -99,6 +99,52 @@ Workers live as `.worker` files (YAML front matter + instructions) and can be:
 
 Single-file workers are intentionally limited to enable **truly portable LLM executables** - copy one `.worker` file and it works anywhere. For custom tools or worker-specific templates, use the directory model.
 
+### Authoring Conventions (Skill Card + Playbook)
+
+Workers have two audiences:
+
+- **Orchestrators / parent workers** see only the worker **tool name** and its front‑matter `description` when deciding what to call.
+- **Executors** see the full worker body as the system prompt when running the task.
+
+To make workers feel like SKILLS docs, standardize on:
+
+1. **A short “skill card” in `description`** for selection and delegation.
+2. **A detailed execution playbook in the body** for how to perform the task.
+
+Recommended `description` format (multi‑line YAML string):
+
+```yaml
+description: |
+  **Purpose**: What this worker does in one sentence.
+  **Use When**: The situations it should handle.
+  **Don’t Use When**: Clear counterexamples / handoff rules.
+  **Inputs**: What `input`, `instructions`, and attachments mean (if relevant).
+  **Outputs**: Shape, format, length, schema expectations.
+  **Requires Tools**: High‑level toolsets/capabilities needed (if any).
+  **Example**: worker_name({ input: "…", attachments: ["…"] })
+```
+
+Recommended body outline (executor‑visible):
+
+```markdown
+## Role / Mindset
+Briefly set the persona and constraints.
+
+## Process
+1. Step‑by‑step approach, referencing tools where helpful.
+
+## Output Rules
+- Required format, length, or schema.
+
+## Edge Cases
+- How to handle missing/conflicting info.
+
+## Examples
+- A few concrete input/output patterns.
+```
+
+Avoid enumerating tool lists or sandbox mounts in the body unless needed for behavior; tool schemas are injected automatically, and sandbox rules are enforced by runtime.
+
 ### Lifecycle
 
 1. **Definition** - `.worker` file describes instructions, sandbox boundaries, tool policies

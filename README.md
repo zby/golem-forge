@@ -131,6 +131,8 @@ npx golem-forge init my-program
 
 Workers are `.worker` files—just YAML with a special `prompt` field. Front matter style (`---` delimiters) lets you write the prompt as the document body instead of a quoted string. Workers call other workers as tools, making delegation feel like function calls.
 
+See `docs/concept.md` for the standard worker template (structured `description` skill card + body playbook).
+
 Add custom tools by creating `tools.ts` in your program directory:
 
 ```typescript
