@@ -57,7 +57,7 @@ export type UIMessage =
   | { type: 'message'; message: Message }
   | { type: 'tool_result'; result: ToolResultData }
   | { type: 'status'; status: StatusUpdate }
-  | { type: 'worker_start'; workerId: string; task: string }
+  | { type: 'worker_start'; workerId: string; task: string; model?: string; tools?: string[] }
   | { type: 'worker_complete'; workerId: string; success: boolean };
 
 /**
@@ -231,9 +231,11 @@ export function addStatus(state: MessageState, status: StatusUpdate): MessageSta
 export function addWorkerStart(
   state: MessageState,
   workerId: string,
-  task: string
+  task: string,
+  model?: string,
+  tools?: string[]
 ): MessageState {
-  const uiMessage: UIMessage = { type: 'worker_start', workerId, task };
+  const uiMessage: UIMessage = { type: 'worker_start', workerId, task, model, tools };
   return {
     ...state,
     messages: [...state.messages, uiMessage],

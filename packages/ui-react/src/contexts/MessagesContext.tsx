@@ -87,7 +87,7 @@ export function MessagesProvider({ children, bus }: MessagesProviderProps) {
       // Handle worker update events
       bus.on('workerUpdate', (event) => {
         if (event.status === 'running') {
-          setState((s) => addWorkerStart(s, event.workerId, event.task));
+          setState((s) => addWorkerStart(s, event.workerId, event.task, event.model, event.tools));
         } else if (event.status === 'complete') {
           setState((s) => addWorkerComplete(s, event.workerId, true));
         } else if (event.status === 'error') {

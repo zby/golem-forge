@@ -363,6 +363,10 @@ export interface WorkerUpdateEvent {
   status: WorkerStatus;
   parentId?: string;
   depth: number;
+  /** Model being used by this worker */
+  model?: string;
+  /** Tool names available to this worker */
+  tools?: string[];
 }
 
 /**

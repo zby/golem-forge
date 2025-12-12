@@ -11,21 +11,39 @@ import { useTheme } from "../../contexts/index.js";
 export interface WorkerStartMessageProps {
   workerId: string;
   task: string;
+  model?: string;
+  tools?: string[];
 }
 
 export function WorkerStartMessage({
   workerId,
   task,
+  model,
+  tools,
 }: WorkerStartMessageProps): React.ReactElement {
   const theme = useTheme();
 
   return (
-    <Box>
-      <Text color={theme.colors.worker.active}>&gt; </Text>
-      <Text color={theme.colors.text.secondary}>Worker </Text>
-      <Text color={theme.colors.text.accent}>{workerId}</Text>
-      <Text color={theme.colors.text.secondary}> started: </Text>
-      <Text color={theme.colors.text.primary}>{task}</Text>
+    <Box flexDirection="column">
+      <Box>
+        <Text color={theme.colors.worker.active}>&gt; </Text>
+        <Text color={theme.colors.text.secondary}>Worker </Text>
+        <Text color={theme.colors.text.accent}>{workerId}</Text>
+        <Text color={theme.colors.text.secondary}> started: </Text>
+        <Text color={theme.colors.text.primary}>{task}</Text>
+      </Box>
+      {model && (
+        <Box marginLeft={2}>
+          <Text color={theme.colors.text.secondary}>  Model: </Text>
+          <Text color={theme.colors.text.primary}>{model}</Text>
+        </Box>
+      )}
+      {tools && tools.length > 0 && (
+        <Box marginLeft={2}>
+          <Text color={theme.colors.text.secondary}>  Tools: </Text>
+          <Text color={theme.colors.text.primary}>{tools.join(", ")}</Text>
+        </Box>
+      )}
     </Box>
   );
 }

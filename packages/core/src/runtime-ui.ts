@@ -107,7 +107,9 @@ export interface RuntimeUI {
     task: string,
     status: WorkerStatus,
     parentId?: string,
-    depth?: number
+    depth?: number,
+    model?: string,
+    tools?: string[]
   ): void;
 
   /** Show available manual tools */
@@ -271,9 +273,11 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
       task: string,
       status: WorkerStatus,
       parentId?: string,
-      depth: number = 0
+      depth: number = 0,
+      model?: string,
+      tools?: string[]
     ): void {
-      bus.emit('workerUpdate', { workerId, task, status, parentId, depth });
+      bus.emit('workerUpdate', { workerId, task, status, parentId, depth, model, tools });
     },
 
     showManualTools(tools: ManualToolInfoEvent[]): void {

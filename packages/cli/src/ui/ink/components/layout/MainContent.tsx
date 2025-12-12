@@ -91,6 +91,8 @@ function MessageRenderer({ message }: MessageRendererProps): React.ReactElement 
         <WorkerStartMessage
           workerId={message.workerId}
           task={message.task}
+          model={message.model}
+          tools={message.tools}
         />
       );
 

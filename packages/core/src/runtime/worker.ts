@@ -460,14 +460,17 @@ export class WorkerRuntime implements WorkerRunner {
       model: this.resolvedModelId,
     });
 
-    // Emit UI worker update event
+    // Emit UI worker update event with model and tools info
     if (this.runtimeUI) {
+      const toolNames = Object.keys(this.tools).sort();
       this.runtimeUI.updateWorker(
         this.workerId,
         this.worker.name,
         'running',
         undefined,
-        this.depth
+        this.depth,
+        this.resolvedModelId,
+        toolNames
       );
     }
 
