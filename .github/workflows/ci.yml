@@ -30,11 +30,11 @@ jobs:
       - name: Run linter
         run: npm run lint
 
-      - name: Type check
-        run: npm run typecheck
-
       - name: Build
         run: npm run build
+
+      - name: Type check
+        run: npm run typecheck
 
       - name: Run tests
         run: npm test

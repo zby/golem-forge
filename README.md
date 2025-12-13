@@ -276,9 +276,8 @@ npm run build:all
 # Run all tests
 npm test
 
-# Run lint + typecheck
-npm run lint
-npm run typecheck
+# Run lint, build, and typecheck (build must come before typecheck)
+npm run lint && npm run build && npm run typecheck
 
 # Run tests for specific package
 npm run test:ui-react
@@ -294,10 +293,10 @@ npm run test:chrome
 
 ## Contributing
 
-PRs welcome! Run lint and tests before committing:
+PRs welcome! Run lint, build, typecheck, and tests before committing:
 
 ```bash
-npm run lint && npm run typecheck && npm test
+npm run lint && npm run build && npm run typecheck && npm test
 ```
 
 See [`AGENTS.md`](AGENTS.md).
