@@ -7,7 +7,8 @@
     "dev": "vite build --watch",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "typecheck": "npm run build -w @golem-forge/core -w @golem-forge/ui-react && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },

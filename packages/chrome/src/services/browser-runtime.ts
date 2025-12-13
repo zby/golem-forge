@@ -16,7 +16,6 @@ import {
   streamText,
   ToolsetRegistry,
   IsomorphicGitBackend,
-  isToolResultValue,
   workerNeedsSandbox,
   type LanguageModel,
   type Tool,
@@ -29,8 +28,6 @@ import {
   type WorkerRunner,
   type WorkerRunnerOptions,
   type RunInput,
-  type Attachment,
-  type ToolResultValue,
 } from '@golem-forge/core';
 import { createSandboxGitAdapter } from './opfs-git-adapter';
 import { createBrowserWorkerRegistry } from './browser-worker-registry';
@@ -146,11 +143,8 @@ function sanitizeErrorMessage(error: unknown): string {
 
 /**
  * Result of a worker execution.
- * Extends core WorkerResult with browser-specific fields.
  */
-export interface WorkerResult extends CoreWorkerResult {
-  // Browser-specific fields can be added here if needed
-}
+export type WorkerResult = CoreWorkerResult;
 
 /**
  * Callback for streaming text updates.
@@ -360,15 +354,6 @@ async function loadToolsFromRegistry(
   return toolMap;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Message Types (simplified for browser runtime)
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface SystemMessage {
-  role: 'system';
-  content: string;
-}
-
 /**
  * User message content part types.
  * Supports text and file attachments (images, PDFs, etc.)
@@ -376,24 +361,7 @@ interface SystemMessage {
 type UserContentPart =
   | { type: 'text'; text: string }
   | { type: 'image'; image: ArrayBuffer | Uint8Array | string; mimeType?: string }
-  | { type: 'file'; data: ArrayBuffer | Uint8Array | string; mimeType: string };
-
-interface UserMessage {
-  role: 'user';
-  content: string | UserContentPart[];
-}
-
-interface AssistantMessage {
-  role: 'assistant';
-  content: Array<{ type: 'text'; text: string } | { type: 'tool-call'; toolCallId: string; toolName: string; args: unknown }>;
-}
-
-interface ToolMessage {
-  role: 'tool';
-  content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: unknown }>;
-}
-
-type Message = SystemMessage | UserMessage | AssistantMessage | ToolMessage;
+  | { type: 'file'; data: ArrayBuffer | Uint8Array | string; mediaType: string };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Browser Worker Runtime
@@ -444,6 +412,11 @@ export class BrowserWorkerRuntime {
     if (options.sharedSandbox) {
       this.sandbox = options.sharedSandbox;
     }
+  }
+
+  async dispose(): Promise<void> {
+    // No-op for now. Browser runtime currently doesn't hold long-lived resources
+    // that require explicit disposal beyond normal GC.
   }
 
   /**
@@ -662,6 +635,7 @@ export class BrowserWorkerRuntime {
       getTools: () => childRuntime.getTools(),
       getSandbox: () => childRuntime.getSandbox(),
       getApprovalController: () => this.createCoreApprovalController(),
+      dispose: () => childRuntime.dispose(),
     };
   }
 
@@ -715,7 +689,7 @@ export class BrowserWorkerRuntime {
 
     try {
       // Build initial messages
-      const messages: Message[] = [
+      const messages: unknown[] = [
         { role: 'system', content: this.worker.instructions },
         { role: 'user', content: input },
       ];
@@ -769,7 +743,7 @@ export class BrowserWorkerRuntime {
               toolCalls.push({
                 toolCallId: part.toolCallId,
                 toolName: part.toolName,
-                args: part.input as Record<string, unknown>,
+                args: (part.input ?? (part as { args?: unknown }).args ?? {}) as Record<string, unknown>,
               });
             }
           }
@@ -825,7 +799,7 @@ export class BrowserWorkerRuntime {
           } else {
             // Check if tool needs approval (supports both static boolean and dynamic function)
             const needsApproval = typeof tool.needsApproval === 'function'
-              ? await tool.needsApproval(tc.args, { toolCallId: tc.toolCallId, messages: [] })
+              ? await tool.needsApproval(tc.args, { toolCallId: tc.toolCallId, messages: [] as any })
               : tool.needsApproval;
 
             if (needsApproval) {
@@ -847,7 +821,7 @@ export class BrowserWorkerRuntime {
                 try {
                   toolResult = await tool.execute(tc.args, {
                     toolCallId: tc.toolCallId,
-                    messages: [],
+                    messages: [] as any,
                   });
                 } catch (err) {
                   toolResult = { error: err instanceof Error ? err.message : String(err) };
@@ -859,7 +833,7 @@ export class BrowserWorkerRuntime {
               try {
                 toolResult = await tool.execute(tc.args, {
                   toolCallId: tc.toolCallId,
-                  messages: [],
+                  messages: [] as any,
                 });
               } catch (err) {
                 toolResult = { error: err instanceof Error ? err.message : String(err) };
@@ -1018,7 +992,7 @@ export class BrowserWorkerRuntime {
             contentParts.push({
               type: 'file',
               data,
-              mimeType: attachment.mimeType,
+              mediaType: attachment.mimeType,
             });
           }
         }
@@ -1027,10 +1001,10 @@ export class BrowserWorkerRuntime {
       }
 
       // Build initial messages
-      const messages: Message[] = [
-        { role: 'system', content: this.worker.instructions },
-        { role: 'user', content: userContent },
-      ];
+	      const messages: unknown[] = [
+	        { role: 'system', content: this.worker.instructions },
+	        { role: 'user', content: userContent },
+	      ];
 
       const hasTools = Object.keys(this.tools).length > 0;
 
@@ -1061,29 +1035,30 @@ export class BrowserWorkerRuntime {
           throw new Error(sanitizeErrorMessage(streamError));
         }
 
-        // Collect the full response
-        let responseText = '';
-        const toolCalls: Array<{ toolCallId: string; toolName: string; args: unknown }> = [];
+	        // Collect the full response
+	        let responseText = '';
+	        const toolCalls: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }> = [];
 
-        for await (const part of result.fullStream) {
-          if (part.type === 'text-delta') {
-            responseText += part.textDelta;
-            if (runtimeUI) {
-              runtimeUI.appendStreaming(streamingRequestId, part.textDelta);
-            } else if (this.options.onStream) {
-              this.options.onStream(part.textDelta);
-            }
-          } else if (part.type === 'tool-call') {
-            toolCalls.push({
-              toolCallId: part.toolCallId,
-              toolName: part.toolName,
-              args: part.args,
-            });
-          } else if (part.type === 'finish') {
-            totalInputTokens += part.usage?.promptTokens || 0;
-            totalOutputTokens += part.usage?.completionTokens || 0;
-          }
-        }
+	        for await (const part of result.fullStream) {
+	          if (part.type === 'text-delta') {
+	            responseText += part.text;
+	            if (runtimeUI) {
+	              runtimeUI.appendStreaming(streamingRequestId, part.text);
+	            } else if (this.options.onStream) {
+	              this.options.onStream(part.text);
+	            }
+	          } else if (part.type === 'tool-call') {
+	            toolCalls.push({
+	              toolCallId: part.toolCallId,
+	              toolName: part.toolName,
+	              args: (part.input ?? (part as { args?: unknown }).args ?? {}) as Record<string, unknown>,
+	            });
+	          }
+	        }
+
+          const usage = await result.usage;
+          totalInputTokens += usage.inputTokens ?? 0;
+          totalOutputTokens += usage.outputTokens ?? 0;
 
         // If no tool calls, we're done
         if (toolCalls.length === 0) {
@@ -1098,20 +1073,23 @@ export class BrowserWorkerRuntime {
           };
         }
 
-        // Process tool calls (simplified - full version in run())
-        const assistantContent: AssistantMessage['content'] = [];
-        if (responseText) {
-          assistantContent.push({ type: 'text', text: responseText });
-        }
-        for (const call of toolCalls) {
-          assistantContent.push({
-            type: 'tool-call',
-            toolCallId: call.toolCallId,
-            toolName: call.toolName,
-            args: call.args,
-          });
-        }
-        messages.push({ role: 'assistant', content: assistantContent });
+	        // Process tool calls (simplified - full version in run())
+	        const assistantContent: Array<
+	          | { type: 'text'; text: string }
+	          | { type: 'tool-call'; toolCallId: string; toolName: string; args: unknown }
+	        > = [];
+	        if (responseText) {
+	          assistantContent.push({ type: 'text', text: responseText });
+	        }
+	        for (const call of toolCalls) {
+	          assistantContent.push({
+	            type: 'tool-call',
+	            toolCallId: call.toolCallId,
+	            toolName: call.toolName,
+	            args: call.args,
+	          });
+	        }
+	        messages.push({ role: 'assistant', content: assistantContent });
 
         // Execute tool calls with proper approval flow (same as run())
         const toolResults: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: unknown }> = [];
@@ -1138,9 +1116,9 @@ export class BrowserWorkerRuntime {
             toolStatus = 'error';
           } else {
             // Check if tool needs approval (supports both static boolean and dynamic function)
-            const needsApproval = typeof tool.needsApproval === 'function'
-              ? await tool.needsApproval(call.args, { toolCallId: call.toolCallId, messages })
-              : tool.needsApproval;
+	            const needsApproval = typeof tool.needsApproval === 'function'
+	              ? await tool.needsApproval(call.args, { toolCallId: call.toolCallId, messages: messages as any })
+	              : tool.needsApproval;
 
             if (needsApproval) {
               // Request approval before executing
@@ -1159,10 +1137,10 @@ export class BrowserWorkerRuntime {
               } else {
                 // Approved - execute the tool
                 try {
-                  toolResult = await tool.execute(call.args, {
-                    toolCallId: call.toolCallId,
-                    messages,
-                  });
+	                  toolResult = await tool.execute(call.args, {
+	                    toolCallId: call.toolCallId,
+	                    messages: messages as any,
+	                  });
                 } catch (err) {
                   toolResult = { error: err instanceof Error ? err.message : String(err) };
                   toolStatus = 'error';
@@ -1170,11 +1148,11 @@ export class BrowserWorkerRuntime {
               }
             } else {
               // No approval needed - execute directly
-              try {
-                toolResult = await tool.execute(call.args, {
-                  toolCallId: call.toolCallId,
-                  messages,
-                });
+	              try {
+	                toolResult = await tool.execute(call.args, {
+	                  toolCallId: call.toolCallId,
+	                  messages: messages as any,
+	                });
               } catch (err) {
                 toolResult = { error: err instanceof Error ? err.message : String(err) };
                 toolStatus = 'error';

@@ -449,7 +449,7 @@ export async function customToolsetFactory(ctx: ToolsetContext): Promise<NamedTo
   }
 
   // Resolve module path relative to worker file if needed
-  let modulePath = config.module;
+  const modulePath = config.module;
   if (ctx.workerFilePath && !modulePath.startsWith('/') && !modulePath.startsWith('file://')) {
     // For relative paths, we need platform-specific resolution
     // In CLI, this would be path.resolve(path.dirname(workerFilePath), modulePath)

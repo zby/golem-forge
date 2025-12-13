@@ -26,6 +26,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:live": "RUN_LIVE_TESTS=1 vitest run --config vitest.integration.config.ts",
     "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist/"
   },
   "files": [

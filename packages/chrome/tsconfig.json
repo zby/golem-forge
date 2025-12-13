@@ -14,12 +14,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["chrome"],
-    "baseUrl": ".",
-    "paths": {
-      "@golem-forge/core": ["../core/src/index.ts"],
-      "@golem-forge/core/*": ["../core/src/*"]
-    }
+    "types": ["chrome"]
   },
-  "include": ["src", "../core/src"]
+  "include": ["src"]
 }

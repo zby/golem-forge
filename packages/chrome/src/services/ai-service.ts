@@ -17,6 +17,8 @@ import {
 import { settingsManager } from '../storage/settings-manager';
 import type { LLMProvider } from '../storage/types';
 
+export { parseModelId } from '@golem-forge/core';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Logging
 // ─────────────────────────────────────────────────────────────────────────────

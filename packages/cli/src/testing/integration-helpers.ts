@@ -4,8 +4,7 @@
  * Utilities for running integration tests with replay or live LLM.
  */
 
-import type { LanguageModelV3 } from "@ai-sdk/provider";
-import { anthropic } from "@ai-sdk/anthropic";
+import { createModelWithOptions, type LanguageModel } from "@golem-forge/core";
 
 /**
  * Check if live tests should run.
@@ -29,10 +28,12 @@ export const skipIfLive = shouldRunLiveTests();
  * Get a live model for integration tests.
  * Only use when RUN_LIVE_TESTS=1.
  */
-export function getLiveModel(modelId?: string): LanguageModelV3 {
+export function getLiveModel(modelId?: string): LanguageModel {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("ANTHROPIC_API_KEY required for live tests");
   }
-  return anthropic(modelId ?? "claude-3-5-haiku-20241022");
+  return createModelWithOptions(`anthropic:${modelId ?? "claude-3-5-haiku-20241022"}`, {
+    apiKey,
+  });
 }

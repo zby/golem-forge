@@ -7,7 +7,6 @@ import { createUIEventBus, type UIEventBus } from "@golem-forge/core";
 import {
   HeadlessAdapter,
   createHeadlessAdapter,
-  type HeadlessAdapterOptions,
 } from "./headless-adapter.js";
 
 describe("HeadlessAdapter", () => {

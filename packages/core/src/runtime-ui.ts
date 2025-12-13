@@ -338,42 +338,14 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
       pendingApprovalRequestId = requestId;
 
       return new Promise((resolve, reject) => {
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let unsubscribe: (() => void) | undefined;
         let abortHandler: (() => void) | undefined;
 
-        function cleanup(): void {
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
-          if (unsubscribe) {
-            unsubscribe();
-          }
-          if (abortHandler && options?.signal) {
-            options.signal.removeEventListener('abort', abortHandler);
-          }
-          if (pendingApprovalRequestId === requestId) {
-            pendingApprovalRequestId = null;
-          }
-        }
-
-        // Set up timeout
-        timeoutId = setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           cleanup();
           reject(new Error('Approval request timed out'));
         }, timeoutMs);
 
-        // Set up abort handler
-        if (options?.signal) {
-          abortHandler = () => {
-            cleanup();
-            reject(new Error('Approval request aborted'));
-          };
-          options.signal.addEventListener('abort', abortHandler);
-        }
-
-        // Subscribe to response
-        unsubscribe = bus.on('approvalResponse', (response: ApprovalResponseEvent) => {
+        const unsubscribe = bus.on('approvalResponse', (response: ApprovalResponseEvent) => {
           if (response.requestId === requestId) {
             cleanup();
 
@@ -387,6 +359,26 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
             }
           }
         });
+
+        function cleanup(): void {
+          clearTimeout(timeoutId);
+          unsubscribe();
+          if (abortHandler && options?.signal) {
+            options.signal.removeEventListener('abort', abortHandler);
+          }
+          if (pendingApprovalRequestId === requestId) {
+            pendingApprovalRequestId = null;
+          }
+        }
+
+        // Set up abort handler
+        if (options?.signal) {
+          abortHandler = () => {
+            cleanup();
+            reject(new Error('Approval request aborted'));
+          };
+          options.signal.addEventListener('abort', abortHandler);
+        }
 
         // Emit request
         bus.emit('approvalRequired', {
@@ -405,27 +397,27 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
       const timeoutMs = options?.timeoutMs ?? DEFAULT_INPUT_TIMEOUT_MS;
 
       return new Promise((resolve, reject) => {
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let unsubscribe: (() => void) | undefined;
         let abortHandler: (() => void) | undefined;
 
+        const timeoutId = setTimeout(() => {
+          cleanup();
+          reject(new Error('User input request timed out'));
+        }, timeoutMs);
+
+        const unsubscribe = bus.on('userInput', (input: UserInputEvent) => {
+          if (input.requestId === requestId) {
+            cleanup();
+            resolve(input.content);
+          }
+        });
+
         function cleanup(): void {
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
-          if (unsubscribe) {
-            unsubscribe();
-          }
+          clearTimeout(timeoutId);
+          unsubscribe();
           if (abortHandler && options?.signal) {
             options.signal.removeEventListener('abort', abortHandler);
           }
         }
-
-        // Set up timeout
-        timeoutId = setTimeout(() => {
-          cleanup();
-          reject(new Error('User input request timed out'));
-        }, timeoutMs);
 
         // Set up abort handler
         if (options?.signal) {
@@ -435,14 +427,6 @@ export function createRuntimeUI(bus: UIEventBus): RuntimeUI {
           };
           options.signal.addEventListener('abort', abortHandler);
         }
-
-        // Subscribe to response
-        unsubscribe = bus.on('userInput', (input: UserInputEvent) => {
-          if (input.requestId === requestId) {
-            cleanup();
-            resolve(input.content);
-          }
-        });
 
         // Emit request
         bus.emit('inputPrompt', { requestId, prompt });

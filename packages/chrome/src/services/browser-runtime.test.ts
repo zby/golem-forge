@@ -31,7 +31,7 @@ vi.mock('@golem-forge/core', async (importOriginal) => {
 // Import after mocks
 import { BrowserWorkerRuntime, type BrowserRuntimeOptions } from './browser-runtime';
 import { streamText } from '@golem-forge/core';
-import type { ApprovalRequest, ApprovalDecision, RuntimeUI } from '@golem-forge/core';
+import type { RuntimeUI } from '@golem-forge/core';
 
 // For testing, we use a minimal worker that satisfies the runtime's actual usage
 // (name and instructions). The full WorkerDefinition has many required fields,
@@ -68,13 +68,17 @@ function createMockStreamResult(toolCalls: Array<{ toolCallId: string; toolName:
 }
 
 describe('BrowserWorkerRuntime Approval Flow', () => {
-  let mockApprovalCallback: ReturnType<typeof vi.fn<[ApprovalRequest], Promise<ApprovalDecision>>>;
+  let mockApprovalCallback: ReturnType<typeof vi.fn>;
   let mockRuntimeUI: RuntimeUI;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockApprovalCallback = vi.fn().mockResolvedValue({ approved: false, note: 'Denied by test', remember: 'none' });
+    mockApprovalCallback = vi.fn().mockResolvedValue({
+      approved: false,
+      note: 'Denied by test',
+      remember: 'none',
+    });
 
     mockRuntimeUI = {
       startStreaming: vi.fn(),
@@ -120,7 +124,7 @@ describe('BrowserWorkerRuntime Approval Flow', () => {
       // Setup streamText to return a tool call
       vi.mocked(streamText).mockReturnValue(createMockStreamResult([
         { toolCallId: 'tc1', toolName: 'dangerous_tool', args: { action: 'delete' } },
-      ]));
+      ]) as any);
 
       // Mark as initialized
       (runtime as unknown as { initialized: boolean }).initialized = true;
@@ -170,7 +174,7 @@ describe('BrowserWorkerRuntime Approval Flow', () => {
 
       vi.mocked(streamText).mockReturnValue(createMockStreamResult([
         { toolCallId: 'tc1', toolName: 'write_file', args: { path: '/etc/passwd', content: 'hacked' } },
-      ]));
+      ]) as any);
 
       (runtime as unknown as { initialized: boolean }).initialized = true;
       (runtime as unknown as { model: unknown }).model = {};
@@ -216,12 +220,12 @@ describe('BrowserWorkerRuntime Approval Flow', () => {
 
       // First call returns tool call, second call returns empty (conversation done)
       let callCount = 0;
-      vi.mocked(streamText).mockImplementation(() => {
+      vi.mocked(streamText).mockImplementation((() => {
         callCount++;
         if (callCount === 1) {
           return createMockStreamResult([
             { toolCallId: 'tc1', toolName: 'safe_tool', args: { data: 'test' } },
-          ]);
+          ]) as any;
         }
         // Second call - no more tool calls
         return {
@@ -230,8 +234,8 @@ describe('BrowserWorkerRuntime Approval Flow', () => {
             yield { type: 'finish', usage: { promptTokens: 10, completionTokens: 20 } };
           })(),
           usage: Promise.resolve({ inputTokens: 10, outputTokens: 20 }),
-        };
-      });
+        } as any;
+      }) as any);
 
       (runtime as unknown as { initialized: boolean }).initialized = true;
       (runtime as unknown as { model: unknown }).model = {};
@@ -274,12 +278,12 @@ describe('BrowserWorkerRuntime Approval Flow', () => {
       };
 
       let callCount = 0;
-      vi.mocked(streamText).mockImplementation(() => {
+      vi.mocked(streamText).mockImplementation((() => {
         callCount++;
         if (callCount === 1) {
           return createMockStreamResult([
             { toolCallId: 'tc1', toolName: 'read_file', args: { path: '/test.txt' } },
-          ]);
+          ]) as any;
         }
         return {
           fullStream: (async function* () {
@@ -287,8 +291,8 @@ describe('BrowserWorkerRuntime Approval Flow', () => {
             yield { type: 'finish', usage: { promptTokens: 10, completionTokens: 20 } };
           })(),
           usage: Promise.resolve({ inputTokens: 10, outputTokens: 20 }),
-        };
-      });
+        } as any;
+      }) as any);
 
       (runtime as unknown as { initialized: boolean }).initialized = true;
       (runtime as unknown as { model: unknown }).model = {};
@@ -336,12 +340,12 @@ describe('BrowserWorkerRuntime Approval Flow', () => {
       };
 
       let callCount = 0;
-      vi.mocked(streamText).mockImplementation(() => {
+      vi.mocked(streamText).mockImplementation((() => {
         callCount++;
         if (callCount === 1) {
           return createMockStreamResult([
             { toolCallId: 'tc1', toolName: 'dynamic_tool', args: { dangerous: true } },
-          ]);
+          ]) as any;
         }
         return {
           fullStream: (async function* () {
@@ -349,8 +353,8 @@ describe('BrowserWorkerRuntime Approval Flow', () => {
             yield { type: 'finish', usage: { promptTokens: 10, completionTokens: 20 } };
           })(),
           usage: Promise.resolve({ inputTokens: 10, outputTokens: 20 }),
-        };
-      });
+        } as any;
+      }) as any);
 
       (runtime as unknown as { initialized: boolean }).initialized = true;
       (runtime as unknown as { model: unknown }).model = {};
@@ -400,7 +404,7 @@ describe('BrowserWorkerRuntime Approval Flow', () => {
 
       vi.mocked(streamText).mockReturnValue(createMockStreamResult([
         { toolCallId: 'tc1', toolName: 'process_image', args: { action: 'delete' } },
-      ]));
+      ]) as any);
 
       (runtime as unknown as { initialized: boolean }).initialized = true;
       (runtime as unknown as { model: unknown }).model = {};

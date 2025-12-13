@@ -187,20 +187,24 @@ export async function createOPFSGitAdapter(rootPath: string): Promise<Isomorphic
   }
 
   // Return IsomorphicFs interface
+  function readFile(path: string): Promise<Uint8Array>;
+  function readFile(path: string, options: { encoding: 'utf8' }): Promise<string>;
+  async function readFile(path: string, options?: { encoding: 'utf8' }): Promise<Uint8Array | string> {
+    const handle = await getFileHandle(path);
+    const file = await handle.getFile();
+
+    if (options?.encoding === 'utf8') {
+      return await file.text();
+    }
+
+    const buffer = await file.arrayBuffer();
+    return new Uint8Array(buffer);
+  }
+
   return {
     promises: {
       // Read file - overloaded for text and binary
-      async readFile(path: string, options?: { encoding: 'utf8' }): Promise<Uint8Array | string> {
-        const handle = await getFileHandle(path);
-        const file = await handle.getFile();
-
-        if (options?.encoding === 'utf8') {
-          return await file.text();
-        }
-
-        const buffer = await file.arrayBuffer();
-        return new Uint8Array(buffer);
-      },
+      readFile,
 
       // Write file
       async writeFile(path: string, data: string | Uint8Array): Promise<void> {

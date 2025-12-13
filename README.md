@@ -252,11 +252,12 @@ See [`examples/`](examples/) for working code.
 
 ## Packages
 
-golem-forge is organized as a monorepo with three packages:
+golem-forge is organized as a monorepo with four packages:
 
 | Package | Description |
 |---------|-------------|
 | [`@golem-forge/core`](packages/core/) | Shared types and utilities (sandbox types, error classes) |
+| [`@golem-forge/ui-react`](packages/ui-react/) | Shared React UI state (used by CLI Ink + Chrome) |
 | [`@golem-forge/cli`](packages/cli/) | CLI tool and Node.js runtime (worker execution, filesystem sandbox) |
 | [`@golem-forge/chrome`](packages/chrome/) | Chrome extension (OPFS storage, web UI) |
 
@@ -275,7 +276,12 @@ npm run build:all
 # Run all tests
 npm test
 
+# Run lint + typecheck
+npm run lint
+npm run typecheck
+
 # Run tests for specific package
+npm run test:ui-react
 npm run test:cli
 npm run test:chrome
 ```
@@ -291,7 +297,7 @@ npm run test:chrome
 PRs welcome! Run lint and tests before committing:
 
 ```bash
-npm run lint && npm test
+npm run lint && npm run typecheck && npm test
 ```
 
 See [`AGENTS.md`](AGENTS.md).
