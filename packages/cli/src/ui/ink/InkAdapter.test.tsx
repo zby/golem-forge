@@ -7,6 +7,7 @@
 import React from "react";
 import { describe, it, expect, beforeEach } from "vitest";
 import { render } from "ink-testing-library";
+import { Text } from "ink";
 import { createUIEventBus, type UIEventBus } from "@golem-forge/core";
 import { UIProvider } from "@golem-forge/ui-react";
 import { ThemeProvider } from "./contexts/ThemeContext.js";
@@ -30,7 +31,7 @@ function TestApp({ bus, children }: { bus: UIEventBus; children?: React.ReactNod
 // Helper to access InkUIState for testing
 function ModelNameDisplay() {
   const state = useInkUIState();
-  return <>{state.modelName}</>;
+  return <Text>{state.modelName}</Text>;
 }
 
 describe("InkAdapter UI Components", () => {
