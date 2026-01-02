@@ -439,10 +439,219 @@ If you build it right, the “wiki” becomes less like Wikipedia and more like:
 
 ---
 
-If you want to take it one notch more concrete, tell me one thing: are you optimizing for **(a)** “small, high-trust group produces the best wiki”, or **(b)** “large community contributes but needs heavy moderation”? I can propose an architecture and governance model tuned to that choice without changing the core idea.
+# Part 2: Small, high-trust editors + open reading
+
+Small, high‑trust editors + open reading is the easiest "shape" to make this work well, because you can keep **tight write access** while still getting the **network effects of an open library**.
+
+The clean way to think about it is: **two planes**.
+
+* **Authoring plane (private)**: where edits happen (humans + LLM workers).
+* **Reading plane (public)**: what the world sees.
+
+You *can* run both in one system, but you get a big security and ops win if you separate them early.
+
+---
+
+## 1) The non‑negotiable rule: policy is a different class of content
+
+If "instructions for agents live in the wiki", you need a **hard boundary** between:
+
+* **/policy** (agent instructions, rubrics, safety rules, tool access rules)
+* **/kb** (the knowledge base: coding assistants, workflows, comparisons)
+
+Then enforce:
+
+* **Public:** read `/kb/**`
+* **Editors (invited):** write `/kb/**`
+* **Maintainers (few):** write `/policy/**`
+* **LLM workers:** write only where you explicitly allow (often `/kb/**` only)
+
+If you use a wiki engine with RBAC + path/page rules, this is straightforward. For example Wiki.js explicitly models permissions using **Groups + Global Permissions + Page Rules**. ([Wiki.js][1])
+
+This single move prevents "agents rewriting their own instructions" more reliably than any prompt.
+
+---
+
+## 2) Recommended architecture for your goal: private authoring → public publish
+
+### Why this fits "small trust group + open reading"
+
+* Your editor surface is the risky part (auth, write APIs, admin UI).
+* Your reader surface can be *dumb and safe* (static pages behind a CDN).
+
+### Pattern
+
+1. Editors + LLM workers produce **proposed changes** (diffs/PRs).
+2. Maintainers approve.
+3. Approved content is published to a public site.
+
+This gives you:
+
+* open reading
+* invite-only editing
+* clean audit trail + rollbacks
+* minimal moderation load (because no anonymous edits exist)
+
+---
+
+## 3) Bootstrapping path that reduces friction fast (without losing safety)
+
+### Phase A: Git repo + friendly web editor (still PR-based under the hood)
+
+This is the sweet spot right after your "GitHub repo MVP".
+
+**Decap CMS** is an example of a Git-backed editor that can create a PR per unpublished entry in its "Editorial Workflow". ([Decap CMS][3])
+It also supports preview links for unmerged content if you hook it to a deploy-preview-capable host. ([Decap CMS][6])
+
+**What this buys you immediately**
+
+* Non-technical editors can edit in a UI
+* You still gate everything with PR review + branch protection
+* LLM workers can open PRs as "just another contributor"
+
+**How to host in this phase**
+
+* Public reading: a static site built from the repo (any static host)
+* Editing: Decap CMS runs in the same static site, but access is via Git auth and PR workflow
+
+This stays "MVP-simple" but stops feeling "too heavy" because people aren't hand-authoring git commits/PRs anymore—Decap does it.
+
+### Phase B: Move to a real wiki UX for the editors (optional)
+
+Once you want true wiki ergonomics (better linking, internal search, page trees, etc.), you can introduce a wiki engine *for the authoring plane*.
+
+A common pick here is **Wiki.js**, because:
+
+* It has group/page-rule permissions (good for `/policy` vs `/kb`). ([Wiki.js][1])
+* It has a Git storage module that can synchronize with remote repos (useful for backup, portability, and the "diff as primitive" mindset). ([Wiki.js][7])
+
+**Key design decision:**
+Even if editors use Wiki.js, you can still publish the public reading plane as a static snapshot (or allow guest read directly in Wiki.js). The "static public mirror" is usually safer and cheaper to operate.
+
+---
+
+## 4) Two viable hosting models (pick based on your risk tolerance)
+
+### Model 1 (recommended): Public static mirror + private editor
+
+**Best when:** you want maximum safety with minimal ops.
+
+* **Private**: Wiki.js / CMS / whatever behind login (invite-only)
+* **Public**: static site output (no login, no write endpoints)
+
+Pros:
+
+* Very hard to vandalize
+* CDN-cached, cheap, fast
+* Public site outages don't endanger authoring
+* You can make it indexable by search engines easily
+
+Cons:
+
+* You need a publish step (build pipeline)
+* Some wiki-only features (like dynamic permissions per page) don't carry over to static unless you encode them
+
+### Model 2: Single wiki instance with public read + invite-only edit
+
+**Best when:** you want the simplest mental model ("it's just a wiki") and accept a larger attack surface.
+
+With Wiki.js, the permission model is explicitly based on **groups + global permissions + page rules**, so you can do:
+
+* Guests: read `/kb/**`
+* Editors: edit `/kb/**`
+* Maintainers: edit `/policy/**` ([Wiki.js][1])
+
+Pros:
+
+* One system
+* True wiki UX for everyone (including readers)
+
+Cons:
+
+* Your public endpoint is the same app that has admin and editing surfaces
+* More security hardening responsibility
+
+---
+
+## 5) How to keep LLM instructions "in the wiki" without letting agents mutate them
+
+For your high-trust group, do this in layers (start simple, add layers as needed):
+
+### Minimum viable protection (do this from day 1)
+
+1. **/policy is write-protected** (only maintainers)
+2. LLM workers can only:
+
+   * propose diffs to `/kb`
+   * never directly publish
+3. Policy changes require review (PR approvals / maintainer approval)
+
+### Next layer (when it starts to matter)
+
+4. **Signed policy bundle**: treat `/policy` as "must verify" content
+
+   * Store hashes of policy pages in a signed manifest
+   * The agent runtime only loads policy if signature verifies
+   * If someone edits `/policy` in-app, it becomes "display text" but not "binding rules"
+
+This fully neuters "agent rewrote its own rules" because the runtime won't accept unsigned rules.
+
+---
+
+## 6) What your first wiki should look like (agentic coding assistants & workflows)
+
+To make LLM maintenance actually useful, your pages need **structure** and **freshness markers**.
+
+### Use page templates with frontmatter (example)
+
+For every page:
+
+* `type`: tool | workflow | pattern | benchmark | glossary
+* `status`: draft | stable | deprecated
+* `risk`: low | medium | high (controls auto-merge eligibility)
+* `last_verified`: YYYY-MM-DD
+* `sources`: list of URLs
+* `owner`: @person
+
+### Create 4 core collections
+
+1. **Tools** (Cursor, Copilot, Claude Code, Aider, etc.)
+2. **Workflows** (planning, refactor loops, test-first, PR hygiene)
+3. **Guardrails** (security, privacy, prompt-injection hygiene, review checklists)
+4. **Benchmarks & evaluations** (how you measure usefulness internally)
+
+### Define LLM worker jobs that produce diffs
+
+* Staleness scanner: "pages with last_verified > 30 days"
+* Link checker: broken sources
+* Release ingestor: propose updates with citations
+* Deduplicator: merge overlapping pages into one canonical page
+
+Keep workers on a leash:
+
+* they propose patches
+* humans approve (at least for anything beyond formatting)
+
+---
+
+## 7) A concrete "next step" plan (small team, open reading)
+
+If you want the least-regret path:
+
+1. **Start Git-first + Decap CMS** for editing convenience (invite-only), still PR-gated. ([Decap CMS][3])
+2. Publish to a **public static site** for open reading.
+3. Add LLM workers that **only open PRs** (never merge).
+4. As content grows, decide if you want "real wiki UX" for editors:
+
+   * If yes: introduce Wiki.js for the authoring plane with `/kb` vs `/policy` permissions. ([Wiki.js][1])
+   * Use Git storage sync for durability/portability if desired. ([Wiki.js][7])
+
+This gives you a credible Wiki 2.0 without prematurely taking on the operational and security complexity of "one public wiki app does everything".
 
 [1]: https://docs.requarks.io/groups "Users, Groups & Permissions - Wiki.js"
-[2]: https://decapcms.org/docs/intro/ "Overview | Decap CMS | Open-Source Content ..."
-[3]: https://decapcms.org/docs/editorial-workflows/ "Editorial Workflows"
-[4]: https://www.bookstackapp.com/docs/user/roles-and-permissions/ "Roles and Permissions"
+[2]: https://decapcms.org/docs/intro/ "Overview | Decap CMS"
+[3]: https://decapcms.org/docs/editorial-workflows/ "Editorial Workflows - Decap CMS"
+[4]: https://www.bookstackapp.com/docs/user/roles-and-permissions/ "Roles and Permissions - BookStack"
 [5]: https://www.getoutline.com/ "Outline – Team knowledge base & wiki"
+[6]: https://decapcms.org/docs/deploy-preview-links/ "Deploy Preview Links - Decap CMS"
+[7]: https://docs.requarks.io/storage/git "Git Storage - Wiki.js"
