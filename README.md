@@ -14,6 +14,7 @@ Notes and patterns for working effectively with AI coding agents - Claude Code, 
 ### Ideas
 
 - [Wiki 2.0](ideas/wiki-2.0.md) — LLM-maintained knowledge bases with governance and layered defenses
+- [Task System for LLM Coding](ideas/task-system-for-llm-coding.md) — Lightweight file-based planning and task tracking that lives in git
 
 ## Contributing
 

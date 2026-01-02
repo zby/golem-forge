@@ -27,6 +27,18 @@ Directory-based organization:
 
 Templates ensure consistent structure that LLMs can parse reliably.
 
+## Queue Maintenance
+
+Ask the LLM to review all active tasks periodically. If you don't have hundreds of tasks, LLMs are fast at tidying up queues:
+
+- Mark completed work as done
+- Move stale tasks to backlog
+- Merge duplicates
+- Update outdated "Current State" sections
+- Identify blocked tasks and their dependencies
+
+A simple "review all active tasks and tidy up" prompt goes a long way.
+
 ## How to Enable
 
 Add instructions to your `AGENTS.md` (or equivalent project instructions file):
@@ -45,6 +57,6 @@ This could also be a good fit for the Claude Code SKILLS abstraction - a `/task`
 
 ## See Also
 
-Working example in `/tasks/` directory with full templates.
+Working example in [`/tasks/`](../tasks/README.md) directory with full templates.
 
 Source: llm-do project (`../llm-do/docs/tasks/`)
