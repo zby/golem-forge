@@ -10,6 +10,7 @@ Notes and patterns for working effectively with AI coding agents - Claude Code, 
 
 - [Git worktrees with uv](worktrees-with-uv.md) — Working on multiple branches in parallel with Python/uv
 - [Agents in Docker](agents-in-docker.md) — Safe container setup: pull/commit inside, push from host
+- [Skills vs README](skills-vs-readme.md) — When to use skills vs file-based instructions for LLM agents
 
 ### Ideas
 
