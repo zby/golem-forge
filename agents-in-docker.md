@@ -7,13 +7,26 @@ This setup lets you:
 - Push to GitHub **from your host** (Ubuntu) where your SSH keys live.
 - Keep the Python toolchain close to **GitHub Actions (Ubuntu 24.04 runner)**.
 
-> Notes about “matching GitHub CI”:
-> - GitHub-hosted runners are **VMs**, not containers. Your local container will share **your host kernel**, so you can’t match the runner kernel exactly.
+> Notes about "matching GitHub CI":
+> - GitHub-hosted runners are **VMs**, not containers. Your local container will share **your host kernel**, so you can't match the runner kernel exactly.
 > - You *can* match the **Ubuntu userland** and **Python version + dependency lock** very closely, which is what usually matters for Python projects.
 
 ---
 
-## What you’ll create
+## Why run agents in a container?
+
+AI coding agents like Claude Code and Codex work best when they can operate autonomously—reading files, running commands, making changes—without constantly asking for approval. But giving an agent free rein on your host system feels risky.
+
+**The container provides isolation with a safety net:**
+
+- **Inside the container**: Agents run with `--dangerously-skip-permissions` (Claude) or `--dangerously-bypass-approvals-and-sandbox` (Codex), so they can work uninterrupted.
+- **The safety net**: The container has no SSH keys or tokens, so `git push` fails. The agent can commit locally, but you review and push from the host.
+
+This gives you autonomous agent execution without the anxiety—worst case, you discard bad commits before pushing.
+
+---
+
+## What you'll create
 
 Inside your repository, you’ll add an `.agent/` folder:
 
