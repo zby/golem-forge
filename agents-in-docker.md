@@ -147,7 +147,7 @@ See the files in [`agents-in-docker/`](agents-in-docker/) for details.
   1. Run `claude` inside the container.
   2. Complete the browser OAuth flow on the host.
   3. Credentials land in `~/.claude`, which is already mounted.
-- **Codex:** The Dockerfile installs the Codex CLI and `.agent/compose.yaml` mounts `~/.codex` by default. If your Codex config lives somewhere else, change that host path. Run `codex login` (or `codex login --device-auth` if you prefer the copy/paste device flow) once inside the container; the token is saved into the mounted directory.
+- **Codex:** The Dockerfile installs the Codex CLI and `.agent/compose.yaml` mounts `~/.codex` by default. If your Codex config lives somewhere else, change that host path. Because the host directory is bind-mounted, any existing host login is automatically available inside the container—no extra login needed. Only if you skip mounting host creds would you run `codex login` (or `codex login --device-auth`) inside the container to generate fresh tokens.
 - **Gemini:** The Dockerfile also installs the Gemini CLI and `.agent/compose.yaml` mounts `~/.gemini`. Run `gemini login` once inside the container to kick off the host-browser auth flow; the token is saved into the mounted directory.
 
 ---
