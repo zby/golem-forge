@@ -15,6 +15,8 @@ services:
       - ~/.local/share/claude:/tmp/home/.local/share/claude:rw
       - ~/.local/state/claude:/tmp/home/.local/state/claude:rw
       - ~/.cache/claude:/tmp/home/.cache/claude:rw
+      # Codex CLI config (optional but mounted by default)
+      - ~/.codex:/tmp/home/.codex:rw
     environment:
       HOME: /tmp/home
 

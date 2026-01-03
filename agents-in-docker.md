@@ -1,7 +1,7 @@
 # Agent-in-Docker workflow (pull + commit in container, push on host)
 
 This setup lets you:
-- Run **AI coding agents** (Claude Code) in a **Linux Docker container**.
+- Run **AI coding agents** (Claude Code or Codex CLI) in a **Linux Docker container**.
 - Allow the container to **clone/fetch/pull and commit** to your local repo.
 - Prevent the container from **pushing** to GitHub (no SSH keys or tokens inside the container).
 - Push to GitHub **from your host** (Ubuntu) where your SSH keys live.
@@ -132,11 +132,13 @@ This copies:
 
 See the files in [`agents-in-docker/`](agents-in-docker/) for details.
 
-**Authentication**: The container mounts `~/.claude` from your host, so subscription-based login persists across sessions. First-time setup:
+**Authentication**
 
-1. Run `claude` inside the container
-2. It will open a browser on your host for OAuth login
-3. Credentials are saved to your host's `~/.claude` directory
+- **Claude Code:** The container mounts `~/.claude`, so your login persists. First time:
+  1. Run `claude` inside the container.
+  2. Complete the browser OAuth flow on the host.
+  3. Credentials land in `~/.claude`, which is already mounted.
+- **Codex:** The Dockerfile installs the Codex CLI and `.agent/compose.yaml` mounts `~/.codex` by default. Run `codex login` once inside the container to kick off the host-browser auth flow; the token is saved into the mounted directory.
 
 ---
 
@@ -330,3 +332,18 @@ But that breaks the “no push creds inside container” goal.
 
 ## Security caveat (important)
 Blocking `git push` inside the container does **not** fully prevent data exfiltration if untrusted code runs in the container, because it can still make outbound network requests. If your threat model includes that, you’ll want stricter egress controls (firewall rules, network namespaces, or running without network).
+
+---
+
+## Notes on AI CLIs inside the container
+
+- The Dockerfile pre-installs both `claude` and `codex`, so they’re immediately available when you enter `./.agent/agent`.
+- Secret storage lives on the host (`~/.claude`, `~/.codex`) and is mounted into the container, so you can revoke or rotate credentials outside the container lifecycle.
+- You can still add additional agents (Gemini, local OSS models, etc.) by customizing `.agent/Dockerfile` and bind-mounting any config they require.
+- Want Codex to run fully-automatic inside the container without approval prompts? Just pass `--ask-for-approval never` when launching:
+  ```bash
+  codex --ask-for-approval never
+  # or for single commands
+  codex exec --ask-for-approval never -- "uv run pytest"
+  ```
+  This keeps the “no-approval” behavior scoped to the container session, leaving your host defaults untouched.

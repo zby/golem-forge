@@ -21,10 +21,10 @@ RUN apt-get update && \
 RUN curl -LsSf https://astral.sh/uv/install.sh | \
     env UV_INSTALL_DIR="/usr/local/bin" UV_NO_MODIFY_PATH=1 sh
 
-# Install AI coding agents
-# Claude Code: confirmed package name
-# Codex/Gemini: add manually if needed (package names may vary)
-RUN npm install -g @anthropic-ai/claude-code
+# Install AI coding agents (preinstall CLI tooling)
+RUN npm install -g \
+        @anthropic-ai/claude-code \
+        @openai/codex
 
 # Writable locations so the container can run as *your* host UID/GID
 RUN mkdir -p /uv-cache /uv-python /tmp/home && \
