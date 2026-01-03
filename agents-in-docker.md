@@ -24,7 +24,6 @@ Inside your repository, you’ll add an `.agent/` folder:
   Dockerfile
   compose.yaml
   agent
-  push-after-tests
 ```
 
 You can commit `.agent/` to the repo, or add it to `.gitignore` if you prefer to keep it local.
@@ -115,7 +114,7 @@ Copy the ready-made files from `agents-in-docker/` to your repo's `.agent/` dire
 ```bash
 mkdir -p .agent
 cp /path/to/golem-forge/agents-in-docker/* .agent/
-chmod +x .agent/agent .agent/push-after-tests
+chmod +x .agent/agent
 ```
 
 This copies:
@@ -125,7 +124,6 @@ This copies:
 | `Dockerfile` | Ubuntu 24.04 image with git, vim, uv, Claude, Codex, and Gemini CLIs |
 | `compose.yaml` | Container config with volumes, git safety, user mapping |
 | `agent` | Interactive shell or run commands (e.g., `./.agent/agent claude-auto`) |
-| `push-after-tests` | Run tests in container, then push from host |
 
 See the files in [`agents-in-docker/`](agents-in-docker/) for details.
 
@@ -254,16 +252,6 @@ git push -u origin HEAD
 ```
 
 Your host SSH keys handle auth.
-
----
-
-## Optional: one command to "test in container, then push from host"
-
-The `push-after-tests` script (already copied in Step 3) runs tests in the container, then pushes from the host if they pass:
-
-```bash
-./.agent/push-after-tests -u origin HEAD
-```
 
 ---
 
