@@ -22,9 +22,9 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | \
     env UV_INSTALL_DIR="/usr/local/bin" UV_NO_MODIFY_PATH=1 sh
 
 # Install AI coding agents (preinstall CLI tooling)
-RUN npm install -g \
-        @anthropic-ai/claude-code \
-        @openai/codex
+RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @openai/codex
+RUN npm install -g @google/gemini-cli
 
 # Writable locations so the container can run as *your* host UID/GID
 RUN mkdir -p /uv-cache /uv-python /tmp/home && \

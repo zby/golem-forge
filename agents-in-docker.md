@@ -267,44 +267,6 @@ Your host SSH keys handle auth.
 
 ---
 
-## Matching GitHub Actions even closer
-
-### Pin the runner OS
-In CI, pin to Ubuntu 24.04 to match the container base image:
-
-```yaml
-runs-on: ubuntu-24.04
-```
-
-GitHub announced Ubuntu 24.04 runner image GA and the `ubuntu-latest` migration to 24.04.
-
-### Use `.python-version` in CI
-From uv’s GitHub Actions guide:
-
-```yaml
-- name: "Set up Python"
- uses: actions/setup-python@v6
- with:
- python-version-file: ".python-version"
-```
-
-Then install uv and sync:
-
-```yaml
-- name: Install uv
- uses: astral-sh/setup-uv@v7
-
-- name: Install the project
- run: uv sync --locked --all-extras --dev
-
-- name: Run tests
- run: uv run pytest
-```
-
-This is straight from the uv GitHub Actions integration docs.
-
----
-
 ## Troubleshooting
 
 ### “git commit” fails because user.name/email is not set

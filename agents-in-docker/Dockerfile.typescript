@@ -20,7 +20,9 @@ RUN apt-get update && \
 RUN npm install -g pnpm
 
 # Install AI coding agents
-RUN npm install -g @anthropic-ai/claude-code @openai/codex
+RUN npm install -g @anthropic-ai/claude-code
+RUN npm install -g @openai/codex
+RUN npm install -g @google/gemini-cli
 
 # Writable locations so the container can run as *your* host UID/GID
 RUN mkdir -p /tmp/home && chmod 777 /tmp/home
