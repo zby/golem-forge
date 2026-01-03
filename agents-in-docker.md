@@ -1,28 +1,15 @@
-# Agent-in-Docker workflow (pull + commit in container, push on host)
-
-This setup lets you:
-- Run **AI coding agents** (Claude Code or Codex CLI) in a **Linux Docker container**.
-- Allow the container to **clone/fetch/pull and commit** to your local repo.
-- Prevent the container from **pushing** to GitHub (no SSH keys or tokens inside the container).
-- Push to GitHub **from your host** (Ubuntu) where your SSH keys live.
-- Keep the Python toolchain close to **GitHub Actions (Ubuntu 24.04 runner)**.
-
-> Notes about "matching GitHub CI":
-> - GitHub-hosted runners are **VMs**, not containers. Your local container will share **your host kernel**, so you can't match the runner kernel exactly.
-> - You *can* match the **Ubuntu userland** and **Python version + dependency lock** very closely, which is what usually matters for Python projects.
-
----
-
-## Why run agents in a container?
+# Agent-in-Docker: Autonomous AI Agents with a Safety Net
 
 AI coding agents like Claude Code and Codex work best when they can operate autonomously—reading files, running commands, making changes—without constantly asking for approval. But giving an agent free rein on your host system feels risky.
 
-**The container provides isolation with a safety net:**
+**Solution: Run agents in a Docker container with one key restriction—no push access.**
 
-- **Inside the container**: Agents run with `--dangerously-skip-permissions` (Claude) or `--dangerously-bypass-approvals-and-sandbox` (Codex), so they can work uninterrupted.
-- **The safety net**: The container has no SSH keys or tokens, so `git push` fails. The agent can commit locally, but you review and push from the host.
+The agent can do anything inside the container: edit files, run tests, commit changes. But it can't push to remote (no SSH keys, no tokens). You review the commits on your host and push what you approve.
 
-This gives you autonomous agent execution without the anxiety—worst case, you discard bad commits before pushing.
+This gives you:
+- **Autonomous execution**: Agents run with `--dangerously-skip-permissions` (Claude) or `--dangerously-bypass-approvals-and-sandbox` (Codex)—no approval prompts interrupting the flow.
+- **Safe experimentation**: Worst case, you discard bad commits before pushing.
+- **CI-like environment**: Ubuntu 24.04 container matches GitHub Actions runners.
 
 ---
 
@@ -31,15 +18,11 @@ This gives you autonomous agent execution without the anxiety—worst case, you 
 Inside your repository, you’ll add an `.agent/` folder:
 
 ```
-repo/
- .agent/
- Dockerfile
- compose.yaml
- agent
- agent-run
- pyproject.toml
- uv.lock
- ...
+.agent/
+  Dockerfile
+  compose.yaml
+  agent
+  push-after-tests
 ```
 
 You can commit `.agent/` to the repo, or add it to `.gitignore` if you prefer to keep it local.
@@ -130,7 +113,7 @@ Copy the ready-made files from `agents-in-docker/` to your repo's `.agent/` dire
 ```bash
 mkdir -p .agent
 cp /path/to/golem-forge/agents-in-docker/* .agent/
-chmod +x .agent/agent .agent/agent-run .agent/push-after-tests
+chmod +x .agent/agent .agent/push-after-tests
 ```
 
 This copies:
@@ -139,8 +122,7 @@ This copies:
 |------|---------|
 | `Dockerfile` | Ubuntu 24.04 image with git, vim, uv, Claude, Codex, and Gemini CLIs |
 | `compose.yaml` | Container config with volumes, git safety, user mapping |
-| `agent` | Script to open interactive shell in container |
-| `agent-run` | Script to run a single command in container |
+| `agent` | Interactive shell or run commands (e.g., `./.agent/agent claude-auto`) |
 | `push-after-tests` | Run tests in container, then push from host |
 
 See the files in [`agents-in-docker/`](agents-in-docker/) for details.
