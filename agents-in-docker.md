@@ -124,7 +124,7 @@ This copies:
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Ubuntu 24.04 image with git, vim, uv, Claude Code |
+| `Dockerfile` | Ubuntu 24.04 image with git, vim, uv, Claude, Codex, and Gemini CLIs |
 | `compose.yaml` | Container config with volumes, git safety, user mapping |
 | `agent` | Script to open interactive shell in container |
 | `agent-run` | Script to run a single command in container |
@@ -139,6 +139,7 @@ See the files in [`agents-in-docker/`](agents-in-docker/) for details.
   2. Complete the browser OAuth flow on the host.
   3. Credentials land in `~/.claude`, which is already mounted.
 - **Codex:** The Dockerfile installs the Codex CLI and `.agent/compose.yaml` mounts `~/.codex` by default. Run `codex login` once inside the container to kick off the host-browser auth flow; the token is saved into the mounted directory.
+- **Gemini:** The Dockerfile also installs the Gemini CLI and `.agent/compose.yaml` mounts `~/.gemini`. Run `gemini login` once inside the container to kick off the host-browser auth flow; the token is saved into the mounted directory.
 
 ---
 
@@ -337,9 +338,9 @@ Blocking `git push` inside the container does **not** fully prevent data exfiltr
 
 ## Notes on AI CLIs inside the container
 
-- The Dockerfile pre-installs both `claude` and `codex`, so they’re immediately available when you enter `./.agent/agent`.
-- Secret storage lives on the host (`~/.claude`, `~/.codex`) and is mounted into the container, so you can revoke or rotate credentials outside the container lifecycle.
-- You can still add additional agents (Gemini, local OSS models, etc.) by customizing `.agent/Dockerfile` and bind-mounting any config they require.
+- The Dockerfile pre-installs `claude`, `codex`, and `gemini`, so they’re immediately available when you enter `./.agent/agent`.
+- Secret storage lives on the host (`~/.claude`, `~/.codex`, `~/.gemini`) and is mounted into the container, so you can revoke or rotate credentials outside the container lifecycle.
+- You can still add other agents (local OSS models, etc.) by customizing `.agent/Dockerfile` and bind-mounting any config they require.
 - Want Codex to run fully-automatic inside the container without approval prompts? Just pass `--ask-for-approval never` when launching:
   ```bash
   codex --ask-for-approval never
