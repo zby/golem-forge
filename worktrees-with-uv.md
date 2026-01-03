@@ -168,6 +168,28 @@ uv run pytest
 
 ## See also
 
+- [Agent-in-Docker](agents-in-docker.md) — run agents in isolated containers with no push access
+
+### Combining worktrees with Docker isolation
+
+Copy `.agent/` to each worktree, then run agents in parallel:
+
+```bash
+# Terminal 1
+cd ~/src/myproj.worktrees/feature-a
+./.agent/agent claude-auto
+
+# Terminal 2
+cd ~/src/myproj.worktrees/feature-b
+./.agent/agent codex-auto
+```
+
+Each worktree gets its own container. They're ephemeral (`--rm`), so no conflicts. You get both:
+- **Parallelism**: multiple branches at once
+- **Safety**: agents can't push, you review before pushing
+
+### Related discussions
+
 - [DHH on using worktrees](https://x.com/dhh/status/2005326958578856206)
 - [doodlestein's criticism](https://x.com/doodlestein/status/2006263488155468101) — prefers agents coordinating on same worktree via "agent email"
 - [David Crawshaw prefers `cp -a`](https://x.com/davidcrawshaw/status/2002842140226035977) — simpler than worktrees

@@ -21,7 +21,9 @@ Inside your repository, you’ll add an `.agent/` folder:
 
 ```
 .agent/
-  Dockerfile
+  Dockerfile              # symlink → Dockerfile.python (or your stack)
+  Dockerfile.python
+  Dockerfile.typescript
   compose.yaml
   agent
 ```
@@ -121,9 +123,19 @@ This copies:
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Ubuntu 24.04 image with git, vim, uv, Claude, Codex, and Gemini CLIs |
+| `Dockerfile` | Symlink to active Dockerfile (default: Python) |
+| `Dockerfile.python` | Python + uv |
+| `Dockerfile.typescript` | TypeScript + pnpm |
 | `compose.yaml` | Container config with volumes, git safety, user mapping |
 | `agent` | Interactive shell or run commands (e.g., `./.agent/agent claude-auto`) |
+
+**Switching languages**: Replace the symlink with your stack's Dockerfile:
+
+```bash
+cd .agent
+rm Dockerfile
+cp Dockerfile.typescript Dockerfile  # or ln -s Dockerfile.typescript Dockerfile
+```
 
 See the files in [`agents-in-docker/`](agents-in-docker/) for details.
 
@@ -323,13 +335,28 @@ Blocking `git push` inside the container does **not** fully prevent data exfiltr
 
 ## Notes on AI CLIs inside the container
 
-- The Dockerfile pre-installs `claude`, `codex`, and `gemini`, so they’re immediately available when you enter `./.agent/agent`.
-- Secret storage lives on the host (`~/.claude`, `~/.codex`, `~/.gemini`) and is mounted into the container, so you can revoke or rotate credentials outside the container lifecycle.
-- You can still add other agents (local OSS models, etc.) by customizing `.agent/Dockerfile` and bind-mounting any config they require.
-- Want Codex to run fully-automatic inside the container without approval prompts? Just pass `--ask-for-approval never` when launching:
-  ```bash
-  codex --ask-for-approval never
-  # or for single commands
-  codex exec --ask-for-approval never -- "uv run pytest"
-  ```
-  This keeps the “no-approval” behavior scoped to the container session, leaving your host defaults untouched.
+- The Dockerfile pre-installs `claude` and `codex`, available immediately when you enter `./.agent/agent`.
+- Secret storage lives on the host (`~/.claude`, `~/.codex`) and is mounted into the container, so you can revoke or rotate credentials outside the container lifecycle.
+- You can add other agents by customizing `.agent/Dockerfile` and bind-mounting any config they require.
+
+### Autonomous mode aliases
+
+The `agent` script provides convenience aliases for running agents without approval prompts:
+
+```bash
+./.agent/agent claude-auto   # runs: claude --dangerously-skip-permissions
+./.agent/agent codex-auto    # runs: codex --dangerously-bypass-approvals-and-sandbox
+```
+
+Inside an interactive shell, the same aliases are available:
+```bash
+./.agent/agent
+$ claude-auto    # starts Claude in autonomous mode
+$ codex-auto     # starts Codex in autonomous mode
+```
+
+---
+
+## See also
+
+- [Git worktrees with uv](worktrees-with-uv.md) — run agents on multiple branches in parallel; copy `.agent/` to each worktree for isolated containers per branch
