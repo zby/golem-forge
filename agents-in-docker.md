@@ -129,6 +129,8 @@ This copies:
 | `compose.yaml` | Container config with volumes, git safety, user mapping |
 | `agent` | Interactive shell or run commands (e.g., `./.agent/agent claude-auto`) |
 
+> **Host path note:** The default compose file mounts several `~/.claude`, `~/.codex`, and `~/.gemini` directories. If your credentials live elsewhere (different dotfolders, custom locations), edit the host paths in `.agent/compose.yaml` before launching the container.
+
 **Switching languages**: Replace the symlink with your stack's Dockerfile:
 
 ```bash
@@ -141,11 +143,11 @@ See the files in [`agents-in-docker/`](agents-in-docker/) for details.
 
 **Authentication**
 
-- **Claude Code:** The container mounts `~/.claude`, so your login persists. First time:
+- **Claude Code:** We mount `~/.claude` by default (adjust the host path in `.agent/compose.yaml` if you store Claude data elsewhere), so your login persists. First time:
   1. Run `claude` inside the container.
   2. Complete the browser OAuth flow on the host.
   3. Credentials land in `~/.claude`, which is already mounted.
-- **Codex:** The Dockerfile installs the Codex CLI and `.agent/compose.yaml` mounts `~/.codex` by default. Run `codex login` once inside the container to kick off the host-browser auth flow; the token is saved into the mounted directory.
+- **Codex:** The Dockerfile installs the Codex CLI and `.agent/compose.yaml` mounts `~/.codex` by default. If your Codex config lives somewhere else, change that host path. Run `codex login` (or `codex login --device-auth` if you prefer the copy/paste device flow) once inside the container; the token is saved into the mounted directory.
 - **Gemini:** The Dockerfile also installs the Gemini CLI and `.agent/compose.yaml` mounts `~/.gemini`. Run `gemini login` once inside the container to kick off the host-browser auth flow; the token is saved into the mounted directory.
 
 ---
@@ -300,6 +302,12 @@ Blocking `git push` inside the container does **not** fully prevent data exfiltr
 - The Dockerfile pre-installs `claude` and `codex`, available immediately when you enter `./.agent/agent`.
 - Secret storage lives on the host (`~/.claude`, `~/.codex`) and is mounted into the container, so you can revoke or rotate credentials outside the container lifecycle.
 - You can add other agents by customizing `.agent/Dockerfile` and bind-mounting any config they require.
+- Want a one-off Codex session without approval prompts? Pass `--ask-for-approval never` (e.g., `codex --ask-for-approval never exec -- uv run pytest`) or use the `codex-auto` alias below.
+- If you ever skip host-mounted credentials, you can still authenticate from inside the container with the device flow:
+  ```bash
+  codex login --device-auth
+  ```
+  Copy the short code it prints, open the provided URL on your host, paste the code, and approve; the resulting token is stored in the mounted `~/.codex`.
 
 ### Autonomous mode aliases
 
