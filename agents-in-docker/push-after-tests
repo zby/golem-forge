@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run tests in the container (same env the agent uses)
+./.agent/agent-run uv run pytest
+
+# If tests pass, push from host (uses host SSH keys)
+git push "$@"

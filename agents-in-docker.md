@@ -1,7 +1,7 @@
 # Agent-in-Docker workflow (pull + commit in container, push on host)
 
 This setup lets you:
-- Work in a **Linux Docker container** (good for running “coding agents” safely).
+- Run **AI coding agents** (Claude Code) in a **Linux Docker container**.
 - Allow the container to **clone/fetch/pull and commit** to your local repo.
 - Prevent the container from **pushing** to GitHub (no SSH keys or tokens inside the container).
 - Push to GitHub **from your host** (Ubuntu) where your SSH keys live.
@@ -42,13 +42,27 @@ docker --version
 docker compose version
 ```
 
-2) Make sure your user can run Docker (optional but common):
+2) Make sure your user can run Docker without sudo:
+
+```bash
+groups | grep -q docker && echo "Already in docker group" || echo "Not in docker group"
+```
+
+If you're not in the docker group, add yourself:
 
 ```bash
 sudo usermod -aG docker "$USER"
 ```
 
-Log out/in for group membership to take effect.
+Then log out/in for group membership to take effect.
+
+3) Verify Docker works without sudo:
+
+```bash
+docker run --rm hello-world
+```
+
+If this prints "Hello from Docker!" you're ready to continue.
 
 ---
 
@@ -96,179 +110,37 @@ GitHub notes:
 
 ---
 
-## Step 3 — (Recommended) Pin Python version in the repo
+## Step 3 — Copy the agent container files
 
-This makes local + CI consistent.
-
-### Option A: Use `.python-version` (recommended)
-
-In the repo root (host or container), create a `.python-version` file.
-
-If you already use uv:
-
-```bash
-uv python pin 3.12
-```
-
-`uv` uses `.python-version` to decide what Python version to use/install.
-
-Also, GitHub’s `actions/setup-python` can use `python-version-file: ".python-version"` (and even falls back to `.python-version` if no version is supplied).
-
-### Option B: Use `requires-python` in `pyproject.toml`
-
-Also good, but `.python-version` is the most direct way to keep local + CI identical.
-
----
-
-## Step 4 — Create the agent container files
-
-Create the directory:
+Copy the ready-made files from `agents-in-docker/` to your repo's `.agent/` directory:
 
 ```bash
 mkdir -p .agent
+cp /path/to/golem-forge/agents-in-docker/* .agent/
+chmod +x .agent/agent .agent/agent-run .agent/push-after-tests
 ```
 
-### 4.1 `.agent/Dockerfile`
+This copies:
 
-Create `.agent/Dockerfile` with:
+| File | Purpose |
+|------|---------|
+| `Dockerfile` | Ubuntu 24.04 image with git, vim, uv, Claude Code |
+| `compose.yaml` | Container config with volumes, git safety, user mapping |
+| `agent` | Script to open interactive shell in container |
+| `agent-run` | Script to run a single command in container |
+| `push-after-tests` | Run tests in container, then push from host |
 
-```dockerfile
-FROM ubuntu:24.04
+See the files in [`agents-in-docker/`](agents-in-docker/) for details.
 
-ARG DEBIAN_FRONTEND=noninteractive
+**Authentication**: The container mounts `~/.claude` from your host, so subscription-based login persists across sessions. First-time setup:
 
-# Core tools: git + vim + curl for installing uv
-RUN apt-get update && \
- apt-get install -y --no-install-recommends \
- ca-certificates \
- curl \
- git \
- vim \
- less \
- bash-completion \
- tzdata \
- && rm -rf /var/lib/apt/lists/*
-
-# Install uv (standalone) into /usr/local/bin
-# UV_INSTALL_DIR controls destination.
-RUN curl -LsSf https://astral.sh/uv/install.sh | \
- env UV_INSTALL_DIR="/usr/local/bin" UV_NO_MODIFY_PATH=1 sh
-
-# Writable locations so the container can run as *your* host UID/GID
-RUN mkdir -p /uv-cache /uv-python /tmp/home && \
- chmod 777 /uv-cache /uv-python /tmp/home
-
-# Defaults; you can override in compose
-ENV UV_CACHE_DIR=/uv-cache \
- UV_PYTHON_INSTALL_DIR=/uv-python \
- UV_PROJECT_ENVIRONMENT=/workspace/.venv
-
-WORKDIR /workspace
-CMD ["bash"]
-```
-
-### 4.2 `.agent/compose.yaml`
-
-Create `.agent/compose.yaml` with:
-
-```yaml
-services:
- agent:
- build:
- context: ..
- dockerfile: .agent/Dockerfile
- image: repo-agent-dev:ubuntu24
- working_dir: /workspace
- volumes:
- - ..:/workspace:rw
- - uv-cache:/uv-cache
- - uv-python:/uv-python
- environment:
- HOME: /tmp/home
-
- # Git safety:
- # - allow fetch/pull over HTTPS (public repo)
- # - make pushes fail (no SSH, no prompts)
- GIT_TERMINAL_PROMPT: "0"
- GIT_ASKPASS: /bin/false
- GIT_SSH_COMMAND: /bin/false
-
- # uv: store cache + downloaded Pythons in volumes (fast + repeatable)
- UV_CACHE_DIR: /uv-cache
- UV_PYTHON_INSTALL_DIR: /uv-python
-
- # uv project venv location: default is `.venv`, configurable via UV_PROJECT_ENVIRONMENT
- UV_PROJECT_ENVIRONMENT: /workspace/.venv
-
- # Run as your host UID/GID so files created in the repo aren't owned by root
- user: "${AGENT_UID}:${AGENT_GID}"
-
- tty: true
- stdin_open: true
- init: true
-
- # Basic hardening (optional but recommended)
- security_opt:
- - no-new-privileges:true
- cap_drop:
- - ALL
-
-volumes:
- uv-cache:
- uv-python:
-```
-
-### 4.3 `.agent/agent` (open an interactive shell)
-
-Create `.agent/agent` with:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
-
-export AGENT_UID="${AGENT_UID:-$(id -u)}"
-export AGENT_GID="${AGENT_GID:-$(id -g)}"
-
-cd "$REPO_ROOT"
-exec docker compose -f .agent/compose.yaml run --rm agent bash
-```
-
-Make it executable:
-
-```bash
-chmod +x .agent/agent
-```
-
-### 4.4 `.agent/agent-run` (run a single command in the container)
-
-Create `.agent/agent-run` with:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
-
-export AGENT_UID="${AGENT_UID:-$(id -u)}"
-export AGENT_GID="${AGENT_GID:-$(id -g)}"
-
-cd "$REPO_ROOT"
-exec docker compose -f .agent/compose.yaml run --rm agent "$@"
-```
-
-Make it executable:
-
-```bash
-chmod +x .agent/agent-run
-```
+1. Run `claude` inside the container
+2. It will open a browser on your host for OAuth login
+3. Credentials are saved to your host's `~/.claude` directory
 
 ---
 
-## Step 5 — First run: build container + set up Python + deps
+## Step 4 — First run: build and enter the container
 
 Open the container shell:
 
@@ -276,9 +148,7 @@ Open the container shell:
 ./.agent/agent
 ```
 
-Inside the container:
-
-1) Confirm tools exist:
+Inside the container, confirm tools exist:
 
 ```bash
 git --version
@@ -286,26 +156,43 @@ vim --version | head -n 2
 uv --version
 ```
 
-2) Install the Python version you pinned (if you created `.python-version`):
+---
+
+## Step 5 — (Recommended) Pin Python version
+
+This makes local + CI consistent. Inside the container, run:
+
+```bash
+uv python pin 3.12
+```
+
+This creates a `.python-version` file that uv (and GitHub Actions) will use.
+
+GitHub's `actions/setup-python` can also use `python-version-file: ".python-version"`.
+
+---
+
+## Step 6 — Install Python and dependencies
+
+Inside the container, install the pinned Python version:
 
 ```bash
 uv python install
 ```
 
-`uv python install` will respect the project’s pinned Python version.
-Also, uv can automatically download Python versions when needed.
+`uv python install` will respect the project's pinned Python version.
 
-3) Install project dependencies:
+Install project dependencies:
 
 ```bash
 uv sync --locked
 ```
 
-- `uv sync` creates the project venv at `.venv` by default if it doesn’t exist.
+- `uv sync` creates the project venv at `.venv` by default if it doesn't exist.
 - If you want the agent container to **never update** `uv.lock` during routine installs, use `--locked` (errors if lock is out of date) or set `UV_LOCKED=1`.
 - `uv.lock` is intended to be committed for reproducible installs.
 
-4) Run tests:
+Run tests:
 
 ```bash
 uv run pytest
@@ -370,28 +257,9 @@ Your host SSH keys handle auth.
 
 ---
 
-## Optional: one command to “test in container, then push from host”
+## Optional: one command to "test in container, then push from host"
 
-Create a host-side helper script `.agent/push-after-tests`:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-# Run tests in the container (same env the agent uses)
-./.agent/agent-run uv run pytest
-
-# If tests pass, push from host (uses host SSH keys)
-git push "$@"
-```
-
-Make it executable:
-
-```bash
-chmod +x .agent/push-after-tests
-```
-
-Then run:
+The `push-after-tests` script (already copied in Step 3) runs tests in the container, then pushes from the host if they pass:
 
 ```bash
 ./.agent/push-after-tests -u origin HEAD
