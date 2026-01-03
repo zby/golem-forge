@@ -30,6 +30,7 @@ Manage work tracking through the `tickets/` directory. Use this skill when the u
 2. Use kebab-case filename: `feature-name.md`
 3. Apply the appropriate template (see below)
 4. Fill in known details, mark unknowns for follow-up
+5. **Resolve open questions**: After creating the ticket, review any incomplete Decision Record items or Prerequisites with the user. Use AskUserQuestion to clarify options, get decisions, and update the ticket until Status can progress beyond "information gathering"
 
 ### Listing Tickets
 
