@@ -1,5 +1,7 @@
 # Agent-in-Docker: Autonomous AI Agents with a Safety Net
 
+> **Status**: Draft — basic happy path verified: Claude Code and Codex login via mounted auth, autonomous flags work, container blocks push. Edge cases and error handling untested. TODO: check if Claude mounts can be reduced. Originally AI-generated, refined through use.
+
 AI coding agents like Claude Code and Codex work best when they can operate autonomously—reading files, running commands, making changes—without constantly asking for approval. But giving an agent free rein on your host system feels risky.
 
 **Solution: Run agents in a Docker container with one key restriction—no push access.**
