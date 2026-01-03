@@ -143,18 +143,21 @@ See the files in [`agents-in-docker/`](agents-in-docker/) for details.
 
 **Authentication**
 
-- **Claude Code:** We mount `~/.claude` by default (adjust the host path in `.agent/compose.yaml` if you store Claude data elsewhere), so your login persists. First time:
-  1. Run `claude` inside the container.
-  2. Complete the browser OAuth flow on the host.
-  3. Credentials land in `~/.claude`, which is already mounted.
+- **Claude Code:** We mount `~/.claude` from the host, so if you're already logged in on the host, it just works in the container—no extra login needed. (Adjust the host path in `.agent/compose.yaml` if your credentials live elsewhere.)
 - **Codex:** The Dockerfile installs the Codex CLI and `.agent/compose.yaml` mounts `~/.codex` by default. If your Codex config lives somewhere else, change that host path. Because the host directory is bind-mounted, any existing host login is automatically available inside the container—no extra login needed. Only if you skip mounting host creds would you run `codex login` (or `codex login --device-auth`) inside the container to generate fresh tokens.
-- **Gemini:** The Dockerfile also installs the Gemini CLI and `.agent/compose.yaml` mounts `~/.gemini`. Run `gemini login` once inside the container to kick off the host-browser auth flow; the token is saved into the mounted directory.
+- **Gemini:** We mount `~/.gemini` from the host, so if you're already logged in on the host, it just works. If not, run `gemini login` inside the container to authenticate.
 
 ---
 
 ## Step 4 — First run: build and enter the container
 
-Open the container shell:
+Build the container image:
+
+```bash
+docker compose -f .agent/compose.yaml build
+```
+
+Then open the container shell:
 
 ```bash
 ./.agent/agent
@@ -301,6 +304,7 @@ Blocking `git push` inside the container does **not** fully prevent data exfiltr
 
 - The Dockerfile pre-installs `claude` and `codex`, available immediately when you enter `./.agent/agent`.
 - Secret storage lives on the host (`~/.claude`, `~/.codex`) and is mounted into the container, so you can revoke or rotate credentials outside the container lifecycle.
+- **Gemini CLI color issue**: By default, the Gemini CLI output colors can be difficult to read in some terminal environments within the Docker container. This was resolved by configuring Gemini to use "google-code" colors, which provide better contrast and readability.
 - You can add other agents by customizing `.agent/Dockerfile` and bind-mounting any config they require.
 - Want a one-off Codex session without approval prompts? Pass `--ask-for-approval never` (e.g., `codex --ask-for-approval never exec -- uv run pytest`) or use the `codex-auto` alias below.
 - If you ever skip host-mounted credentials, you can still authenticate from inside the container with the device flow:

@@ -2,7 +2,7 @@ FROM ubuntu:24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Core tools: git + vim + curl + node for installing uv and AI CLIs
+# Core tools: git + vim + curl
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -12,9 +12,12 @@ RUN apt-get update && \
         less \
         bash-completion \
         tzdata \
-        nodejs \
-        npm \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js 20 (required for Gemini CLI)
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install uv (standalone) into /usr/local/bin
 # UV_INSTALL_DIR controls destination.
